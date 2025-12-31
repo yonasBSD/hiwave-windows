@@ -25,28 +25,30 @@ impl From<NavigationDecision> for WKNavigationActionPolicy {
 }
 
 /// Trait for navigation handlers
-pub trait NavigationHandler: Fn(&str, WKNavigationType, bool) -> NavigationDecision + Send + 'static {}
-impl<F> NavigationHandler for F where F: Fn(&str, WKNavigationType, bool) -> NavigationDecision + Send + 'static {}
+/// Note: Send is not required because WebKit callbacks are called on the main UI thread
+pub trait NavigationHandler: Fn(&str, WKNavigationType, bool) -> NavigationDecision + 'static {}
+impl<F> NavigationHandler for F where F: Fn(&str, WKNavigationType, bool) -> NavigationDecision + 'static {}
 
 /// Trait for title change handlers
-pub trait TitleChangeHandler: Fn(&str) + Send + 'static {}
-impl<F> TitleChangeHandler for F where F: Fn(&str) + Send + 'static {}
+pub trait TitleChangeHandler: Fn(&str) + 'static {}
+impl<F> TitleChangeHandler for F where F: Fn(&str) + 'static {}
 
 /// Trait for IPC message handlers
-pub trait IpcHandler: Fn(&str) + Send + 'static {}
-impl<F> IpcHandler for F where F: Fn(&str) + Send + 'static {}
+/// Note: Send is not required because WebKit callbacks are called on the main UI thread
+pub trait IpcHandler: Fn(&str) + 'static {}
+impl<F> IpcHandler for F where F: Fn(&str) + 'static {}
 
 /// Trait for load start handlers
-pub trait LoadStartHandler: Fn() + Send + 'static {}
-impl<F> LoadStartHandler for F where F: Fn() + Send + 'static {}
+pub trait LoadStartHandler: Fn() + 'static {}
+impl<F> LoadStartHandler for F where F: Fn() + 'static {}
 
 /// Trait for load finish handlers
-pub trait LoadFinishHandler: Fn() + Send + 'static {}
-impl<F> LoadFinishHandler for F where F: Fn() + Send + 'static {}
+pub trait LoadFinishHandler: Fn() + 'static {}
+impl<F> LoadFinishHandler for F where F: Fn() + 'static {}
 
 /// Trait for progress change handlers
-pub trait ProgressHandler: Fn(f64) + Send + 'static {}
-impl<F> ProgressHandler for F where F: Fn(f64) + Send + 'static {}
+pub trait ProgressHandler: Fn(f64) + 'static {}
+impl<F> ProgressHandler for F where F: Fn(f64) + 'static {}
 
 /// Internal state for managing callbacks
 pub(crate) struct CallbackState {

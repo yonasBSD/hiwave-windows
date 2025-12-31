@@ -22,8 +22,16 @@ use tao::{
 };
 use tracing::{error, info, warn, Level};
 use tracing_subscriber::FmtSubscriber;
-use wry::{Rect, WebViewBuilder};
-use webview::{WebView, engine_name, IWebView};
+use wry::Rect;
+#[cfg(not(all(target_os = "windows", feature = "wincairo")))]
+use wry::WebViewBuilder;
+use webview::{WebView, engine_name, IWebView, HiWaveWebView};
+
+// WinCairo-specific imports
+#[cfg(all(target_os = "windows", feature = "wincairo"))]
+use webview::wincairo_support::{create_webkit_view, WebKitViewBounds};
+#[cfg(all(target_os = "windows", feature = "wincairo"))]
+use tao::platform::windows::WindowExtWindows;
 
 /// Default height of the chrome top bar area (workspace + tabs + toolbar)
 const CHROME_HEIGHT_DEFAULT: u32 = 104;
@@ -288,7 +296,7 @@ fn apply_layout(
     let _ = shelf.set_bounds(shelf_rect);
 }
 
-fn sync_tabs_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &WebView) {
+fn sync_tabs_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &impl IWebView) {
     if let Ok(s) = state.lock() {
         let active_tab_id = s.shell.get_active_tab().map(|t| t.id);
         let workspace_id = s.shell.get_active_workspace().map(|w| w.id);
@@ -323,7 +331,7 @@ fn sync_tabs_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &WebView) {
     }
 }
 
-fn sync_workspaces_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &WebView) {
+fn sync_workspaces_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &impl IWebView) {
     if let Ok(s) = state.lock() {
         let active_ws_id = s.shell.get_active_workspace().map(|w| w.id);
         let active_tab_id = s.shell.get_active_tab().map(|t| t.id);
@@ -368,7 +376,7 @@ fn sync_workspaces_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &WebView) {
     }
 }
 
-fn sync_shield_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &WebView) {
+fn sync_shield_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &impl IWebView) {
     if let Ok(s) = state.lock() {
         let stats = s.shield.get_stats();
         let payload = serde_json::json!({
@@ -385,7 +393,7 @@ fn sync_shield_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &WebView) {
     }
 }
 
-fn sync_shelf_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &WebView, scope: ShelfScope) {
+fn sync_shelf_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &impl IWebView, scope: ShelfScope) {
     if let Ok(s) = state.lock() {
         let (items, workspace_name) = match scope {
             ShelfScope::All => (s.shelf_items_all(), None),
@@ -410,7 +418,7 @@ fn sync_shelf_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &WebView, scope: S
     }
 }
 
-fn sync_blocklist_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &WebView) {
+fn sync_blocklist_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &impl IWebView) {
     if let Ok(s) = state.lock() {
         let domains: Vec<&String> = s.user_blocklist.domains.iter().collect();
         let json = serde_json::to_string(&domains).unwrap_or_else(|_| "[]".to_string());
@@ -422,7 +430,7 @@ fn sync_blocklist_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &WebView) {
     }
 }
 
-fn sync_downloads_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &WebView) {
+fn sync_downloads_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &impl IWebView) {
     if let Ok(s) = state.lock() {
         let payload = serde_json::json!({
             "downloads": s.downloads_snapshot(),
@@ -437,7 +445,7 @@ fn sync_downloads_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &WebView) {
     }
 }
 
-fn sync_history_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &WebView) {
+fn sync_history_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &impl IWebView) {
     if let Ok(s) = state.lock() {
         let history = s.visit_history_snapshot();
         let json = serde_json::to_string(&history).unwrap_or_else(|_| "[]".to_string());
@@ -449,15 +457,15 @@ fn sync_history_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &WebView) {
     }
 }
 
-fn load_new_tab(content: &WebView) {
+fn load_new_tab(content: &impl IWebView) {
     let _ = content.load_html(ABOUT_HTML);
 }
 
-fn load_about_page(content: &WebView) {
+fn load_about_page(content: &impl IWebView) {
     let _ = content.load_html(ABOUT_HTML);
 }
 
-fn load_report_page(content: &WebView) {
+fn load_report_page(content: &impl IWebView) {
     // Embed Chart.js library inline in the report HTML
     let report_with_chartjs = REPORT_HTML.replace(
         "<!-- Chart.js is injected by Rust before page load -->",
@@ -628,6 +636,8 @@ fn main() {
     let chrome_proxy = proxy.clone();
     let settings_proxy_for_handler = proxy.clone();
 
+    // WRY (WebView2) Chrome WebView creation
+    #[cfg(not(all(target_os = "windows", feature = "wincairo")))]
     let chrome_webview = WebViewBuilder::new()
         .with_html(CHROME_HTML)
         .with_devtools(cfg!(debug_assertions))
@@ -1053,6 +1063,129 @@ fn main() {
         .build_as_child(&window)
         .expect("Failed to create Chrome WebView");
 
+    // WinCairo (WebKit) Chrome WebView creation
+    #[cfg(all(target_os = "windows", feature = "wincairo"))]
+    let chrome_webview = {
+        let hwnd = window.hwnd() as windows_sys::Win32::Foundation::HWND;
+        let (x, y) = match chrome_bounds.position {
+            wry::dpi::Position::Logical(pos) => (pos.x as i32, pos.y as i32),
+            wry::dpi::Position::Physical(pos) => (pos.x, pos.y),
+        };
+        let (width, height) = match chrome_bounds.size {
+            wry::dpi::Size::Logical(size) => (size.width as u32, size.height as u32),
+            wry::dpi::Size::Physical(size) => (size.width, size.height),
+        };
+        let bounds = WebKitViewBounds::new(x, y, width, height);
+        let mut view = create_webkit_view(hwnd, bounds)
+            .expect("Failed to create Chrome WebView (WinCairo)");
+
+        // Load Chrome HTML
+        let _ = view.page().load_html(CHROME_HTML, None);
+
+        // Add initialization script
+        let _ = view.page().add_user_script(JS_BRIDGE, true);
+
+        // Set IPC handler - forwards messages similar to WRY
+        let chrome_proxy_wk = chrome_proxy.clone();
+        let chrome_state_wk = Arc::clone(&chrome_state);
+        view.page_mut().set_ipc_handler(move |body: &str| {
+            info!("Chrome IPC (WinCairo): {}", body);
+
+            match serde_json::from_str::<IpcMessage>(body) {
+                Ok(msg) => match &msg {
+                    IpcMessage::Navigate { url } => {
+                        let _ = chrome_proxy_wk.send_event(UserEvent::Navigate(url.clone()));
+                    }
+                    IpcMessage::GoBack => {
+                        let _ = chrome_proxy_wk.send_event(UserEvent::GoBack);
+                    }
+                    IpcMessage::GoForward => {
+                        let _ = chrome_proxy_wk.send_event(UserEvent::GoForward);
+                    }
+                    IpcMessage::Reload => {
+                        let _ = chrome_proxy_wk.send_event(UserEvent::Reload);
+                    }
+                    IpcMessage::Stop => {
+                        let _ = chrome_proxy_wk.send_event(UserEvent::Stop);
+                    }
+                    IpcMessage::CreateTab { ref url } => {
+                        let nav_url = url.clone();
+                        let _ = ipc::commands::handle_message(&chrome_state_wk, msg.clone());
+                        let _ = chrome_proxy_wk.send_event(UserEvent::SyncTabs);
+                        let _ = chrome_proxy_wk.send_event(UserEvent::SyncWorkspaces);
+                        if let Some(u) = nav_url {
+                            let _ = chrome_proxy_wk.send_event(UserEvent::Navigate(u));
+                        } else {
+                            let _ = chrome_proxy_wk.send_event(UserEvent::NewTab);
+                        }
+                    }
+                    IpcMessage::CloseTab { .. } => {
+                        let _ = ipc::commands::handle_message(&chrome_state_wk, msg.clone());
+                        let _ = chrome_proxy_wk.send_event(UserEvent::SyncTabs);
+                        let _ = chrome_proxy_wk.send_event(UserEvent::SyncWorkspaces);
+                        if let Ok(s) = chrome_state_wk.lock() {
+                            if let Some(active_tab) = s.shell.get_active_tab() {
+                                let url = active_tab.url.to_string();
+                                let _ = chrome_proxy_wk.send_event(UserEvent::Navigate(url));
+                            }
+                        }
+                    }
+                    IpcMessage::ActivateTab { ref id } => {
+                        let already_active = chrome_state_wk
+                            .lock()
+                            .ok()
+                            .and_then(|s| s.shell.get_active_tab().map(|tab| tab.id.0))
+                            .map(|active_id| id.parse::<u64>().ok() == Some(active_id))
+                            .unwrap_or(false);
+                        let response = ipc::commands::handle_message(&chrome_state_wk, msg.clone());
+                        let _ = chrome_proxy_wk.send_event(UserEvent::SyncTabs);
+                        if !already_active {
+                            if let ipc::IpcResponse::Success { data } = response {
+                                if let Some(url) = data.get("url").and_then(|v| v.as_str()) {
+                                    let _ = chrome_proxy_wk.send_event(UserEvent::Navigate(url.to_string()));
+                                }
+                            }
+                            let _ = chrome_proxy_wk.send_event(UserEvent::SyncZoomLevel);
+                        }
+                    }
+                    IpcMessage::ExpandChrome => {
+                        let _ = chrome_proxy_wk.send_event(UserEvent::ExpandChrome);
+                    }
+                    IpcMessage::CollapseChrome => {
+                        let _ = chrome_proxy_wk.send_event(UserEvent::CollapseChrome);
+                    }
+                    IpcMessage::ExpandShelf => {
+                        let _ = chrome_proxy_wk.send_event(UserEvent::ExpandShelf);
+                    }
+                    IpcMessage::CollapseShelf => {
+                        let _ = chrome_proxy_wk.send_event(UserEvent::CollapseShelf);
+                    }
+                    IpcMessage::SetSidebarOpen { open } => {
+                        let _ = chrome_proxy_wk.send_event(UserEvent::SetSidebarOpen(*open));
+                    }
+                    IpcMessage::SetSidebarWidth { width } => {
+                        let _ = chrome_proxy_wk.send_event(UserEvent::SetSidebarWidth(*width));
+                    }
+                    IpcMessage::OpenSettings => {
+                        let _ = chrome_proxy_wk.send_event(UserEvent::OpenSettings);
+                    }
+                    IpcMessage::CloseSettings => {
+                        let _ = chrome_proxy_wk.send_event(UserEvent::CloseSettings);
+                    }
+                    // Forward other messages to the generic handler
+                    _ => {
+                        let _ = ipc::commands::handle_message(&chrome_state_wk, msg.clone());
+                    }
+                },
+                Err(e) => {
+                    error!("Failed to parse Chrome IPC (WinCairo): {}", e);
+                }
+            }
+        });
+
+        view
+    };
+
     info!(
         "Chrome WebView created (full window, top bar height {}px)",
         CHROME_HEIGHT_DEFAULT
@@ -1081,6 +1214,8 @@ fn main() {
             .map(|tab| tab.url.to_string())
             .unwrap_or_else(|| NEW_TAB_URL.to_string())
     };
+    // WRY (WebView2) Content WebView creation
+    #[cfg(not(all(target_os = "windows", feature = "wincairo")))]
     let content_webview = WebViewBuilder::new()
         .with_html(ABOUT_HTML)
         .with_devtools(cfg!(debug_assertions))
@@ -1470,17 +1605,117 @@ fn main() {
         .build_as_child(&window)
         .expect("Failed to create Content WebView");
 
+    // WRY initial URL loading
+    #[cfg(not(all(target_os = "windows", feature = "wincairo")))]
     if !is_new_tab_url(&initial_url) {
         if let Err(e) = content_webview.load_url(&initial_url) {
             error!("Failed to load initial URL: {}", e);
         }
     }
 
+    // WinCairo (WebKit) Content WebView creation
+    #[cfg(all(target_os = "windows", feature = "wincairo"))]
+    let content_webview = {
+        let hwnd = window.hwnd() as windows_sys::Win32::Foundation::HWND;
+        let (x, y) = match content_bounds.position {
+            wry::dpi::Position::Logical(pos) => (pos.x as i32, pos.y as i32),
+            wry::dpi::Position::Physical(pos) => (pos.x, pos.y),
+        };
+        let (width, height) = match content_bounds.size {
+            wry::dpi::Size::Logical(size) => (size.width as u32, size.height as u32),
+            wry::dpi::Size::Physical(size) => (size.width, size.height),
+        };
+        let bounds = WebKitViewBounds::new(x, y, width, height);
+        let mut view = create_webkit_view(hwnd, bounds)
+            .expect("Failed to create Content WebView (WinCairo)");
+
+        // Load About HTML as default
+        let _ = view.page().load_html(ABOUT_HTML, None);
+
+        // Set navigation handler via page callbacks
+        let content_proxy_wk = content_proxy.clone();
+        let content_state_wk = Arc::clone(&content_state);
+        view.page_mut().set_navigation_handler(move |url: &str, _nav_type, _user_initiated| {
+            info!("Content navigating to (WinCairo): {}", url);
+
+            if is_new_tab_url(url) {
+                let _ = content_proxy_wk.send_event(UserEvent::UpdateActiveTabUrl(NEW_TAB_URL.to_string()));
+                let _ = content_proxy_wk.send_event(UserEvent::UpdateUrl(String::new()));
+                return webkit_wincairo::NavigationDecision::Allow;
+            }
+            if is_about_url(url) {
+                let _ = content_proxy_wk.send_event(UserEvent::UpdateActiveTabUrl(ABOUT_URL.to_string()));
+                let _ = content_proxy_wk.send_event(UserEvent::UpdateUrl(ABOUT_URL.to_string()));
+                let _ = content_proxy_wk.send_event(UserEvent::LoadAboutPage);
+                return webkit_wincairo::NavigationDecision::Allow;
+            }
+
+            // Check Shield for blocking
+            if let Ok(s) = content_state_wk.lock() {
+                if s.shield.is_enabled() {
+                    if let Ok(parsed_url) = url::Url::parse(url) {
+                        if s.shield.should_block(&parsed_url, &parsed_url, ResourceType::Document) {
+                            return webkit_wincairo::NavigationDecision::Cancel;
+                        }
+                    }
+                }
+            }
+
+            let _ = content_proxy_wk.send_event(UserEvent::SetLoading(true));
+            let _ = content_proxy_wk.send_event(UserEvent::UpdateUrl(url.to_string()));
+            let _ = content_proxy_wk.send_event(UserEvent::UpdateActiveTabUrl(url.to_string()));
+            webkit_wincairo::NavigationDecision::Allow
+        });
+
+        // Set IPC handler
+        let content_proxy_ipc_wk = content_proxy_ipc.clone();
+        let content_state_ipc_wk = Arc::clone(&content_state_ipc);
+        view.page_mut().set_ipc_handler(move |body: &str| {
+            info!("Content IPC (WinCairo): {}", body);
+            if let Ok(msg) = serde_json::from_str::<IpcMessage>(body) {
+                match &msg {
+                    IpcMessage::GoBack => {
+                        let _ = content_proxy_ipc_wk.send_event(UserEvent::GoBack);
+                    }
+                    IpcMessage::GoForward => {
+                        let _ = content_proxy_ipc_wk.send_event(UserEvent::GoForward);
+                    }
+                    IpcMessage::CreateTab { url } => {
+                        let _ = ipc::commands::handle_message(&content_state_ipc_wk, msg.clone());
+                        let _ = content_proxy_ipc_wk.send_event(UserEvent::SyncTabs);
+                        if let Some(u) = url {
+                            let _ = content_proxy_ipc_wk.send_event(UserEvent::Navigate(u.clone()));
+                        }
+                    }
+                    IpcMessage::ExitFocusMode => {
+                        let _ = ipc::commands::handle_message(&content_state_ipc_wk, msg.clone());
+                        let _ = content_proxy_ipc_wk.send_event(UserEvent::ExitFocusMode);
+                    }
+                    IpcMessage::ToggleFocusMode => {
+                        let _ = ipc::commands::handle_message(&content_state_ipc_wk, msg.clone());
+                        let _ = content_proxy_ipc_wk.send_event(UserEvent::ToggleFocusMode);
+                    }
+                    _ => {}
+                }
+            }
+        });
+
+        // Load initial URL if not new tab
+        if !is_new_tab_url(&initial_url) {
+            let _ = view.page().load_url(&initial_url);
+        }
+
+        view
+    };
+
     info!("Content WebView created (content area)");
 
     // === SHELF WEBVIEW (created third, at bottom) ===
     let shelf_proxy = proxy.clone();
     let shelf_state = Arc::clone(&state);
+
+    // WRY (WebView2) Shelf WebView creation
+    #[cfg(not(all(target_os = "windows", feature = "wincairo")))]
     let shelf_webview = WebViewBuilder::new()
         .with_html(SHELF_HTML)
         .with_devtools(cfg!(debug_assertions))
@@ -1574,13 +1809,109 @@ fn main() {
         .build_as_child(&window)
         .expect("Failed to create Shelf WebView");
 
+    // WinCairo (WebKit) Shelf WebView creation
+    #[cfg(all(target_os = "windows", feature = "wincairo"))]
+    let shelf_webview = {
+        let hwnd = window.hwnd() as windows_sys::Win32::Foundation::HWND;
+        let (x, y) = match shelf_bounds.position {
+            wry::dpi::Position::Logical(pos) => (pos.x as i32, pos.y as i32),
+            wry::dpi::Position::Physical(pos) => (pos.x, pos.y),
+        };
+        let (width, height) = match shelf_bounds.size {
+            wry::dpi::Size::Logical(size) => (size.width as u32, size.height as u32),
+            wry::dpi::Size::Physical(size) => (size.width, size.height),
+        };
+        let bounds = WebKitViewBounds::new(x, y, width, height);
+        let mut view = create_webkit_view(hwnd, bounds)
+            .expect("Failed to create Shelf WebView (WinCairo)");
+
+        // Load Shelf HTML
+        let _ = view.page().load_html(SHELF_HTML, None);
+
+        // Add initialization script
+        let _ = view.page().add_user_script(JS_BRIDGE, true);
+
+        // Set IPC handler
+        let shelf_proxy_wk = shelf_proxy.clone();
+        let shelf_state_wk = Arc::clone(&shelf_state);
+        view.page_mut().set_ipc_handler(move |body: &str| {
+            info!("Shelf IPC (WinCairo): {}", body);
+
+            match serde_json::from_str::<IpcMessage>(body) {
+                Ok(msg) => {
+                    match &msg {
+                        IpcMessage::CollapseShelf => {
+                            let _ = shelf_proxy_wk.send_event(UserEvent::CollapseShelf);
+                        }
+                        IpcMessage::SearchCommands { ref query } => {
+                            let _ = query.clone();
+                            let response = ipc::commands::handle_message(&shelf_state_wk, msg.clone());
+                            if let ipc::IpcResponse::Success { data } = response {
+                                let json = serde_json::to_string(&data)
+                                    .unwrap_or_else(|_| "[]".to_string());
+                                let _ = shelf_proxy_wk.send_event(UserEvent::ShowCommands(json));
+                            }
+                        }
+                        IpcMessage::ExecuteCommand { ref id } => {
+                            let _ = id.clone();
+                            let response = ipc::commands::handle_message(&shelf_state_wk, msg.clone());
+                            let _ = shelf_proxy_wk.send_event(UserEvent::CollapseShelf);
+
+                            if let ipc::IpcResponse::Success { data } = response {
+                                if let Some(result) = data.get("result") {
+                                    if let Some(action) = result.get("action").and_then(|a| a.as_str()) {
+                                        match action {
+                                            "navigate" => {
+                                                if let Some(url) = result.get("url").and_then(|u| u.as_str()) {
+                                                    let _ = shelf_proxy_wk.send_event(UserEvent::Navigate(url.to_string()));
+                                                } else {
+                                                    let _ = shelf_proxy_wk.send_event(UserEvent::NewTab);
+                                                }
+                                            }
+                                            "reload" => {
+                                                let _ = shelf_proxy_wk.send_event(UserEvent::Reload);
+                                            }
+                                            "go_back" => {
+                                                let _ = shelf_proxy_wk.send_event(UserEvent::GoBack);
+                                            }
+                                            "go_forward" => {
+                                                let _ = shelf_proxy_wk.send_event(UserEvent::GoForward);
+                                            }
+                                            _ => {}
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        IpcMessage::Navigate { url } => {
+                            let _ = shelf_proxy_wk.send_event(UserEvent::Navigate(url.clone()));
+                            let _ = shelf_proxy_wk.send_event(UserEvent::CollapseShelf);
+                        }
+                        _ => {}
+                    }
+                }
+                Err(e) => {
+                    error!("Failed to parse Shelf IPC (WinCairo): {}", e);
+                }
+            }
+        });
+
+        view
+    };
+
     info!("Shelf WebView created (bottom, starts hidden)");
     info!("Three-WebView architecture initialized");
 
     // Check for debug mode via environment variable
+    #[cfg(not(all(target_os = "windows", feature = "wincairo")))]
     if std::env::var("HIWAVE_DEBUG").map(|v| v == "1").unwrap_or(false) {
         info!("Debug mode enabled via HIWAVE_DEBUG=1");
         let _ = chrome_webview.evaluate_script("window.enableDebugMode && window.enableDebugMode();");
+    }
+    #[cfg(all(target_os = "windows", feature = "wincairo"))]
+    if std::env::var("HIWAVE_DEBUG").map(|v| v == "1").unwrap_or(false) {
+        info!("Debug mode enabled via HIWAVE_DEBUG=1");
+        chrome_webview.page().evaluate_script("window.enableDebugMode && window.enableDebugMode();", |_| {});
     }
 
     // Store WebViews in Arcs for event loop access
@@ -1610,7 +1941,8 @@ fn main() {
     });
 
     // Track settings window (created on demand)
-    let settings_window: Arc<Mutex<Option<(tao::window::Window, wry::WebView)>>> =
+    // Use HiWaveWebView type alias to support both WRY and WinCairo backends
+    let settings_window: Arc<Mutex<Option<(tao::window::Window, HiWaveWebView)>>> =
         Arc::new(Mutex::new(None));
     let settings_window_for_events = Arc::clone(&settings_window);
 
@@ -2281,6 +2613,9 @@ fn main() {
                                 .expect("Failed to create settings window");
 
                             let settings_proxy = settings_proxy_for_handler.clone();
+
+                            // WRY (WebView2) Settings WebView creation
+                            #[cfg(not(all(target_os = "windows", feature = "wincairo")))]
                             let settings_webview = WebViewBuilder::new()
                                 .with_html(SETTINGS_HTML)
                                 .with_devtools(cfg!(debug_assertions))
@@ -2381,6 +2716,63 @@ fn main() {
                                 })
                                 .build(&settings_win)
                                 .expect("Failed to create settings WebView");
+
+                            // WinCairo (WebKit) Settings WebView creation
+                            #[cfg(all(target_os = "windows", feature = "wincairo"))]
+                            let settings_webview = {
+                                let hwnd = settings_win.hwnd() as windows_sys::Win32::Foundation::HWND;
+                                let size = settings_win.inner_size();
+                                let bounds = WebKitViewBounds::new(0, 0, size.width, size.height);
+                                let mut view = create_webkit_view(hwnd, bounds)
+                                    .expect("Failed to create Settings WebView (WinCairo)");
+
+                                // Load Settings HTML
+                                let _ = view.page().load_html(SETTINGS_HTML, None);
+
+                                // Add initialization script
+                                let _ = view.page().add_user_script(JS_BRIDGE, true);
+
+                                // Set IPC handler
+                                let settings_proxy_wk = settings_proxy.clone();
+                                view.page_mut().set_ipc_handler(move |body: &str| {
+                                    if let Ok(ipc_msg) = serde_json::from_str::<IpcMessage>(body) {
+                                        match ipc_msg {
+                                            IpcMessage::CloseSettings => {
+                                                let _ = settings_proxy_wk.send_event(UserEvent::CloseSettings);
+                                            }
+                                            IpcMessage::GetSettings => {
+                                                let _ = settings_proxy_wk.send_event(UserEvent::GetSettings);
+                                            }
+                                            IpcMessage::SaveSettings { settings } => {
+                                                let _ = settings_proxy_wk.send_event(UserEvent::SaveSettings(settings));
+                                            }
+                                            IpcMessage::GetVaultStatus => {
+                                                let _ = settings_proxy_wk.send_event(UserEvent::GetVaultStatus);
+                                            }
+                                            IpcMessage::UnlockVault { password } => {
+                                                let _ = settings_proxy_wk.send_event(UserEvent::UnlockVault(password));
+                                            }
+                                            IpcMessage::LockVault => {
+                                                let _ = settings_proxy_wk.send_event(UserEvent::LockVault);
+                                            }
+                                            IpcMessage::GetAllCredentials => {
+                                                let _ = settings_proxy_wk.send_event(UserEvent::GetAllCredentials);
+                                            }
+                                            IpcMessage::SaveCredential { url, username, password } => {
+                                                let _ = settings_proxy_wk.send_event(UserEvent::SaveCredential { url, username, password });
+                                            }
+                                            IpcMessage::DeleteCredential { id } => {
+                                                let _ = settings_proxy_wk.send_event(UserEvent::DeleteCredential(id));
+                                            }
+                                            _ => {
+                                                info!("Settings window (WinCairo) received unhandled IPC: {:?}", ipc_msg);
+                                            }
+                                        }
+                                    }
+                                });
+
+                                view
+                            };
 
                             *settings_guard = Some((settings_win, settings_webview));
                         }

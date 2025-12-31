@@ -206,6 +206,9 @@ pub mod wincairo_support {
     use hiwave_core::HiWaveResult;
     use super::{IWebView, Rect};
 
+    // Re-export types needed by main.rs
+    pub use webkit_wincairo::{ViewBounds as WebKitViewBounds, WebKitView as WinCairoWebKitView};
+
     /// Shared WebKit context for all views
     /// We use OnceLock<Result<...>> to cache both success and failure states
     static WEBKIT_CONTEXT: OnceLock<Result<Arc<WebKitContext>, String>> = OnceLock::new();
