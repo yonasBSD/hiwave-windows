@@ -78,8 +78,8 @@ Plus Rust 1.75+ on all platforms.
 
 ```bash
 # Clone the repo
-git clone https://github.com/petecopeland/hiwave.git
-cd hiwave
+git clone https://github.com/hiwavebrowser/hiwave-windows.git
+cd hiwave-windows
 
 # Build in debug mode (faster compilation)
 cargo build -p hiwave-app

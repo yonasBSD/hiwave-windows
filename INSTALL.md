@@ -113,11 +113,6 @@ Windows 10 (version 1803+) and Windows 11 come with WebView2. If you're on an ol
 1. Download from [Microsoft WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/)
 2. Run the Evergreen Bootstrapper
 
-**How to verify:**
-```powershell
-reg query "HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\{F3017226-FE2A-4295-8BDF-00C3A9A7E4C5}" /v pv
-# Should show a version number
-```
 
 #### 3. Install Git for Windows
 

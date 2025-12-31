@@ -10,6 +10,10 @@ description = "HiWave browser application with WebView rendering"
 name = "hiwave"
 path = "src/main.rs"
 
+[features]
+default = []
+wincairo = ["webkit-wincairo", "windows-sys"]
+
 [dependencies]
 # WebView
 wry = { workspace = true }
@@ -42,3 +46,8 @@ hiwave-shell = { workspace = true }
 hiwave-shield = { workspace = true }
 hiwave-vault = { workspace = true }
 hiwave-analytics = { workspace = true }
+
+# WinCairo WebKit (optional, Windows only)
+[target.'cfg(target_os = "windows")'.dependencies]
+webkit-wincairo = { workspace = true, optional = true }
+windows-sys = { version = "0.52", features = ["Win32_Foundation"], optional = true }

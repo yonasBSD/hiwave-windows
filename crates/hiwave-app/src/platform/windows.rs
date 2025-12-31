@@ -1,8 +1,10 @@
 //! Windows platform implementation
 //!
-//! WebView2 on Windows is less aggressive with popups than WebKit,
-//! so we use lighter filtering. The native menu is optional but
-//! provides a consistent user experience.
+//! Supports two WebView engines:
+//! - WebView2 (default): Chromium-based, less aggressive with popups
+//! - WinCairo WebKit (optional): WebKit-based, more aggressive popup filtering
+//!
+//! The native menu is optional but provides a consistent user experience.
 
 use super::{
     is_definitely_popup, is_legitimate_navigation, PlatformCapabilities, PlatformError,
@@ -27,17 +29,35 @@ impl WindowsPlatform {
                 .join("Downloads")
         });
 
+        // Detect which WebView engine to use based on feature flags
+        #[cfg(feature = "wincairo")]
+        let webview_engine = WebViewEngine::WinCairoWebKit;
+
+        #[cfg(not(feature = "wincairo"))]
+        let webview_engine = WebViewEngine::WebView2;
+
         Self {
             capabilities: PlatformCapabilities {
                 native_menu_required_for_clipboard: false,
                 supports_file_selection_in_folder: true,
-                webview_engine: WebViewEngine::WebView2,
+                webview_engine,
                 default_download_dir,
                 platform_name: "Windows",
             },
         }
     }
 
+    /// Check if using WinCairo WebKit engine
+    #[allow(dead_code)]
+    pub fn is_using_wincairo(&self) -> bool {
+        matches!(self.capabilities.webview_engine, WebViewEngine::WinCairoWebKit)
+    }
+
+    /// Check if using WebView2 (Chromium) engine
+    #[allow(dead_code)]
+    pub fn is_using_webview2(&self) -> bool {
+        matches!(self.capabilities.webview_engine, WebViewEngine::WebView2)
+    }
 }
 
 impl Default for WindowsPlatform {
@@ -123,9 +143,7 @@ impl PlatformManager for WindowsPlatform {
     }
 
     fn should_open_as_tab(&self, url: &str, _initiating_url: Option<&str>) -> bool {
-        // Windows WebView2 is less aggressive - use lighter filtering
-
-        // Quick rejection for obvious popups
+        // Quick rejection for obvious popups (applies to both engines)
         if is_definitely_popup(url) {
             debug!("Blocking popup (definitely): {}", url);
             return false;
@@ -143,19 +161,46 @@ impl PlatformManager for WindowsPlatform {
             return false;
         }
 
-        // Core ad/tracking patterns (lighter than macOS)
-        let blocked_patterns = [
-            "googlesyndication.com",
-            "doubleclick.net",
-            "googleadservices.com",
-            "facebook.com/tr",
-        ];
+        // WinCairo WebKit uses more aggressive filtering (same as macOS WebKit)
+        if self.capabilities.webview_engine.is_webkit_based() {
+            // Extended ad/tracking patterns for WebKit
+            let blocked_patterns = [
+                "googlesyndication.com",
+                "doubleclick.net",
+                "googleadservices.com",
+                "facebook.com/tr",
+                "connect.facebook.net",
+                "criteo.com",
+                "tapad.com",
+                "lijit.com",
+                "/beacon",
+                "/pixel",
+                "/track",
+                "/sdk/",
+            ];
 
-        let url_lower = url.to_lowercase();
-        for pattern in blocked_patterns {
-            if url_lower.contains(pattern) {
-                debug!("Blocking URL matching pattern '{}': {}", pattern, url);
-                return false;
+            let url_lower = url.to_lowercase();
+            for pattern in blocked_patterns {
+                if url_lower.contains(pattern) {
+                    debug!("Blocking URL matching pattern '{}' (WebKit): {}", pattern, url);
+                    return false;
+                }
+            }
+        } else {
+            // WebView2 uses lighter filtering
+            let blocked_patterns = [
+                "googlesyndication.com",
+                "doubleclick.net",
+                "googleadservices.com",
+                "facebook.com/tr",
+            ];
+
+            let url_lower = url.to_lowercase();
+            for pattern in blocked_patterns {
+                if url_lower.contains(pattern) {
+                    debug!("Blocking URL matching pattern '{}': {}", pattern, url);
+                    return false;
+                }
             }
         }
 
@@ -164,8 +209,10 @@ impl PlatformManager for WindowsPlatform {
             return true;
         }
 
-        // Default: allow (WebView2 is less aggressive)
-        true
+        // Default behavior depends on engine
+        // WebKit: more conservative (block by default)
+        // WebView2: more permissive (allow by default)
+        !self.capabilities.webview_engine.is_webkit_based()
     }
 }
 
@@ -180,15 +227,21 @@ mod tests {
 
         assert!(!caps.native_menu_required_for_clipboard);
         assert!(caps.supports_file_selection_in_folder);
-        assert_eq!(caps.webview_engine, WebViewEngine::WebView2);
         assert_eq!(caps.platform_name, "Windows");
+
+        // Engine depends on feature flag
+        #[cfg(feature = "wincairo")]
+        assert_eq!(caps.webview_engine, WebViewEngine::WinCairoWebKit);
+
+        #[cfg(not(feature = "wincairo"))]
+        assert_eq!(caps.webview_engine, WebViewEngine::WebView2);
     }
 
     #[test]
     fn test_should_open_as_tab_blocks_popups() {
         let platform = WindowsPlatform::new();
 
-        // Should block
+        // Should block on all engines
         assert!(!platform.should_open_as_tab("about:blank", None));
         assert!(!platform.should_open_as_tab("javascript:void(0)", None));
         assert!(!platform.should_open_as_tab("https://doubleclick.net/ad", None));
@@ -198,11 +251,12 @@ mod tests {
     fn test_should_open_as_tab_allows_legitimate() {
         let platform = WindowsPlatform::new();
 
-        // Should allow
+        // Should allow legitimate URLs
         assert!(platform.should_open_as_tab("https://github.com/pureflow", None));
         assert!(platform.should_open_as_tab("https://example.com/page", None));
     }
 
+    #[cfg(not(feature = "wincairo"))]
     #[test]
     fn test_webview2_less_aggressive() {
         let platform = WindowsPlatform::new();
@@ -210,5 +264,36 @@ mod tests {
 
         // WebView2 should not be marked as aggressive
         assert!(!caps.webview_engine.is_aggressive_popup_opener());
+        assert!(caps.webview_engine.is_chromium_based());
+        assert!(!caps.webview_engine.is_webkit_based());
+    }
+
+    #[cfg(feature = "wincairo")]
+    #[test]
+    fn test_wincairo_aggressive() {
+        let platform = WindowsPlatform::new();
+        let caps = platform.capabilities();
+
+        // WinCairo WebKit should be marked as aggressive
+        assert!(caps.webview_engine.is_aggressive_popup_opener());
+        assert!(caps.webview_engine.is_webkit_based());
+        assert!(!caps.webview_engine.is_chromium_based());
+    }
+
+    #[test]
+    fn test_engine_detection_helpers() {
+        let platform = WindowsPlatform::new();
+
+        #[cfg(feature = "wincairo")]
+        {
+            assert!(platform.is_using_wincairo());
+            assert!(!platform.is_using_webview2());
+        }
+
+        #[cfg(not(feature = "wincairo"))]
+        {
+            assert!(!platform.is_using_wincairo());
+            assert!(platform.is_using_webview2());
+        }
     }
 }

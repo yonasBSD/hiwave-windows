@@ -38,6 +38,9 @@ pub enum HiWaveError {
     #[error("Configuration error: {0}")]
     Config(String),
 
+    #[error("WebView error: {0}")]
+    WebView(String),
+
     #[error("Not found: {0}")]
     NotFound(String),
 
@@ -85,5 +88,10 @@ impl HiWaveError {
     /// Create a new analytics error
     pub fn analytics(msg: impl Into<String>) -> Self {
         Self::Analytics(msg.into())
+    }
+
+    /// Create a new WebView error
+    pub fn webview(msg: impl Into<String>) -> Self {
+        Self::WebView(msg.into())
     }
 }

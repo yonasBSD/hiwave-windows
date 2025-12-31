@@ -10,7 +10,7 @@ mod import;
 mod platform;
 
 use std::sync::{Arc, Mutex};
-use muda::{Menu, MenuEvent};
+use muda::Menu;
 use platform::get_platform_manager;
 #[cfg(target_os = "macos")]
 use platform::menu_ids;
@@ -22,7 +22,8 @@ use tao::{
 };
 use tracing::{error, info, warn, Level};
 use tracing_subscriber::FmtSubscriber;
-use wry::{Rect, WebView, WebViewBuilder};
+use wry::{Rect, WebViewBuilder};
+use webview::{WebView, engine_name};
 
 /// Default height of the chrome top bar area (workspace + tabs + toolbar)
 const CHROME_HEIGHT_DEFAULT: u32 = 104;
@@ -504,6 +505,7 @@ fn main() {
     tracing::subscriber::set_global_default(subscriber).expect("Failed to set subscriber");
 
     info!("Starting HiWave...");
+    info!("WebView engine: {}", engine_name());
 
     // Initialize application state
     let state = match AppState::with_defaults() {
