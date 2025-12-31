@@ -25,6 +25,26 @@ pub use wry::WebView;
 #[cfg(not(all(target_os = "windows", feature = "wincairo")))]
 pub use wry::WebViewBuilder;
 
+// ============================================================================
+// HiWaveWebView - Unified type alias for WebView backends
+// ============================================================================
+
+/// Unified WebView type that works with both backends.
+///
+/// - Default build: Uses `wry::WebView` (WebView2 on Windows)
+/// - WinCairo build: Uses `webkit_wincairo::WebKitView`
+///
+/// Both types implement the `IWebView` trait for common operations.
+#[cfg(not(all(target_os = "windows", feature = "wincairo")))]
+pub type HiWaveWebView = wry::WebView;
+
+#[cfg(all(target_os = "windows", feature = "wincairo"))]
+pub type HiWaveWebView = webkit_wincairo::WebKitView;
+
+// ============================================================================
+// Helper functions
+// ============================================================================
+
 /// Convert logical position/size to WRY Rect
 pub fn make_rect(x: f64, y: f64, width: f64, height: f64) -> Rect {
     Rect {
@@ -82,6 +102,50 @@ pub trait IWebView {
 
     /// Clear all browsing data
     fn clear_all_browsing_data(&self);
+}
+
+// ============================================================================
+// Arc wrapper implementation - allows Arc<WebView> to be used as IWebView
+// ============================================================================
+
+use std::sync::Arc;
+
+impl<T: IWebView> IWebView for Arc<T> {
+    fn load_url(&self, url: &str) {
+        (**self).load_url(url)
+    }
+
+    fn load_html(&self, html: &str) {
+        (**self).load_html(html)
+    }
+
+    fn evaluate_script(&self, script: &str) {
+        (**self).evaluate_script(script)
+    }
+
+    fn set_bounds(&self, rect: Rect) {
+        (**self).set_bounds(rect)
+    }
+
+    fn url(&self) -> Option<String> {
+        (**self).url()
+    }
+
+    fn set_zoom(&self, level: f64) {
+        (**self).set_zoom(level)
+    }
+
+    fn print(&self) {
+        (**self).print()
+    }
+
+    fn focus(&self) {
+        (**self).focus()
+    }
+
+    fn clear_all_browsing_data(&self) {
+        (**self).clear_all_browsing_data()
+    }
 }
 
 // ============================================================================

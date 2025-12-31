@@ -48,7 +48,7 @@ For the latest features or custom builds:
 
 1. Install build dependencies via Chocolatey:
    ```powershell
-   choco install -y python311 ruby git cmake gperf llvm ninja
+   choco install -y python311 ruby git cmake gperf llvm ninja strawberryperl
    ```
 
    > **Note**: Use Python 3.11, not 3.12 (known compatibility issues)

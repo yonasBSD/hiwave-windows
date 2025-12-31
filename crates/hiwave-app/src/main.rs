@@ -23,7 +23,7 @@ use tao::{
 use tracing::{error, info, warn, Level};
 use tracing_subscriber::FmtSubscriber;
 use wry::{Rect, WebViewBuilder};
-use webview::{WebView, engine_name};
+use webview::{WebView, engine_name, IWebView};
 
 /// Default height of the chrome top bar area (workspace + tabs + toolbar)
 const CHROME_HEIGHT_DEFAULT: u32 = 104;
@@ -245,9 +245,9 @@ enum UserEvent {
 
 fn apply_layout(
     window: &tao::window::Window,
-    chrome: &WebView,
-    content: &WebView,
-    shelf: &WebView,
+    chrome: &impl IWebView,
+    content: &impl IWebView,
+    shelf: &impl IWebView,
     chrome_height: f64,
     shelf_height: f64,
     sidebar_width: f64,
@@ -1742,9 +1742,7 @@ fn main() {
                             } else {
                                 format!("https://duckduckgo.com/?q={}", urlencoding::encode(&url))
                             };
-                            if let Err(e) = content_for_events.load_url(&full_url) {
-                                error!("Failed to navigate: {}", e);
-                            }
+                            content_for_events.load_url(&full_url);
                             let script = format!(
                                 "if(window.hiwaveChrome) {{ hiwaveChrome.updateUrl('{}'); }}",
                                 full_url.replace("'", "\\'")
@@ -2155,17 +2153,15 @@ fn main() {
                             right_sidebar_open,
                         );
                         // Notify chrome of focus mode state - call setFocusMode immediately
-                        match chrome_for_events.evaluate_script(
+                        chrome_for_events.evaluate_script(
                             "if(window.hiwaveChrome) { \
                                 console.log('[Focus] ExitFocusMode event - calling setFocusMode(false)'); \
                                 hiwaveChrome.setFocusMode(false); \
                             } else { \
                                 console.error('[Focus] hiwaveChrome not available!'); \
                             }"
-                        ) {
-                            Ok(_) => info!("Successfully called setFocusMode(false)"),
-                            Err(e) => error!("Failed to call setFocusMode(false): {}", e),
-                        }
+                        );
+                        info!("Called setFocusMode(false)");
                     }
                     UserEvent::ToggleFocusMode => {
                         // State was already toggled by IPC handler, so check the NEW state
