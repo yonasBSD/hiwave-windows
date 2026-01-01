@@ -23,6 +23,7 @@ use wry::dpi::{LogicalPosition, LogicalSize};
 pub use wry::WebView;
 
 #[cfg(not(all(target_os = "windows", feature = "wincairo")))]
+#[allow(unused_imports)]
 pub use wry::WebViewBuilder;
 
 // ============================================================================
@@ -45,6 +46,8 @@ pub type HiWaveWebView = webkit_wincairo::WebKitView;
 // Helper functions
 // ============================================================================
 
+// These helper functions are part of the public API for external use
+#[allow(dead_code)]
 /// Convert logical position/size to WRY Rect
 pub fn make_rect(x: f64, y: f64, width: f64, height: f64) -> Rect {
     Rect {
@@ -53,12 +56,14 @@ pub fn make_rect(x: f64, y: f64, width: f64, height: f64) -> Rect {
     }
 }
 
+#[allow(dead_code)]
 /// Helper to safely evaluate a script on a WebView
 /// Returns Ok(()) even if the script execution fails (fire-and-forget pattern)
 pub fn eval_script(webview: &WebView, script: &str) {
     let _ = webview.evaluate_script(script);
 }
 
+#[allow(dead_code)]
 /// Helper to safely set bounds on a WebView
 pub fn set_webview_bounds(webview: &WebView, x: f64, y: f64, width: f64, height: f64) {
     let _ = webview.set_bounds(make_rect(x, y, width, height));
@@ -75,6 +80,7 @@ pub fn set_webview_bounds(webview: &WebView, x: f64, y: f64, width: f64, height:
 ///
 /// Note: This trait is NOT Send because WebView handles are not thread-safe.
 /// All WebView operations must be performed on the main/UI thread.
+#[allow(dead_code)]
 pub trait IWebView {
     /// Load a URL in the WebView
     fn load_url(&self, url: &str);
@@ -207,7 +213,7 @@ pub mod wincairo_support {
     use super::{IWebView, Rect};
 
     // Re-export types needed by main.rs
-    pub use webkit_wincairo::{ViewBounds as WebKitViewBounds, WebKitView as WinCairoWebKitView};
+    pub use webkit_wincairo::ViewBounds as WebKitViewBounds;
 
     /// Shared WebKit context for all views
     /// We use OnceLock<Result<...>> to cache both success and failure states
@@ -260,22 +266,26 @@ pub mod wincairo_support {
     }
 
     /// Helper to evaluate script on a WebKit view
+    #[allow(dead_code)]
     pub fn eval_webkit_script(view: &WebKitView, script: &str) {
         let _ = view.page().evaluate_script_sync(script);
     }
 
     /// Helper to set bounds on a WebKit view
+    #[allow(dead_code)]
     pub fn set_webkit_bounds(view: &WebKitView, x: i32, y: i32, width: u32, height: u32) {
         view.set_bounds(ViewBounds::new(x, y, width, height));
     }
 
     /// Helper to load URL on a WebKit view
+    #[allow(dead_code)]
     pub fn load_webkit_url(view: &WebKitView, url: &str) -> HiWaveResult<()> {
         view.page().load_url(url)
             .map_err(|e| hiwave_core::HiWaveError::WebView(e.to_string()))
     }
 
     /// Helper to load HTML on a WebKit view
+    #[allow(dead_code)]
     pub fn load_webkit_html(view: &WebKitView, html: &str) -> HiWaveResult<()> {
         view.page().load_html(html, None)
             .map_err(|e| hiwave_core::HiWaveError::WebView(e.to_string()))

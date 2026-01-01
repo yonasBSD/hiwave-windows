@@ -38,6 +38,7 @@ impl WebKitPage {
     }
 
     /// Get the raw page reference
+    #[allow(dead_code)]
     pub(crate) fn raw(&self) -> WKPageRef {
         self.raw
     }

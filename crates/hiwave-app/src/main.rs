@@ -25,7 +25,7 @@ use tracing_subscriber::FmtSubscriber;
 use wry::Rect;
 #[cfg(not(all(target_os = "windows", feature = "wincairo")))]
 use wry::WebViewBuilder;
-use webview::{WebView, engine_name, IWebView, HiWaveWebView};
+use webview::{engine_name, IWebView, HiWaveWebView};
 
 // WinCairo-specific imports
 #[cfg(all(target_os = "windows", feature = "wincairo"))]
@@ -1192,20 +1192,36 @@ fn main() {
     );
 
     // === CONTENT WEBVIEW (created second, below chrome) ===
+    // Note: Some proxy clones are only used in WRY path, not WinCairo
+    #[allow(unused_variables)]
     let content_proxy = proxy.clone();
+    #[allow(unused_variables)]
     let content_proxy2 = proxy.clone();
+    #[allow(unused_variables)]
     let content_proxy3 = proxy.clone();
+    #[allow(unused_variables)]
     let content_proxy4 = proxy.clone();
+    #[allow(unused_variables)]
     let content_proxy5 = proxy.clone();
+    #[allow(unused_variables)]
     let content_proxy_new_window = proxy.clone();
+    #[allow(unused_variables)]
     let content_proxy_downloads = proxy.clone();
+    #[allow(unused_variables)]
     let content_proxy_downloads_complete = proxy.clone();
+    #[allow(unused_variables)]
     let content_proxy_history = proxy.clone();
+    #[allow(unused_variables)]
     let content_proxy_ipc = proxy.clone();
+    #[allow(unused_variables)]
     let content_state = Arc::clone(&state);
+    #[allow(unused_variables)]
     let content_state2 = Arc::clone(&state);
+    #[allow(unused_variables)]
     let content_state_ipc = Arc::clone(&state);
+    #[allow(unused_variables)]
     let content_state_download_start = Arc::clone(&state);
+    #[allow(unused_variables)]
     let content_state_download_complete = Arc::clone(&state);
     let initial_url = {
         let s = state.lock().unwrap();
@@ -1911,7 +1927,7 @@ fn main() {
     #[cfg(all(target_os = "windows", feature = "wincairo"))]
     if std::env::var("HIWAVE_DEBUG").map(|v| v == "1").unwrap_or(false) {
         info!("Debug mode enabled via HIWAVE_DEBUG=1");
-        chrome_webview.page().evaluate_script("window.enableDebugMode && window.enableDebugMode();", |_| {});
+        let _ = chrome_webview.page().evaluate_script("window.enableDebugMode && window.enableDebugMode();", |_| {});
     }
 
     // Store WebViews in Arcs for event loop access
