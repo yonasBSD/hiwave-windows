@@ -22,6 +22,7 @@ members = [
     "crates/rustkit-engine",
     "crates/rustkit-common",
     "crates/rustkit-test",
+    "crates/rustkit-bench",
 ]
 
 [workspace.package]
@@ -97,6 +98,7 @@ rustkit-bindings = { path = "crates/rustkit-bindings" }
 rustkit-net = { path = "crates/rustkit-net" }
 rustkit-engine = { path = "crates/rustkit-engine" }
 rustkit-test = { path = "crates/rustkit-test" }
+rustkit-bench = { path = "crates/rustkit-bench" }
 
 [profile.release]
 opt-level = 3

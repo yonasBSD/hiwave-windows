@@ -130,6 +130,13 @@
       "work_order_path": ".ai/work_orders/wpt-harness.json"
     },
     {
+      "id": "perf-benchmarks",
+      "title": "Performance benchmarking infrastructure for RustKit",
+      "status": "completed",
+      "depends_on": ["wpt-harness"],
+      "work_order_path": ".ai/work_orders/perf-benchmarks.json"
+    },
+    {
       "id": "define-agent-io",
       "title": "Define WorkOrder/VerificationReport schemas + shared RoadmapIndex",
       "status": "in_progress",
