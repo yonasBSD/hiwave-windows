@@ -46,6 +46,27 @@
       "work_order_path": ".ai/work_orders/engine-scheduler-core.json"
     },
     {
+      "id": "html-dom-pipeline",
+      "title": "Implement HTML parsing + DOM tree + basic render tree construction",
+      "status": "completed",
+      "depends_on": ["engine-scheduler-core"],
+      "work_order_path": ".ai/work_orders/html-dom-pipeline.json"
+    },
+    {
+      "id": "css-style-system",
+      "title": "Implement CSS parsing + cascade/inheritance and connect to layout",
+      "status": "completed",
+      "depends_on": ["html-dom-pipeline"],
+      "work_order_path": ".ai/work_orders/css-style-system.json"
+    },
+    {
+      "id": "layout-block-inline",
+      "title": "Implement block + inline layout, text shaping, and painting for basic pages",
+      "status": "completed",
+      "depends_on": ["css-style-system"],
+      "work_order_path": ".ai/work_orders/layout-block-inline.json"
+    },
+    {
       "id": "define-agent-io",
       "title": "Define WorkOrder/VerificationReport schemas + shared RoadmapIndex",
       "status": "in_progress",

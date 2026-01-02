@@ -11,3 +11,17 @@
 {"ts": "2026-01-02T20:22:59.716338+00:00", "event_type": "ci_run", "work_order_id": "rustkit-compositor", "run_id": "20260102T202243Z_6c3d2e99", "status": "pass", "duration_ms": 16061}
 {"ts": "2026-01-02T20:23:25.793342+00:00", "event_type": "ci_run", "work_order_id": "engine-scheduler-core", "run_id": "20260102T202309Z_45f85974", "status": "fail", "duration_ms": 16657}
 {"ts": "2026-01-02T20:23:52.161229+00:00", "event_type": "ci_run", "work_order_id": "engine-scheduler-core", "run_id": "20260102T202351Z_a60f4a39", "status": "pass", "duration_ms": 995}
+{"ts": "2026-01-02T20:33:54.104638+00:00", "event_type": "ci_run", "work_order_id": "html-dom-pipeline", "run_id": "20260102T203353Z_e55b9573", "status": "fail", "duration_ms": 772}
+{"ts": "2026-01-02T20:34:14.964496+00:00", "event_type": "ci_run", "work_order_id": "html-dom-pipeline", "run_id": "20260102T203414Z_f5f93163", "status": "fail", "duration_ms": 137}
+{"ts": "2026-01-02T20:34:31.219986+00:00", "event_type": "ci_run", "work_order_id": "html-dom-pipeline", "run_id": "20260102T203431Z_c0d94670", "status": "fail", "duration_ms": 136}
+{"ts": "2026-01-02T20:34:52.753205+00:00", "event_type": "ci_run", "work_order_id": "html-dom-pipeline", "run_id": "20260102T203452Z_ff973aa1", "status": "fail", "duration_ms": 336}
+{"ts": "2026-01-02T20:35:23.226507+00:00", "event_type": "ci_run", "work_order_id": "html-dom-pipeline", "run_id": "20260102T203516Z_fb70ed8a", "status": "fail", "duration_ms": 6850}
+{"ts": "2026-01-02T20:36:24.192045+00:00", "event_type": "ci_run", "work_order_id": "html-dom-pipeline", "run_id": "20260102T203623Z_9b44347d", "status": "pass", "duration_ms": 266}
+{"ts": "2026-01-02T20:36:38.882933+00:00", "event_type": "ci_run", "work_order_id": "css-style-system", "run_id": "20260102T203635Z_e50e0001", "status": "fail", "duration_ms": 3536}
+{"ts": "2026-01-02T20:37:05.957085+00:00", "event_type": "ci_run", "work_order_id": "css-style-system", "run_id": "20260102T203705Z_98d515e6", "status": "fail", "duration_ms": 136}
+{"ts": "2026-01-02T20:37:31.432444+00:00", "event_type": "ci_run", "work_order_id": "css-style-system", "run_id": "20260102T203729Z_38cf137c", "status": "pass", "duration_ms": 1914}
+{"ts": "2026-01-02T20:37:45.113958+00:00", "event_type": "ci_run", "work_order_id": "layout-block-inline", "run_id": "20260102T203743Z_2bd43296", "status": "fail", "duration_ms": 2092}
+{"ts": "2026-01-02T20:38:23.027018+00:00", "event_type": "ci_run", "work_order_id": "layout-block-inline", "run_id": "20260102T203822Z_19e386ee", "status": "fail", "duration_ms": 379}
+{"ts": "2026-01-02T20:38:50.060598+00:00", "event_type": "ci_run", "work_order_id": "layout-block-inline", "run_id": "20260102T203849Z_7fd01100", "status": "fail", "duration_ms": 358}
+{"ts": "2026-01-02T20:39:23.746323+00:00", "event_type": "ci_run", "work_order_id": "layout-block-inline", "run_id": "20260102T203923Z_0da23db8", "status": "fail", "duration_ms": 352}
+{"ts": "2026-01-02T20:40:00.218277+00:00", "event_type": "ci_run", "work_order_id": "layout-block-inline", "run_id": "20260102T203959Z_226fabe7", "status": "pass", "duration_ms": 473}

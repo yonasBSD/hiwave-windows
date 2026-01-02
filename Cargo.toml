@@ -13,6 +13,9 @@ members = [
     "crates/rustkit-viewhost",
     "crates/rustkit-compositor",
     "crates/rustkit-core",
+    "crates/rustkit-dom",
+    "crates/rustkit-css",
+    "crates/rustkit-layout",
 ]
 
 [workspace.package]

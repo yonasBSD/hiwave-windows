@@ -1,0 +1,22 @@
+[package]
+name = "rustkit-layout"
+version = "0.1.0"
+edition = "2021"
+description = "Layout engine for RustKit browser engine"
+authors = ["HiWave Team"]
+license = "MIT"
+
+[dependencies]
+# DOM and CSS (used by integration code)
+rustkit-dom = { path = "../rustkit-dom" }
+rustkit-css = { path = "../rustkit-css" }
+
+# Error handling
+thiserror = "1.0"
+
+# Tracing
+tracing = "0.1"
+
+[dev-dependencies]
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
