@@ -1,7 +1,7 @@
 {
   "schema_version": "roadmap_index.v1",
   "created_at": "2026-01-02T00:00:00Z",
-  "updated_at": "2026-01-02T00:00:00Z",
+  "updated_at": "2026-01-02T22:00:00Z",
   "work_orders": [
     {
       "id": "reqs-mvp-matrix",
@@ -144,76 +144,67 @@
       "work_order_path": ".ai/work_orders/wincairo-removal.json"
     },
     {
-      "id": "define-agent-io",
-      "title": "Define WorkOrder/VerificationReport schemas + shared RoadmapIndex",
-      "status": "in_progress",
-      "depends_on": [],
-      "work_order_path": ".ai/work_orders/define-agent-io.json"
+      "id": "css-box-model",
+      "title": "Phase 12: CSS Box Model & Visual Formatting",
+      "status": "pending",
+      "depends_on": ["wincairo-removal"],
+      "work_order_path": ".ai/work_orders/css-box-model.json"
     },
     {
-      "id": "artifact-store",
-      "title": "Local artifact store layout for logs/traces/screenshots + deterministic references",
+      "id": "text-rendering",
+      "title": "Phase 13: Text Rendering & Fonts",
       "status": "pending",
-      "depends_on": ["define-agent-io"],
-      "work_order_path": ".ai/work_orders/artifact-store.json"
+      "depends_on": ["css-box-model"],
+      "work_order_path": ".ai/work_orders/text-rendering.json"
     },
     {
-      "id": "local-ci-emulator",
-      "title": "Local CI emulator command producing a merge report artifact",
+      "id": "event-handling",
+      "title": "Phase 14: Event Handling",
       "status": "pending",
-      "depends_on": ["define-agent-io", "artifact-store"],
-      "work_order_path": ".ai/work_orders/local-ci-emulator.json"
+      "depends_on": ["css-box-model"],
+      "work_order_path": ".ai/work_orders/event-handling.json"
     },
     {
-      "id": "agent-roles-runtime",
-      "title": "Coordinator/Architect/Implementer/Verifier agent runtime + structured handoffs",
+      "id": "forms-input",
+      "title": "Phase 15: Forms & Input",
       "status": "pending",
-      "depends_on": ["define-agent-io"],
-      "work_order_path": ".ai/work_orders/agent-roles-runtime.json"
+      "depends_on": ["event-handling", "text-rendering"],
+      "work_order_path": ".ai/work_orders/forms-input.json"
     },
     {
-      "id": "repo-integration-bot",
-      "title": "Local PR/branch automation + auto-merge policy enforcement",
+      "id": "images-media",
+      "title": "Phase 16: Images & Media",
       "status": "pending",
-      "depends_on": ["define-agent-io", "local-ci-emulator"],
-      "work_order_path": ".ai/work_orders/repo-integration-bot.json"
+      "depends_on": ["css-box-model"],
+      "work_order_path": ".ai/work_orders/images-media.json"
     },
     {
-      "id": "canary-runner",
-      "title": "Local canary runner: build + scripted smoke flows + health signals",
+      "id": "css-flexbox",
+      "title": "Phase 17: CSS Flexbox",
       "status": "pending",
-      "depends_on": ["local-ci-emulator", "artifact-store"],
-      "work_order_path": ".ai/work_orders/canary-runner.json"
+      "depends_on": ["css-box-model"],
+      "work_order_path": ".ai/work_orders/css-flexbox.json"
     },
     {
-      "id": "auto-revert-bisect",
-      "title": "Auto-revert + local bisect on canary failures; emit fix work orders",
+      "id": "scrolling-overflow",
+      "title": "Phase 18: Scrolling & Overflow",
       "status": "pending",
-      "depends_on": ["repo-integration-bot", "canary-runner"],
-      "work_order_path": ".ai/work_orders/auto-revert-bisect.json"
+      "depends_on": ["css-box-model", "event-handling"],
+      "work_order_path": ".ai/work_orders/scrolling-overflow.json"
     },
     {
-      "id": "guardrails",
-      "title": "Guardrails: allowlists, dangerous-op approvals, evidence gates",
+      "id": "navigation-history",
+      "title": "Phase 19: Navigation & History",
       "status": "pending",
-      "depends_on": ["agent-roles-runtime", "repo-integration-bot"],
-      "work_order_path": ".ai/work_orders/guardrails.json"
+      "depends_on": ["event-handling"],
+      "work_order_path": ".ai/work_orders/navigation-history.json"
     },
     {
-      "id": "test-first-policy",
-      "title": "Test-first policy enforcement (regression tests required per fix)",
+      "id": "security-isolation",
+      "title": "Phase 20: Security & Isolation",
       "status": "pending",
-      "depends_on": ["local-ci-emulator"],
-      "work_order_path": ".ai/work_orders/test-first-policy.json"
-    },
-    {
-      "id": "throughput-metrics",
-      "title": "Swarm throughput metrics + weekly review hooks",
-      "status": "pending",
-      "depends_on": ["agent-roles-runtime", "artifact-store"],
-      "work_order_path": ".ai/work_orders/throughput-metrics.json"
+      "depends_on": ["networking-http", "dom-bindings"],
+      "work_order_path": ".ai/work_orders/security-isolation.json"
     }
   ]
 }
-
-
