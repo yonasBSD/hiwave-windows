@@ -20,6 +20,7 @@ members = [
     "crates/rustkit-bindings",
     "crates/rustkit-net",
     "crates/rustkit-engine",
+    "crates/rustkit-common",
 ]
 
 [workspace.package]

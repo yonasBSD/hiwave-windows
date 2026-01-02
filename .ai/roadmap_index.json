@@ -109,6 +109,13 @@
       "work_order_path": ".ai/work_orders/multiview-integration.json"
     },
     {
+      "id": "observability-hardening",
+      "title": "Add comprehensive error handling, logging, and resilience",
+      "status": "completed",
+      "depends_on": ["multiview-integration"],
+      "work_order_path": ".ai/work_orders/observability-hardening.json"
+    },
+    {
       "id": "define-agent-io",
       "title": "Define WorkOrder/VerificationReport schemas + shared RoadmapIndex",
       "status": "in_progress",
