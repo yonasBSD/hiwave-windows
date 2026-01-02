@@ -174,6 +174,147 @@ pub enum Overflow {
     Auto,
 }
 
+/// Text decoration line values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TextDecorationLine {
+    pub underline: bool,
+    pub overline: bool,
+    pub line_through: bool,
+}
+
+impl TextDecorationLine {
+    pub const NONE: TextDecorationLine = TextDecorationLine {
+        underline: false,
+        overline: false,
+        line_through: false,
+    };
+
+    pub const UNDERLINE: TextDecorationLine = TextDecorationLine {
+        underline: true,
+        overline: false,
+        line_through: false,
+    };
+
+    pub const OVERLINE: TextDecorationLine = TextDecorationLine {
+        underline: false,
+        overline: true,
+        line_through: false,
+    };
+
+    pub const LINE_THROUGH: TextDecorationLine = TextDecorationLine {
+        underline: false,
+        overline: false,
+        line_through: true,
+    };
+}
+
+/// Text decoration style.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TextDecorationStyle {
+    #[default]
+    Solid,
+    Double,
+    Dotted,
+    Dashed,
+    Wavy,
+}
+
+/// Font stretch values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FontStretch {
+    UltraCondensed,
+    ExtraCondensed,
+    Condensed,
+    SemiCondensed,
+    #[default]
+    Normal,
+    SemiExpanded,
+    Expanded,
+    ExtraExpanded,
+    UltraExpanded,
+}
+
+impl FontStretch {
+    /// Convert to DirectWrite font stretch value (1-9).
+    pub fn to_dwrite_value(&self) -> u32 {
+        match self {
+            FontStretch::UltraCondensed => 1,
+            FontStretch::ExtraCondensed => 2,
+            FontStretch::Condensed => 3,
+            FontStretch::SemiCondensed => 4,
+            FontStretch::Normal => 5,
+            FontStretch::SemiExpanded => 6,
+            FontStretch::Expanded => 7,
+            FontStretch::ExtraExpanded => 8,
+            FontStretch::UltraExpanded => 9,
+        }
+    }
+}
+
+/// White space handling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum WhiteSpace {
+    #[default]
+    Normal,
+    Nowrap,
+    Pre,
+    PreWrap,
+    PreLine,
+    BreakSpaces,
+}
+
+/// Word break behavior.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum WordBreak {
+    #[default]
+    Normal,
+    BreakAll,
+    KeepAll,
+    BreakWord,
+}
+
+/// Vertical alignment.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum VerticalAlign {
+    #[default]
+    Baseline,
+    Sub,
+    Super,
+    Top,
+    TextTop,
+    Middle,
+    Bottom,
+    TextBottom,
+    Length(f32),
+}
+
+/// Writing mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum WritingMode {
+    #[default]
+    HorizontalTb,
+    VerticalRl,
+    VerticalLr,
+}
+
+/// Text transform.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TextTransform {
+    #[default]
+    None,
+    Capitalize,
+    Uppercase,
+    Lowercase,
+}
+
+/// Direction for bidi text.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Direction {
+    #[default]
+    Ltr,
+    Rtl,
+}
+
 /// Computed style for an element.
 #[derive(Debug, Clone, Default)]
 pub struct ComputedStyle {
@@ -213,13 +354,29 @@ pub struct ComputedStyle {
     pub color: Color,
     pub background_color: Color,
 
-    // Typography
+    // Typography - Basic
     pub font_size: Length,
     pub font_weight: FontWeight,
     pub font_style: FontStyle,
     pub font_family: String,
     pub line_height: f32,
     pub text_align: TextAlign,
+
+    // Typography - Advanced
+    pub font_stretch: FontStretch,
+    pub letter_spacing: Length,
+    pub word_spacing: Length,
+    pub text_indent: Length,
+    pub text_decoration_line: TextDecorationLine,
+    pub text_decoration_color: Option<Color>,
+    pub text_decoration_style: TextDecorationStyle,
+    pub text_decoration_thickness: Length,
+    pub text_transform: TextTransform,
+    pub white_space: WhiteSpace,
+    pub word_break: WordBreak,
+    pub vertical_align: VerticalAlign,
+    pub writing_mode: WritingMode,
+    pub direction: Direction,
 
     // Visual
     pub opacity: f32,
@@ -237,6 +394,9 @@ impl ComputedStyle {
             color: Color::BLACK,
             background_color: Color::TRANSPARENT,
             font_family: "sans-serif".to_string(),
+            text_decoration_line: TextDecorationLine::NONE,
+            text_decoration_color: None,
+            text_decoration_thickness: Length::Auto,
             ..Default::default()
         }
     }
@@ -249,9 +409,24 @@ impl ComputedStyle {
             font_size: parent.font_size,
             font_weight: parent.font_weight,
             font_style: parent.font_style,
+            font_stretch: parent.font_stretch,
             font_family: parent.font_family.clone(),
             line_height: parent.line_height,
             text_align: parent.text_align,
+            letter_spacing: parent.letter_spacing,
+            word_spacing: parent.word_spacing,
+            text_indent: parent.text_indent,
+            text_transform: parent.text_transform,
+            white_space: parent.white_space,
+            word_break: parent.word_break,
+            direction: parent.direction,
+            writing_mode: parent.writing_mode,
+
+            // Text decoration is NOT inherited (each element sets its own)
+            text_decoration_line: TextDecorationLine::NONE,
+            text_decoration_color: None,
+            text_decoration_style: TextDecorationStyle::Solid,
+            text_decoration_thickness: Length::Auto,
 
             // Non-inherited get defaults
             ..Default::default()

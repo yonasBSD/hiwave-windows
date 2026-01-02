@@ -541,9 +541,11 @@ mod tests {
         let bindings = DomBindings::new(runtime).unwrap();
 
         bindings
-            .evaluate("localStorage.setItem('key', 'value')")
+            .evaluate("window.localStorage.setItem('key', 'value')")
             .unwrap();
-        let result = bindings.evaluate("localStorage.getItem('key')").unwrap();
+        let result = bindings
+            .evaluate("window.localStorage.getItem('key')")
+            .unwrap();
         assert!(matches!(result, JsValue::String(s) if s == "value"));
     }
 

@@ -12,6 +12,15 @@
 //! 5. **Positioned elements**: Support relative, absolute, fixed, sticky
 //! 6. **Float layout**: Basic float behavior and clearance
 //! 7. **Stacking contexts**: Z-index based paint ordering
+//! 8. **Text rendering**: Font fallback, decorations, line height
+
+pub mod text;
+
+pub use text::{
+    apply_text_transform, collapse_whitespace, FontCache, FontDisplay, FontFaceRule,
+    FontFamilyChain, FontLoader, LineHeight, PositionedGlyph, ShapedRun, TextDecoration, TextError,
+    TextMetrics, TextShaper,
+};
 
 use rustkit_css::{Color, ComputedStyle, Length};
 use std::cmp::Ordering;
@@ -884,6 +893,18 @@ pub enum DisplayCommand {
         y: f32,
         color: Color,
         font_size: f32,
+        font_family: String,
+        font_weight: u16,
+        font_style: u8,
+    },
+    /// Draw text decoration line (underline, strikethrough, overline).
+    TextDecoration {
+        x: f32,
+        y: f32,
+        width: f32,
+        thickness: f32,
+        color: Color,
+        style: TextDecorationStyleValue,
     },
     /// Push a clip rect (for overflow handling).
     PushClip(Rect),
@@ -893,6 +914,16 @@ pub enum DisplayCommand {
     PushStackingContext { z_index: i32, rect: Rect },
     /// End stacking context.
     PopStackingContext,
+}
+
+/// Text decoration style for display commands.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextDecorationStyleValue {
+    Solid,
+    Double,
+    Dotted,
+    Dashed,
+    Wavy,
 }
 
 /// A paint item with z-index for sorting.
@@ -1108,53 +1139,149 @@ impl DisplayList {
         }
     }
 
-    /// Render text.
+    /// Render text with decorations.
     fn render_text(&mut self, layout_box: &LayoutBox) {
         if let BoxType::Text(ref text) = layout_box.box_type {
-            let font_size = match layout_box.style.font_size {
+            let style = &layout_box.style;
+            let font_size = match style.font_size {
                 Length::Px(px) => px,
                 _ => 16.0,
             };
 
+            let x = layout_box.dimensions.content.x;
+            let y = layout_box.dimensions.content.y;
+            let text_width = layout_box.dimensions.content.width;
+
+            // Draw text
             self.commands.push(DisplayCommand::Text {
                 text: text.clone(),
-                x: layout_box.dimensions.content.x,
-                y: layout_box.dimensions.content.y,
-                color: layout_box.style.color,
+                x,
+                y,
+                color: style.color,
                 font_size,
+                font_family: style.font_family.clone(),
+                font_weight: style.font_weight.0,
+                font_style: match style.font_style {
+                    rustkit_css::FontStyle::Normal => 0,
+                    rustkit_css::FontStyle::Italic => 1,
+                    rustkit_css::FontStyle::Oblique => 2,
+                },
             });
+
+            // Draw text decorations
+            let decoration_line = style.text_decoration_line;
+            if decoration_line.underline || decoration_line.overline || decoration_line.line_through
+            {
+                let decoration_color = style.text_decoration_color.unwrap_or(style.color);
+                let decoration_style = match style.text_decoration_style {
+                    rustkit_css::TextDecorationStyle::Solid => TextDecorationStyleValue::Solid,
+                    rustkit_css::TextDecorationStyle::Double => TextDecorationStyleValue::Double,
+                    rustkit_css::TextDecorationStyle::Dotted => TextDecorationStyleValue::Dotted,
+                    rustkit_css::TextDecorationStyle::Dashed => TextDecorationStyleValue::Dashed,
+                    rustkit_css::TextDecorationStyle::Wavy => TextDecorationStyleValue::Wavy,
+                };
+
+                // Calculate thickness
+                let thickness = match style.text_decoration_thickness {
+                    Length::Px(px) => px,
+                    Length::Em(em) => em * font_size,
+                    _ => font_size / 14.0, // Auto thickness
+                };
+
+                let ascent = font_size * 0.8;
+                let descent = font_size * 0.2;
+
+                // Underline
+                if decoration_line.underline {
+                    self.commands.push(DisplayCommand::TextDecoration {
+                        x,
+                        y: y + ascent + descent * 0.3,
+                        width: text_width,
+                        thickness,
+                        color: decoration_color,
+                        style: decoration_style,
+                    });
+                }
+
+                // Overline
+                if decoration_line.overline {
+                    self.commands.push(DisplayCommand::TextDecoration {
+                        x,
+                        y: y - thickness,
+                        width: text_width,
+                        thickness,
+                        color: decoration_color,
+                        style: decoration_style,
+                    });
+                }
+
+                // Line-through (strikethrough)
+                if decoration_line.line_through {
+                    self.commands.push(DisplayCommand::TextDecoration {
+                        x,
+                        y: y + ascent * 0.35,
+                        width: text_width,
+                        thickness,
+                        color: decoration_color,
+                        style: decoration_style,
+                    });
+                }
+            }
         }
     }
 }
 
-/// Text metrics from shaping.
-#[derive(Debug, Clone)]
-pub struct TextMetrics {
-    pub width: f32,
-    pub height: f32,
-    pub ascent: f32,
-    pub descent: f32,
+/// Measure text using the text shaper.
+///
+/// This provides accurate text measurement using DirectWrite on Windows.
+pub fn measure_text_advanced(
+    text: &str,
+    font_family: &str,
+    font_size: f32,
+    font_weight: rustkit_css::FontWeight,
+    font_style: rustkit_css::FontStyle,
+) -> TextMetrics {
+    let shaper = TextShaper::new();
+    let chain = FontFamilyChain::from_css_value(font_family);
+
+    match shaper.shape(
+        text,
+        &chain,
+        font_weight,
+        font_style,
+        rustkit_css::FontStretch::Normal,
+        font_size,
+    ) {
+        Ok(run) => run.metrics,
+        Err(_) => {
+            // Fallback to simple measurement
+            measure_text_simple(text, font_size)
+        }
+    }
 }
 
-/// Measure text (simplified - uses average character width approximation).
-///
-/// In a production engine, this would use DirectWrite or HarfBuzz for accurate shaping.
-pub fn measure_text(text: &str, _font_family: &str, font_size: f32) -> TextMetrics {
+/// Simple text measurement (fallback when shaping is unavailable).
+pub fn measure_text_simple(text: &str, font_size: f32) -> TextMetrics {
     // Approximate metrics based on font size
     // Typical Latin font has ~0.5em average character width
     let avg_char_width = font_size * 0.5;
     let width = text.chars().count() as f32 * avg_char_width;
 
-    // Standard line metrics
-    let ascent = font_size * 0.8;
-    let descent = font_size * 0.2;
-
     TextMetrics {
         width,
-        height: ascent + descent,
-        ascent,
-        descent,
+        ..TextMetrics::with_font_size(font_size)
     }
+}
+
+/// Measure text (simplified - uses average character width approximation).
+///
+/// For more accurate measurement, use `measure_text_advanced`.
+#[deprecated(
+    since = "0.1.0",
+    note = "Use measure_text_advanced for accurate measurement"
+)]
+pub fn measure_text(text: &str, _font_family: &str, font_size: f32) -> text::TextMetrics {
+    measure_text_simple(text, font_size)
 }
 
 #[cfg(test)]

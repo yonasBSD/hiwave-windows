@@ -17,6 +17,10 @@ thiserror = "1.0"
 # Tracing
 tracing = "0.1"
 
+# Text shaping on Windows via DirectWrite
+[target.'cfg(windows)'.dependencies]
+dwrote = "0.11"
+
 [dev-dependencies]
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 

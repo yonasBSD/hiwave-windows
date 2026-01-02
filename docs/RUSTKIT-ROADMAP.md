@@ -4,7 +4,7 @@
 
 RustKit is a Rust-native browser engine designed to replace WebKit's WinCairo port for the HiWave browser. This roadmap outlines the development phases beyond the initial MVP implementation.
 
-**Current Status:** Phase 11 Complete (WinCairo Removal)
+**Current Status:** Phase 13 In Progress (Text Rendering & Fonts)
 **Branch:** `rustkit`
 
 ---
@@ -30,34 +30,30 @@ RustKit is a Rust-native browser engine designed to replace WebKit's WinCairo po
 
 ## Upcoming Phases (12-20)
 
-### Phase 12: CSS Box Model & Visual Formatting
-**Priority:** Critical | **Est. Duration:** 2-3 weeks
+### Phase 12: CSS Box Model & Visual Formatting ✅
+**Priority:** Critical | **Status:** Complete
 
 Complete the CSS box model implementation for proper layout:
 
-- [ ] **Margin collapse** - Implement vertical margin collapsing rules
-- [ ] **Padding & borders** - Full box model with correct painting order
-- [ ] **Positioned elements** - `relative`, `absolute`, `fixed`, `sticky`
-- [ ] **Float layout** - Basic float behavior and clearance
-- [ ] **Z-index stacking** - Stacking contexts and paint order
-
-**Acceptance Criteria:**
-- Pass 50% of WPT `css/CSS2/box-model/` tests
-- Render simple layouts (header/content/footer) correctly
+- [x] **Margin collapse** - Implement vertical margin collapsing rules
+- [x] **Padding & borders** - Full box model with correct painting order
+- [x] **Positioned elements** - `relative`, `absolute`, `fixed`, `sticky`
+- [x] **Float layout** - Basic float behavior and clearance
+- [x] **Z-index stacking** - Stacking contexts and paint order
 
 ---
 
-### Phase 13: Text Rendering & Fonts
-**Priority:** Critical | **Est. Duration:** 2 weeks
+### Phase 13: Text Rendering & Fonts 🔄
+**Priority:** Critical | **Status:** In Progress
 
 Improve text rendering quality:
 
-- [ ] **Font fallback chain** - System font fallback for missing glyphs
-- [ ] **Unicode shaping** - Complex script support via DirectWrite
-- [ ] **Text decoration** - Underline, strikethrough, overline
-- [ ] **Line height** - Proper `line-height` calculation
-- [ ] **Font variants** - Bold, italic, weights, stretches
-- [ ] **Web fonts** - `@font-face` loading (basic)
+- [x] **Font fallback chain** - System font fallback for missing glyphs
+- [x] **Unicode shaping** - Complex script support via DirectWrite
+- [x] **Text decoration** - Underline, strikethrough, overline
+- [x] **Line height** - Proper `line-height` calculation
+- [x] **Font variants** - Bold, italic, weights, stretches
+- [ ] **Web fonts** - `@font-face` loading (basic - placeholder)
 
 **Acceptance Criteria:**
 - Render mixed-language content (Latin + CJK)

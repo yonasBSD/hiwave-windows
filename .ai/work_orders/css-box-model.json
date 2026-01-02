@@ -27,7 +27,7 @@
     "cargo test --package rustkit-test -- box_model"
   ],
   "depends_on": ["wincairo-removal"],
-  "status": "pending",
+  "status": "completed",
   "created_at": "2026-01-02T22:00:00Z"
 }
 

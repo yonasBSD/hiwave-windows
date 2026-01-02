@@ -42,4 +42,8 @@ deps/wincairo/*
 # AI Orchestrator (local-first)
 .ai/artifacts/
 .ai/cache/
+.ai/reports/
+.ai/logs/
+.ai/*
+
 
