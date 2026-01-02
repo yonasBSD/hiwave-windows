@@ -123,6 +123,13 @@
       "work_order_path": ".ai/work_orders/hiwave-integration.json"
     },
     {
+      "id": "wpt-harness",
+      "title": "WPT-style test harness for RustKit conformance testing",
+      "status": "completed",
+      "depends_on": ["hiwave-integration"],
+      "work_order_path": ".ai/work_orders/wpt-harness.json"
+    },
+    {
       "id": "define-agent-io",
       "title": "Define WorkOrder/VerificationReport schemas + shared RoadmapIndex",
       "status": "in_progress",

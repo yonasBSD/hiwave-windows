@@ -354,6 +354,11 @@ impl Stylesheet {
         debug!(rule_count = stylesheet.rules.len(), "CSS parsed");
         Ok(stylesheet)
     }
+
+    /// Get the number of rules in this stylesheet.
+    pub fn rule_count(&self) -> usize {
+        self.rules.len()
+    }
 }
 
 /// Parse a color value.

@@ -36,3 +36,6 @@
 {"ts": "2026-01-02T21:18:20.740900+00:00", "event_type": "ci_run", "work_order_id": "hiwave-integration", "run_id": "20260102T211748Z_761b1e47", "status": "fail", "duration_ms": 31776}
 {"ts": "2026-01-02T21:19:44.912394+00:00", "event_type": "ci_run", "work_order_id": "hiwave-integration", "run_id": "20260102T211942Z_de12b22e", "status": "fail", "duration_ms": 2760}
 {"ts": "2026-01-02T21:21:21.376386+00:00", "event_type": "ci_run", "work_order_id": "hiwave-integration", "run_id": "20260102T212111Z_198239c9", "status": "pass", "duration_ms": 9606}
+{"ts": "2026-01-02T21:30:54.258497+00:00", "event_type": "ci_run", "work_order_id": "wpt-harness", "run_id": "20260102T213049Z_e85a05a4", "status": "fail", "duration_ms": 4802}
+{"ts": "2026-01-02T21:33:25.578325+00:00", "event_type": "ci_run", "work_order_id": "wpt-harness", "run_id": "20260102T213324Z_cf695543", "status": "fail", "duration_ms": 881}
+{"ts": "2026-01-02T21:33:46.599719+00:00", "event_type": "ci_run", "work_order_id": "wpt-harness", "run_id": "20260102T213345Z_9a28dd6b", "status": "pass", "duration_ms": 1123}
