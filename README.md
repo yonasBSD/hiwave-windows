@@ -89,12 +89,20 @@ Power users rejoice. Everything is accessible via keyboard:
 ### Build from Source
 
 ```bash
-# Prerequisites: Rust 1.75+, platform dependencies (see CONTRIBUTING.md)
+# Prerequisites: Rust 1.75+, Visual Studio Build Tools (Windows)
+# See INSTALL.md for detailed platform-specific instructions
 
-git clone https://github.com/YOUR_USERNAME/pureflow.git
-cd pureflow
-cargo run -p pureflow-app
+git clone https://github.com/hiwavebrowser/hiwave-windows.git
+cd hiwave-windows
+
+# Build with RustKit engine (default)
+cargo build --release -p hiwave-app
+
+# Run
+cargo run --release -p hiwave-app
 ```
+
+> **Note:** RustKit is our custom Rust-native browser engine. No external WebKit/WebView2 dependencies required.
 
 ---
 
@@ -127,30 +135,40 @@ We have strong opinions about how browsing should work, but we offer three modes
 
 ## Roadmap
 
-### Now (Alpha)
+### Now (Alpha) - RustKit Engine
 - ✅ Core browsing (tabs, navigation, address bar)
 - ✅ The Shelf with decay visualization
 - ✅ Workspaces
 - ✅ Flow Shield (ad blocking)
 - ✅ Flow Vault (password manager)
 - ✅ Command palette
-- 🔄 Settings page
-- 🔄 Bidirectional IPC sync
+- ✅ **RustKit browser engine** (Phases 0-13 complete)
+  - ✅ HTML parsing & DOM
+  - ✅ CSS parsing & styling
+  - ✅ Block/inline layout
+  - ✅ Text rendering with DirectWrite
+  - ✅ JavaScript (Boa engine)
+  - ✅ Networking & downloads
+- 🔄 Event handling (Phase 14)
+- 🔄 Forms & input (Phase 15)
 
 ### Next (Beta)
+- [ ] Images & media rendering
+- [ ] CSS Flexbox & Grid
+- [ ] Scrolling & overflow
 - [ ] Find in Page (Ctrl+F)
-- [ ] Bookmarks
-- [ ] History
-- [ ] Downloads manager
+- [ ] Bookmarks & history
 - [ ] Context menus
 - [ ] Import from Chrome/Firefox
 
 ### Future
-- [ ] Zen Sync (cross-device)
+- [ ] WebGL & Canvas
+- [ ] Service Workers
+- [ ] HiWave Sync (cross-device)
 - [ ] Reader Mode
-- [ ] Tab audio indicators
-- [ ] Themes (light mode)
 - [ ] Mobile companion
+
+See [docs/RUSTKIT-ROADMAP.md](docs/RUSTKIT-ROADMAP.md) for the complete engine roadmap.
 
 ---
 
@@ -198,7 +216,7 @@ Your support helps cover:
 
 ## Architecture
 
-Zen uses a **multi-WebView architecture**:
+HiWave uses a **multi-WebView architecture** with RustKit, our custom Rust-native browser engine:
 
 ```
 ┌─────────────────────────────────────────┐
@@ -206,16 +224,40 @@ Zen uses a **multi-WebView architecture**:
 │  Tabs • Address Bar • Sidebar           │
 ├─────────────────────────────────────────┤
 │                                         │
-│  Content WebView (Web Pages)            │
+│  Content WebView (RustKit Engine)       │
+│  HTML/CSS/JS Rendering                  │
 │                                         │
 └─────────────────────────────────────────┘
 ```
 
 Built with:
-- **Rust** — Core logic, memory safety
-- **WRY/Tao** — Cross-platform WebView
+- **Rust** — Core logic, memory safety, browser engine
+- **RustKit** — Custom browser engine (DOM, CSS, Layout, JS)
+- **WRY/Tao** — Cross-platform window management for Chrome UI
+- **DirectWrite** — Text rendering on Windows
+- **wgpu** — GPU-accelerated compositing
+- **Boa** — JavaScript engine
 - **Brave's adblock-rust** — Ad blocking engine
 - **Vanilla JS** — No framework bloat in the UI
+
+### RustKit Engine
+
+RustKit is a from-scratch browser engine written in Rust:
+
+| Component | Crate | Purpose |
+|-----------|-------|---------|
+| ViewHost | `rustkit-viewhost` | Win32 window management |
+| Compositor | `rustkit-compositor` | GPU rendering |
+| Core | `rustkit-core` | Task scheduling, navigation |
+| DOM | `rustkit-dom` | HTML parsing, DOM tree |
+| CSS | `rustkit-css` | Style parsing and cascade |
+| Layout | `rustkit-layout` | Block/inline layout, text shaping |
+| JavaScript | `rustkit-js` | JS execution (Boa engine) |
+| Bindings | `rustkit-bindings` | JS ↔ DOM bridge |
+| Networking | `rustkit-net` | HTTP client, fetch API |
+| Engine | `rustkit-engine` | Multi-view orchestration |
+
+See [docs/RUSTKIT-ROADMAP.md](docs/RUSTKIT-ROADMAP.md) for the complete development roadmap.
 
 ---
 

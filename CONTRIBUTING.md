@@ -115,31 +115,50 @@ cargo doc --workspace --open
 ## Project Structure
 
 ```
-hiwave/
+hiwave-windows/
 ├── crates/
+│   │
+│   │  ## HiWave Application
 │   ├── hiwave-app/        # Main application
 │   │   ├── src/
 │   │   │   ├── main.rs         # Entry point, event loop
 │   │   │   ├── state.rs        # AppState, persistence
+│   │   │   ├── webview.rs      # WebView abstraction
+│   │   │   ├── webview_rustkit.rs  # RustKit adapter
 │   │   │   ├── ipc/            # IPC message handling
-│   │   │   │   ├── mod.rs         # Message types
-│   │   │   │   └── commands.rs    # Command handlers
 │   │   │   ├── import/         # Browser import
 │   │   │   ├── platform/       # OS-specific code
 │   │   │   └── ui/             # HTML/CSS/JS for browser UI
-│   │   │       ├── chrome.html    # Main UI
-│   │   │       ├── shelf.html     # Command palette
-│   │   │       ├── vault.html     # Password manager
-│   │   │       └── new_tab.html   # New tab page
 │   │   └── Cargo.toml
 │   │
 │   ├── hiwave-core/       # Shared types (TabId, WorkspaceId, etc.)
-│   ├── hiwave-shell/      # Tab/workspace management, command palette
-│   ├── hiwave-shield/     # Ad blocking engine
-│   └── hiwave-vault/      # Password manager
+│   ├── hiwave-shell/      # Tab/workspace management
+│   ├── hiwave-shield/     # Ad blocking engine (Brave's adblock-rust)
+│   ├── hiwave-vault/      # Password manager
+│   ├── hiwave-analytics/  # Local analytics
+│   │
+│   │  ## RustKit Browser Engine
+│   ├── rustkit-viewhost/   # Win32 window hosting
+│   ├── rustkit-compositor/ # GPU rendering (wgpu)
+│   ├── rustkit-core/       # Task scheduling, navigation
+│   ├── rustkit-dom/        # HTML parsing, DOM tree (html5ever)
+│   ├── rustkit-css/        # CSS parsing, styling (cssparser)
+│   ├── rustkit-layout/     # Layout engine, text shaping
+│   ├── rustkit-js/         # JavaScript (Boa engine)
+│   ├── rustkit-bindings/   # JS ↔ DOM bridge
+│   ├── rustkit-net/        # HTTP client (reqwest)
+│   ├── rustkit-engine/     # Multi-view orchestration
+│   ├── rustkit-common/     # Error handling, logging
+│   ├── rustkit-test/       # WPT-style test harness
+│   └── rustkit-bench/      # Performance benchmarks
 │
-├── Planning/               # Design documents (not code)
 ├── docs/                   # Technical documentation
+│   ├── RUSTKIT-ROADMAP.md     # Engine development roadmap
+│   ├── RUSTKIT-*.md           # Engine component docs
+│   └── ...
+├── .ai/                    # AI orchestration artifacts
+├── tests/wpt/              # Web Platform Tests
+├── benches/                # Benchmark files
 ├── INSTALL.md              # Installation guide
 ├── CONTRIBUTING.md         # This file
 └── CLAUDE.md               # AI assistant context
@@ -151,11 +170,26 @@ hiwave/
 |------|--------------|
 | `hiwave-app/src/main.rs` | Application entry, event loop, WebView setup |
 | `hiwave-app/src/state.rs` | AppState struct, persistence, shelf logic |
+| `hiwave-app/src/webview.rs` | WebView trait abstraction |
+| `hiwave-app/src/webview_rustkit.rs` | RustKit engine adapter |
 | `hiwave-app/src/ipc/mod.rs` | IPC message definitions |
-| `hiwave-app/src/ipc/commands.rs` | Handlers for each IPC command |
 | `hiwave-app/src/ui/chrome.html` | Main browser UI (HTML/CSS/JS) |
 | `hiwave-shell/src/lib.rs` | Tab and workspace management |
 | `hiwave-shield/src/lib.rs` | Ad blocking logic |
+
+### Key RustKit Engine Files
+
+| File | What it does |
+|------|--------------|
+| `rustkit-engine/src/lib.rs` | Multi-view engine orchestration |
+| `rustkit-dom/src/lib.rs` | HTML parsing and DOM tree |
+| `rustkit-css/src/lib.rs` | CSS parsing and style cascade |
+| `rustkit-layout/src/lib.rs` | Layout algorithms |
+| `rustkit-layout/src/text.rs` | Text rendering, DirectWrite |
+| `rustkit-js/src/lib.rs` | JavaScript engine (Boa) |
+| `rustkit-bindings/src/lib.rs` | JS ↔ DOM bindings |
+| `rustkit-net/src/lib.rs` | HTTP client, fetch API |
+| `docs/RUSTKIT-ROADMAP.md` | Development roadmap |
 
 ---
 

@@ -1,6 +1,8 @@
 # HiWave Installation Guide
 
-This guide will walk you through installing HiWave from source. Whether you're a Rust veteran or have never touched a command line, follow these steps and you'll have HiWave running in no time.
+This guide will walk you through installing HiWave from source. HiWave uses **RustKit**, our custom Rust-native browser engine, so no external WebView dependencies are required.
+
+Whether you're a Rust veteran or have never touched a command line, follow these steps and you'll have HiWave running in no time.
 
 ---
 
@@ -72,7 +74,7 @@ brew --version
 
 #### 3. No Additional Dependencies Needed
 
-macOS includes WebKit, which HiWave uses for rendering. You're ready to install Rust!
+HiWave uses RustKit, our Rust-native browser engine. No external browser dependencies required! You're ready to install Rust.
 
 ---
 
@@ -106,15 +108,7 @@ cl
 
 If `cl` is not found, you may need to run from "Developer Command Prompt for VS 2022" instead.
 
-#### 2. Install WebView2 Runtime (Usually Pre-installed)
-
-Windows 10 (version 1803+) and Windows 11 come with WebView2. If you're on an older version:
-
-1. Download from [Microsoft WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/)
-2. Run the Evergreen Bootstrapper
-
-
-#### 3. Install Git for Windows
+#### 2. Install Git for Windows
 
 1. Download from [git-scm.com](https://git-scm.com/download/win)
 2. Run the installer with default options
@@ -479,10 +473,11 @@ cargo build -p hiwave-app -j 2  # Use only 2 CPU cores
 ```
 
 #### HiWave window is blank (white screen)
-This usually indicates a WebView initialization issue:
-- **Linux:** Make sure WebKitGTK is installed correctly
-- **Windows:** Ensure WebView2 Runtime is installed
+This usually indicates a RustKit initialization issue:
+- **Windows:** Ensure Visual Studio Build Tools are installed correctly
+- **Linux:** Make sure GTK3 is installed correctly
 - **macOS:** This shouldn't happen - file an issue
+- Try running from a terminal to see any error messages
 
 #### "rustc: error: no such command" 
 Rust isn't in your PATH:
@@ -568,10 +563,12 @@ rustup self uninstall
 | Platform | Requirement |
 |----------|-------------|
 | macOS | 12.0 (Monterey) or later |
-| Windows | 10 (version 1803) or later with WebView2 |
-| Linux | GTK 3.24+, WebKitGTK 4.1+ |
+| Windows | 10 (version 1803) or later, Visual Studio Build Tools |
+| Linux | GTK 3.24+ |
 | RAM | 4GB minimum, 8GB recommended |
-| Disk | ~2GB for toolchain + build artifacts |
+| Disk | ~3GB for toolchain + build artifacts |
+
+> **Note:** HiWave uses RustKit, our Rust-native browser engine, so no external WebKit or WebView2 dependencies are required.
 
 ### Build Commands Cheat Sheet
 
