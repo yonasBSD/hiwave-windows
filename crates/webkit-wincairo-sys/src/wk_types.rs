@@ -5,6 +5,9 @@
 
 use std::ffi::c_void;
 
+/// Type ID for WebKit type identification
+pub type WKTypeID = usize;
+
 /// Opaque reference to a WebKit string
 pub type WKStringRef = *mut c_void;
 
@@ -70,6 +73,58 @@ pub type WKUserContentControllerRef = *mut c_void;
 
 /// Opaque reference to user script
 pub type WKUserScriptRef = *mut c_void;
+
+/// Opaque reference to preferences
+pub type WKPreferencesRef = *mut c_void;
+
+/// Opaque reference to website data store
+pub type WKWebsiteDataStoreRef = *mut c_void;
+
+/// Opaque reference to web inspector
+pub type WKInspectorRef = *mut c_void;
+
+/// Opaque reference to cookie manager
+pub type WKCookieManagerRef = *mut c_void;
+
+/// Opaque reference to website policies
+pub type WKWebsitePoliciesRef = *mut c_void;
+
+/// Opaque reference to protection space
+pub type WKProtectionSpaceRef = *mut c_void;
+
+/// Opaque reference to authentication challenge
+pub type WKAuthenticationChallengeRef = *mut c_void;
+
+/// Opaque reference to a script message (from JS to native)
+pub type WKScriptMessageRef = *mut c_void;
+
+/// Opaque reference to a completion listener (for async replies)
+pub type WKCompletionListenerRef = *mut c_void;
+
+/// Opaque reference to frame info
+pub type WKFrameInfoRef = *mut c_void;
+
+/// Same-document navigation type
+pub type WKSameDocumentNavigationType = u32;
+
+// Same-document navigation type constants
+pub const K_WK_SAME_DOCUMENT_NAVIGATION_ANCHOR_NAVIGATION: WKSameDocumentNavigationType = 0;
+pub const K_WK_SAME_DOCUMENT_NAVIGATION_SESSION_STATE_POP: WKSameDocumentNavigationType = 1;
+pub const K_WK_SAME_DOCUMENT_NAVIGATION_SESSION_STATE_REPLACE: WKSameDocumentNavigationType = 2;
+
+/// Size structure for layout
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default)]
+pub struct WKSize {
+    pub width: f64,
+    pub height: f64,
+}
+
+impl WKSize {
+    pub fn new(width: f64, height: f64) -> Self {
+        Self { width, height }
+    }
+}
 
 /// Navigation action policy returned by navigation handlers
 #[repr(C)]

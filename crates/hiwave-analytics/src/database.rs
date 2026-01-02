@@ -10,9 +10,8 @@ const SCHEMA_VERSION: i32 = 2;
 
 /// Initialize or open the analytics database
 pub fn init_database(path: &Path) -> HiWaveResult<Connection> {
-    let conn = Connection::open(path).map_err(|e| {
-        HiWaveError::analytics(format!("Failed to open analytics database: {}", e))
-    })?;
+    let conn = Connection::open(path)
+        .map_err(|e| HiWaveError::analytics(format!("Failed to open analytics database: {}", e)))?;
 
     // Enable foreign keys
     conn.execute("PRAGMA foreign_keys = ON", [])
@@ -51,6 +50,8 @@ pub fn init_database(path: &Path) -> HiWaveResult<Connection> {
 fn migrate_database(conn: &Connection, from_version: i32) -> HiWaveResult<()> {
     if from_version < 1 {
         create_schema_v1(conn)?;
+        // Fresh DB is created at the current schema version; no further migrations needed.
+        return Ok(());
     }
 
     if from_version < 2 {
@@ -203,9 +204,7 @@ pub fn insert_event(
             Some(serde_json::json!({ "duration_secs": duration_secs }).to_string()),
         ),
         AnalyticsEvent::TabToShelf { domain } => ("tab_to_shelf", Some(domain.as_str()), None),
-        AnalyticsEvent::TabFromShelf { domain } => {
-            ("tab_from_shelf", Some(domain.as_str()), None)
-        }
+        AnalyticsEvent::TabFromShelf { domain } => ("tab_from_shelf", Some(domain.as_str()), None),
         AnalyticsEvent::WorkspaceSwitch { from, to } => (
             "workspace_switch",
             None,
@@ -283,11 +282,8 @@ pub fn get_or_create_today_stats(conn: &Connection) -> HiWaveResult<DailyStats> 
     }
 
     // Create new entry
-    conn.execute(
-        "INSERT INTO daily_stats (date) VALUES (?)",
-        [&today],
-    )
-    .map_err(|e| HiWaveError::analytics(e.to_string()))?;
+    conn.execute("INSERT INTO daily_stats (date) VALUES (?)", [&today])
+        .map_err(|e| HiWaveError::analytics(e.to_string()))?;
 
     get_daily_stats(conn, &today)
 }
@@ -304,7 +300,12 @@ pub fn increment_daily_stat(conn: &Connection, date: &str, field: &str) -> HiWav
 }
 
 /// Add time to a daily stat field
-pub fn add_daily_time(conn: &Connection, date: &str, field: &str, seconds: i64) -> HiWaveResult<()> {
+pub fn add_daily_time(
+    conn: &Connection,
+    date: &str,
+    field: &str,
+    seconds: i64,
+) -> HiWaveResult<()> {
     let query = format!(
         "UPDATE daily_stats SET {} = {} + ? WHERE date = ?",
         field, field
@@ -379,7 +380,7 @@ pub fn get_top_domains(conn: &Connection, limit: usize) -> HiWaveResult<Vec<Doma
                 total_time: row.get(2)?,
                 trackers_blocked: row.get(3)?,
                 last_visit: DateTime::from_timestamp(row.get::<_, i64>(4)?, 0)
-                    .unwrap_or_else(|| Utc::now()),
+                    .unwrap_or_else(Utc::now),
             })
         })
         .map_err(|e| HiWaveError::analytics(e.to_string()))?
@@ -573,7 +574,11 @@ pub fn increment_domain_trackers(conn: &Connection, domain: &str) -> HiWaveResul
 }
 
 /// Update workspace stats (increment counts)
-pub fn update_workspace_stats(conn: &Connection, workspace_id: &str, event_type: &str) -> HiWaveResult<()> {
+pub fn update_workspace_stats(
+    conn: &Connection,
+    workspace_id: &str,
+    event_type: &str,
+) -> HiWaveResult<()> {
     match event_type {
         "tab_opened" => {
             conn.execute(

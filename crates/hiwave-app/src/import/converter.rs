@@ -6,7 +6,7 @@
 //! - Bookmarks become tabs in the workspace
 //! - Workspace names are prefixed with browser abbreviation (CHR/FF)
 
-use super::{Browser, ImportedBookmark, ImportResult};
+use super::{Browser, ImportResult, ImportedBookmark};
 
 /// Maximum workspace name length
 const MAX_NAME_LENGTH: usize = 30;
@@ -64,13 +64,7 @@ pub fn convert_to_workspaces(
     for bookmark in bookmarks {
         if bookmark.is_folder {
             // Top-level folder becomes a workspace
-            let sub_workspaces = process_folder(
-                &bookmark,
-                &config.prefix,
-                "",
-                0,
-                config,
-            );
+            let sub_workspaces = process_folder(&bookmark, &config.prefix, "", 0, config);
 
             for ws in sub_workspaces {
                 tab_count += ws.tabs.len();
@@ -120,13 +114,8 @@ fn process_folder(
         if child.is_folder {
             if depth < config.max_depth && !config.flatten_subfolders {
                 // Create separate workspace for subfolder
-                let sub_workspaces = process_folder(
-                    child,
-                    prefix,
-                    &current_path,
-                    depth + 1,
-                    config,
-                );
+                let sub_workspaces =
+                    process_folder(child, prefix, &current_path, depth + 1, config);
                 workspaces.extend(sub_workspaces);
             } else {
                 // Flatten: add subfolder contents as tabs to current workspace
@@ -145,10 +134,13 @@ fn process_folder(
     // Create workspace for this folder if it has any direct tabs
     if !direct_tabs.is_empty() {
         let ws_name = format_workspace_name(prefix, folder_name, parent_path);
-        workspaces.insert(0, ImportWorkspace {
-            name: ws_name,
-            tabs: direct_tabs,
-        });
+        workspaces.insert(
+            0,
+            ImportWorkspace {
+                name: ws_name,
+                tabs: direct_tabs,
+            },
+        );
     }
 
     workspaces
@@ -174,13 +166,23 @@ fn flatten_folder(folder: &ImportedBookmark) -> Vec<ImportTab> {
 
 /// Generic browser folder names to skip (these don't add value)
 const SKIP_FOLDER_NAMES: &[&str] = &[
-    "Bookmarks", "Bookmarks bar", "Bookmark Bar", "Other bookmarks",
-    "Other", "Menu", "Toolbar", "Mobile", "Synced", "Favorites",
+    "Bookmarks",
+    "Bookmarks bar",
+    "Bookmark Bar",
+    "Other bookmarks",
+    "Other",
+    "Menu",
+    "Toolbar",
+    "Mobile",
+    "Synced",
+    "Favorites",
 ];
 
 /// Check if a folder name should be skipped
 fn should_skip_folder_name(name: &str) -> bool {
-    SKIP_FOLDER_NAMES.iter().any(|s| s.eq_ignore_ascii_case(name))
+    SKIP_FOLDER_NAMES
+        .iter()
+        .any(|s| s.eq_ignore_ascii_case(name))
 }
 
 /// Format a workspace name with prefix and path
@@ -188,7 +190,7 @@ fn format_workspace_name(prefix: &str, name: &str, parent_path: &str) -> String 
     // Filter out generic folder names from parent path
     let filtered_parent: Vec<&str> = parent_path
         .split('-')
-        .filter(|s| !should_skip_folder_name(s))
+        .filter(|s| !s.is_empty() && !should_skip_folder_name(s))
         .collect();
 
     // If the name itself is a generic folder, just use prefix
@@ -225,15 +227,14 @@ fn abbreviate_path(path: &str, max_len: usize) -> String {
     // Take first 3 chars of each segment
     let abbreviated: String = path
         .split('-')
-        .map(|s| {
-            if s.len() > 3 {
-                &s[..3]
-            } else {
-                s
-            }
-        })
+        .map(|s| if s.len() > 3 { &s[..3] } else { s })
         .collect::<Vec<_>>()
         .join("-");
+
+    // If we shortened the string, prefer to include an ellipsis marker (when it fits)
+    if abbreviated.len() + 3 <= max_len {
+        return format!("{}...", abbreviated);
+    }
 
     if abbreviated.len() > max_len {
         format!("{}...", &abbreviated[..max_len - 3])
@@ -248,10 +249,7 @@ mod tests {
 
     #[test]
     fn test_format_workspace_name() {
-        assert_eq!(
-            format_workspace_name("CHR", "Work", ""),
-            "CHR: Work"
-        );
+        assert_eq!(format_workspace_name("CHR", "Work", ""), "CHR: Work");
         assert_eq!(
             format_workspace_name("FF", "Projects", "Work"),
             "FF: Work-Projects"
@@ -266,12 +264,13 @@ mod tests {
 
     #[test]
     fn test_convert_simple_bookmarks() {
-        let bookmarks = vec![
-            ImportedBookmark::folder("Work".to_string(), vec![
+        let bookmarks = vec![ImportedBookmark::folder(
+            "Work".to_string(),
+            vec![
                 ImportedBookmark::bookmark("GitHub".to_string(), "https://github.com".to_string()),
                 ImportedBookmark::bookmark("Google".to_string(), "https://google.com".to_string()),
-            ]),
-        ];
+            ],
+        )];
 
         let config = ConversionConfig::for_browser(Browser::Chrome);
         let result = convert_to_workspaces(bookmarks, &config);

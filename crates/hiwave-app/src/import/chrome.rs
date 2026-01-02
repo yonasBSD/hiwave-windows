@@ -3,9 +3,9 @@
 //! Chrome stores bookmarks in a JSON file at:
 //! ~/Library/Application Support/Google/Chrome/<Profile>/Bookmarks
 
+use serde::Deserialize;
 use std::fs;
 use std::path::Path;
-use serde::Deserialize;
 
 use super::{Browser, BrowserProfile, ImportedBookmark};
 
@@ -61,9 +61,7 @@ pub fn find_profiles() -> Vec<BrowserProfile> {
                     for entry in entries.flatten() {
                         let path = entry.path();
                         if path.is_dir() {
-                            let name = path.file_name()
-                                .and_then(|n| n.to_str())
-                                .unwrap_or("");
+                            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
                             if name.starts_with("Profile ") && path.join("Bookmarks").exists() {
                                 profiles.push(BrowserProfile {
@@ -99,9 +97,7 @@ pub fn find_profiles() -> Vec<BrowserProfile> {
                     for entry in entries.flatten() {
                         let path = entry.path();
                         if path.is_dir() {
-                            let name = path.file_name()
-                                .and_then(|n| n.to_str())
-                                .unwrap_or("");
+                            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
                             if name.starts_with("Profile ") && path.join("Bookmarks").exists() {
                                 profiles.push(BrowserProfile {
@@ -137,9 +133,7 @@ pub fn find_profiles() -> Vec<BrowserProfile> {
                     for entry in entries.flatten() {
                         let path = entry.path();
                         if path.is_dir() {
-                            let name = path.file_name()
-                                .and_then(|n| n.to_str())
-                                .unwrap_or("");
+                            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
                             if name.starts_with("Profile ") && path.join("Bookmarks").exists() {
                                 profiles.push(BrowserProfile {
@@ -184,9 +178,7 @@ pub fn find_brave_profiles() -> Vec<BrowserProfile> {
                     for entry in entries.flatten() {
                         let path = entry.path();
                         if path.is_dir() {
-                            let name = path.file_name()
-                                .and_then(|n| n.to_str())
-                                .unwrap_or("");
+                            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
                             if name.starts_with("Profile ") && path.join("Bookmarks").exists() {
                                 profiles.push(BrowserProfile {
@@ -222,9 +214,7 @@ pub fn find_brave_profiles() -> Vec<BrowserProfile> {
                     for entry in entries.flatten() {
                         let path = entry.path();
                         if path.is_dir() {
-                            let name = path.file_name()
-                                .and_then(|n| n.to_str())
-                                .unwrap_or("");
+                            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
                             if name.starts_with("Profile ") && path.join("Bookmarks").exists() {
                                 profiles.push(BrowserProfile {
@@ -260,9 +250,7 @@ pub fn find_brave_profiles() -> Vec<BrowserProfile> {
                     for entry in entries.flatten() {
                         let path = entry.path();
                         if path.is_dir() {
-                            let name = path.file_name()
-                                .and_then(|n| n.to_str())
-                                .unwrap_or("");
+                            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
                             if name.starts_with("Profile ") && path.join("Bookmarks").exists() {
                                 profiles.push(BrowserProfile {
@@ -333,7 +321,8 @@ pub fn parse_bookmarks(profile_path: &Path) -> Result<Vec<ImportedBookmark>, Str
 fn convert_node(node: &ChromeBookmarkNode) -> ImportedBookmark {
     match node.node_type.as_str() {
         "folder" => {
-            let children = node.children
+            let children = node
+                .children
                 .as_ref()
                 .map(|c| c.iter().map(convert_node).collect())
                 .unwrap_or_default();
@@ -341,10 +330,7 @@ fn convert_node(node: &ChromeBookmarkNode) -> ImportedBookmark {
             ImportedBookmark::folder(node.name.clone(), children)
         }
         "url" => {
-            ImportedBookmark::bookmark(
-                node.name.clone(),
-                node.url.clone().unwrap_or_default(),
-            )
+            ImportedBookmark::bookmark(node.name.clone(), node.url.clone().unwrap_or_default())
         }
         _ => ImportedBookmark::folder(node.name.clone(), Vec::new()),
     }
@@ -390,6 +376,15 @@ mod tests {
 
         let chrome_bookmarks: ChromeBookmarksFile = serde_json::from_str(json).unwrap();
         assert_eq!(chrome_bookmarks.roots.bookmark_bar.name, "Bookmarks bar");
-        assert_eq!(chrome_bookmarks.roots.bookmark_bar.children.as_ref().unwrap().len(), 2);
+        assert_eq!(
+            chrome_bookmarks
+                .roots
+                .bookmark_bar
+                .children
+                .as_ref()
+                .unwrap()
+                .len(),
+            2
+        );
     }
 }

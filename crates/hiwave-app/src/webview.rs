@@ -16,8 +16,8 @@
 //! - Default: Uses WRY (WebView2 on Windows)
 //! - `wincairo` feature: Uses WinCairo WebKit
 
-use wry::Rect;
 use wry::dpi::{LogicalPosition, LogicalSize};
+use wry::Rect;
 
 // Re-export WRY types for convenience
 pub use wry::WebView;
@@ -108,6 +108,9 @@ pub trait IWebView {
 
     /// Clear all browsing data
     fn clear_all_browsing_data(&self);
+
+    /// Set the visibility of the WebView
+    fn set_visible(&self, visible: bool);
 }
 
 // ============================================================================
@@ -152,6 +155,10 @@ impl<T: IWebView> IWebView for Arc<T> {
     fn clear_all_browsing_data(&self) {
         (**self).clear_all_browsing_data()
     }
+
+    fn set_visible(&self, visible: bool) {
+        (**self).set_visible(visible)
+    }
 }
 
 // ============================================================================
@@ -194,6 +201,10 @@ impl IWebView for wry::WebView {
     fn clear_all_browsing_data(&self) {
         let _ = wry::WebView::clear_all_browsing_data(self);
     }
+
+    fn set_visible(&self, visible: bool) {
+        let _ = wry::WebView::set_visible(self, visible);
+    }
 }
 
 // ============================================================================
@@ -207,10 +218,10 @@ pub mod wincairo_support {
     //! This module is only compiled when the `wincairo` feature is enabled.
     //! It provides the infrastructure for using WinCairo WebKit instead of WebView2.
 
-    use webkit_wincairo::{WebKitContext, WebKitView, ViewBounds};
-    use std::sync::{Arc, OnceLock, Mutex};
-    use hiwave_core::HiWaveResult;
     use super::{IWebView, Rect};
+    use hiwave_core::HiWaveResult;
+    use std::sync::{Arc, Mutex, OnceLock};
+    use webkit_wincairo::{ViewBounds, WebKitContext, WebKitView};
 
     // Re-export types needed by main.rs
     pub use webkit_wincairo::ViewBounds as WebKitViewBounds;
@@ -226,7 +237,8 @@ pub mod wincairo_support {
     pub fn get_webkit_context() -> HiWaveResult<Arc<WebKitContext>> {
         // Fast path: check if already initialized
         if let Some(result) = WEBKIT_CONTEXT.get() {
-            return result.clone()
+            return result
+                .clone()
                 .map_err(|e| hiwave_core::HiWaveError::WebView(e));
         }
 
@@ -235,13 +247,13 @@ pub mod wincairo_support {
 
         // Double-check after acquiring lock
         if let Some(result) = WEBKIT_CONTEXT.get() {
-            return result.clone()
+            return result
+                .clone()
                 .map_err(|e| hiwave_core::HiWaveError::WebView(e));
         }
 
         // Actually initialize - WebKitContext::new() already returns Arc<WebKitContext>
-        let result = WebKitContext::new()
-            .map_err(|e| e.to_string());
+        let result = WebKitContext::new().map_err(|e| e.to_string());
 
         let _ = WEBKIT_CONTEXT.set(result.clone());
 
@@ -280,14 +292,16 @@ pub mod wincairo_support {
     /// Helper to load URL on a WebKit view
     #[allow(dead_code)]
     pub fn load_webkit_url(view: &WebKitView, url: &str) -> HiWaveResult<()> {
-        view.page().load_url(url)
+        view.page()
+            .load_url(url)
             .map_err(|e| hiwave_core::HiWaveError::WebView(e.to_string()))
     }
 
     /// Helper to load HTML on a WebKit view
     #[allow(dead_code)]
     pub fn load_webkit_html(view: &WebKitView, html: &str) -> HiWaveResult<()> {
-        view.page().load_html(html, None)
+        view.page()
+            .load_html(html, None)
             .map_err(|e| hiwave_core::HiWaveError::WebView(e.to_string()))
     }
 
@@ -337,12 +351,16 @@ pub mod wincairo_support {
         }
 
         fn focus(&self) {
-            self.set_focus(true);
+            WebKitView::focus(self);
         }
 
         fn clear_all_browsing_data(&self) {
             // Clear cookies and cache through the context
             // This would need to be implemented in webkit-wincairo
+        }
+
+        fn set_visible(&self, visible: bool) {
+            WebKitView::set_visible(self, visible);
         }
     }
 }

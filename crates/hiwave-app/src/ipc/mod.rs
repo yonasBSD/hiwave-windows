@@ -169,6 +169,8 @@ pub enum IpcMessage {
 
     // Settings UI
     OpenSettings,
+    /// Sent by the Chrome UI when the document finishes initializing (WinCairo)
+    ChromeReady,
     CloseSettings,
 
     // Misc

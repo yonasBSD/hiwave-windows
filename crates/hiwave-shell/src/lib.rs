@@ -2,13 +2,13 @@
 
 use fuzzy_matcher::skim::SkimMatcherV2;
 use fuzzy_matcher::FuzzyMatcher;
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::time::{SystemTime, UNIX_EPOCH};
 use hiwave_core::{
     types::{TabId, TabInfo, WorkspaceId, WorkspaceInfo},
     HiWaveResult,
 };
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub struct BrowserShell {
     tabs: HashMap<TabId, TabInfo>,
@@ -209,7 +209,9 @@ impl BrowserShell {
             tab.last_visited = Some(Self::current_timestamp_secs());
             Ok(())
         } else {
-            Err(hiwave_core::HiWaveError::Config("Tab not found".to_string()))
+            Err(hiwave_core::HiWaveError::Config(
+                "Tab not found".to_string(),
+            ))
         }
     }
 
@@ -219,7 +221,9 @@ impl BrowserShell {
             tab.last_visited = Some(Self::current_timestamp_secs());
             Ok(())
         } else {
-            Err(hiwave_core::HiWaveError::Config("Tab not found".to_string()))
+            Err(hiwave_core::HiWaveError::Config(
+                "Tab not found".to_string(),
+            ))
         }
     }
 
@@ -228,7 +232,9 @@ impl BrowserShell {
             tab.last_visited = Some(Self::current_timestamp_secs());
             Ok(())
         } else {
-            Err(hiwave_core::HiWaveError::Config("Tab not found".to_string()))
+            Err(hiwave_core::HiWaveError::Config(
+                "Tab not found".to_string(),
+            ))
         }
     }
 
@@ -266,17 +272,21 @@ impl BrowserShell {
         let percentage = (elapsed as f64 / decay_secs as f64).min(1.0);
 
         match percentage {
-            p if p <= 0.0 => 0,    // Fresh
-            p if p < 0.2 => 1,     // Slightly decayed
-            p if p < 0.4 => 2,     // Moderately decayed
-            p if p < 0.6 => 3,     // Significantly decayed
-            p if p < 0.8 => 4,     // Heavily decayed
-            _ => 5,                // Expired (>= 80% of threshold)
+            p if p <= 0.0 => 0, // Fresh
+            p if p < 0.2 => 1,  // Slightly decayed
+            p if p < 0.4 => 2,  // Moderately decayed
+            p if p < 0.6 => 3,  // Significantly decayed
+            p if p < 0.8 => 4,  // Heavily decayed
+            _ => 5,             // Expired (>= 80% of threshold)
         }
     }
 
     /// Get all tabs with their decay levels for a workspace
-    pub fn tabs_with_decay(&self, workspace_id: Option<WorkspaceId>, decay_days: u32) -> Vec<(TabInfo, u8)> {
+    pub fn tabs_with_decay(
+        &self,
+        workspace_id: Option<WorkspaceId>,
+        decay_days: u32,
+    ) -> Vec<(TabInfo, u8)> {
         self.tabs
             .values()
             .filter(|tab| workspace_id.is_none() || tab.workspace_id == workspace_id.unwrap())
@@ -365,7 +375,9 @@ impl BrowserShell {
             tab.url = url;
             Ok(())
         } else {
-            Err(hiwave_core::HiWaveError::Config("Tab not found".to_string()))
+            Err(hiwave_core::HiWaveError::Config(
+                "Tab not found".to_string(),
+            ))
         }
     }
 

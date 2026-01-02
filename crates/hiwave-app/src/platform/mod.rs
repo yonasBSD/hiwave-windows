@@ -4,12 +4,12 @@
 //! reducing code duplication and ensuring consistent behavior across macOS,
 //! Windows, and Linux.
 
+#[cfg(target_os = "linux")]
+mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
 #[cfg(target_os = "windows")]
 mod windows;
-#[cfg(target_os = "linux")]
-mod linux;
 
 // Re-export menu IDs for each platform
 #[cfg(target_os = "macos")]
@@ -49,7 +49,9 @@ impl std::fmt::Display for PlatformError {
             PlatformError::OpenExternalFailed(msg) => write!(f, "Failed to open external: {}", msg),
             PlatformError::OpenFileFailed(msg) => write!(f, "Failed to open file: {}", msg),
             PlatformError::FileNotFound(path) => write!(f, "File not found: {:?}", path),
-            PlatformError::ShowInFolderFailed(msg) => write!(f, "Failed to show in folder: {}", msg),
+            PlatformError::ShowInFolderFailed(msg) => {
+                write!(f, "Failed to show in folder: {}", msg)
+            }
             PlatformError::CommandFailed(msg) => write!(f, "Command failed: {}", msg),
             PlatformError::Other(msg) => write!(f, "Platform error: {}", msg),
         }
@@ -259,20 +261,20 @@ pub fn is_definitely_popup(url: &str) -> bool {
         "clients6.google.com",
         // Generic SDK/embed patterns (blocks all embedded widget iframes)
         "/sdk/",
-        "?zoid=",           // zoid cross-domain iframe framework
+        "?zoid=", // zoid cross-domain iframe framework
         "&zoid=",
-        "placement-api.",   // payment widget APIs (Afterpay, Klarna, etc.)
-        "-ecdn.com",        // e-commerce CDN embeds (Salsify, etc.)
+        "placement-api.", // payment widget APIs (Afterpay, Klarna, etc.)
+        "-ecdn.com",      // e-commerce CDN embeds (Salsify, etc.)
         // Shopify/e-commerce tracking sandboxes
-        "/web-pixels",      // Shopify web pixel tracking iframes
-        "/sandbox/",        // generic sandbox iframes (analytics, tracking)
+        "/web-pixels", // Shopify web pixel tracking iframes
+        "/sandbox/",   // generic sandbox iframes (analytics, tracking)
         // Chat widget/storage sync iframes
-        "gorgias.chat",     // Gorgias chat widget
-        "-storage-sync",    // storage sync iframes (various widgets)
-        "chat-storage",     // chat storage sync patterns
+        "gorgias.chat",  // Gorgias chat widget
+        "-storage-sync", // storage sync iframes (various widgets)
+        "chat-storage",  // chat storage sync patterns
         // Embedded media (iframes)
-        "/embed/",          // YouTube, Vimeo, etc. embedded players
-        "/embed?",          // embed with query params
+        "/embed/", // YouTube, Vimeo, etc. embedded players
+        "/embed?", // embed with query params
         // Generic patterns
         "popup",
         "clicktrack",
@@ -309,9 +311,12 @@ pub fn is_tracker_redirect(url: &str) -> bool {
 
     // Suspicious path patterns (tracking endpoints)
     let tracker_paths = [
-        "/tag?", "/tag/",
-        "/pixel?", "/pixel/",
-        "/sync?", "/sync/",
+        "/tag?",
+        "/tag/",
+        "/pixel?",
+        "/pixel/",
+        "/sync?",
+        "/sync/",
         "/usersync",
         "/collect?",
         "/event?",
@@ -356,8 +361,7 @@ pub fn is_tracker_redirect(url: &str) -> bool {
     }
 
     // Very strong signal: page_url or referrer_url with initiator=js
-    if (url.contains("page_url=") || url.contains("referrer_url="))
-        && url.contains("initiator=js")
+    if (url.contains("page_url=") || url.contains("referrer_url=")) && url.contains("initiator=js")
     {
         return true;
     }
@@ -417,13 +421,17 @@ mod tests {
     #[test]
     fn test_is_definitely_popup_blocks_ad_networks() {
         // Google ad infrastructure
-        assert!(is_definitely_popup("https://googlesyndication.com/safeframe"));
+        assert!(is_definitely_popup(
+            "https://googlesyndication.com/safeframe"
+        ));
         assert!(is_definitely_popup("https://doubleclick.net/track"));
         assert!(is_definitely_popup("https://googleadservices.com/pagead"));
 
         // Facebook tracking
         assert!(is_definitely_popup("https://facebook.com/tr?id=123"));
-        assert!(is_definitely_popup("https://connect.facebook.net/en_US/sdk.js"));
+        assert!(is_definitely_popup(
+            "https://connect.facebook.net/en_US/sdk.js"
+        ));
 
         // Other ad networks
         assert!(is_definitely_popup("https://criteo.com/sync"));
@@ -454,8 +462,12 @@ mod tests {
     #[test]
     fn test_is_tracker_redirect() {
         // Should detect tracker redirects
-        assert!(is_tracker_redirect("https://example.com/tag?bp_id=123&initiator=js&gdpr=1"));
-        assert!(is_tracker_redirect("https://example.com/pixel?page_url=test&initiator=js"));
+        assert!(is_tracker_redirect(
+            "https://example.com/tag?bp_id=123&initiator=js&gdpr=1"
+        ));
+        assert!(is_tracker_redirect(
+            "https://example.com/pixel?page_url=test&initiator=js"
+        ));
 
         // Should not flag normal URLs
         assert!(!is_tracker_redirect("https://example.com/page"));

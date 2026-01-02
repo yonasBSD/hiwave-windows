@@ -2,16 +2,20 @@
 //!
 //! WebKitPage represents a web page and provides methods for navigation,
 //! JavaScript execution, and content manipulation.
+//!
+//! Note: Function signatures verified against WebKit2.dll WinCairo exports.
 
-use std::ffi::c_void;
-use std::sync::{Arc, Mutex};
-use webkit_wincairo_sys::*;
-use crate::error::{Result, WebKitError};
 use crate::callbacks::{
-    CallbackState, NavigationHandler, TitleChangeHandler, IpcHandler,
-    LoadStartHandler, LoadFinishHandler, ProgressHandler,
+    CallbackState, IpcHandler, LoadFinishHandler, LoadStartHandler, NavigationHandler,
+    ProgressHandler, TitleChangeHandler,
 };
+use crate::error::{Result, WebKitError};
+use std::cell::RefCell;
+use std::ffi::c_void;
+use std::rc::Rc;
+use webkit_wincairo_sys::*;
 
+type JsEvalCallback = Box<dyn FnOnce(std::result::Result<String, String>) + Send + 'static>;
 /// A WebKit page
 ///
 /// The page represents a single web document and provides methods for
@@ -20,7 +24,7 @@ pub struct WebKitPage {
     raw: WKPageRef,
     /// Callback state (kept alive for the lifetime of the page)
     #[allow(dead_code)]
-    callbacks: Arc<Mutex<CallbackState>>,
+    callbacks: Rc<RefCell<CallbackState>>,
 }
 
 impl WebKitPage {
@@ -33,12 +37,11 @@ impl WebKitPage {
     pub(crate) fn from_raw(raw: WKPageRef) -> Self {
         Self {
             raw,
-            callbacks: Arc::new(Mutex::new(CallbackState::new())),
+            callbacks: Rc::new(RefCell::new(CallbackState::new())),
         }
     }
 
     /// Get the raw page reference
-    #[allow(dead_code)]
     pub(crate) fn raw(&self) -> WKPageRef {
         self.raw
     }
@@ -47,6 +50,7 @@ impl WebKitPage {
 
     /// Load a URL
     pub fn load_url(&self, url: &str) -> Result<()> {
+        log::debug!("Loading URL: {}", url);
         if url.is_empty() {
             return Err(WebKitError::InvalidUrl("URL cannot be empty".to_string()));
         }
@@ -54,9 +58,9 @@ impl WebKitPage {
         unsafe {
             let wk_url = wk_url_from_str(url);
             if wk_url.is_null() {
+                log::error!("Failed to create WKURLRef for: {}", url);
                 return Err(WebKitError::InvalidUrl(url.to_string()));
             }
-
             WKPageLoadURL(self.raw, wk_url);
             WKRelease(wk_url);
             Ok(())
@@ -65,9 +69,11 @@ impl WebKitPage {
 
     /// Load HTML content with an optional base URL
     pub fn load_html(&self, html: &str, base_url: Option<&str>) -> Result<()> {
+        log::debug!("Loading {} bytes of HTML", html.len());
         unsafe {
             let wk_html = wk_string_from_str(html);
             if wk_html.is_null() {
+                log::error!("Failed to create WKStringRef for HTML content");
                 return Err(WebKitError::InvalidHtml);
             }
 
@@ -134,10 +140,22 @@ impl WebKitPage {
 
     // ========== Page Info ==========
 
-    /// Get the current URL
+    /// Get the current URL (active/displayed URL)
     pub fn url(&self) -> Option<String> {
         unsafe {
-            let wk_url = WKPageCopyURL(self.raw);
+            let wk_url = WKPageCopyActiveURL(self.raw);
+            let result = wk_url_to_string(wk_url);
+            if !wk_url.is_null() {
+                WKRelease(wk_url);
+            }
+            result
+        }
+    }
+
+    /// Get the committed URL
+    pub fn committed_url(&self) -> Option<String> {
+        unsafe {
+            let wk_url = WKPageCopyCommittedURL(self.raw);
             let result = wk_url_to_string(wk_url);
             if !wk_url.is_null() {
                 WKRelease(wk_url);
@@ -164,8 +182,36 @@ impl WebKitPage {
     }
 
     /// Check if the page is loading
+    /// Note: Determined by progress value (loading when 0 < progress < 1)
     pub fn is_loading(&self) -> bool {
-        unsafe { WKPageIsLoading(self.raw) }
+        let progress = self.progress();
+        progress > 0.0 && progress < 1.0
+    }
+
+    /// Check if the page is closed
+    pub fn is_closed(&self) -> bool {
+        unsafe { WKPageIsClosed(self.raw) }
+    }
+
+    /// Get the user agent
+    pub fn user_agent(&self) -> Option<String> {
+        unsafe {
+            let wk_ua = WKPageCopyUserAgent(self.raw);
+            let result = wk_string_to_string(wk_ua);
+            if !wk_ua.is_null() {
+                WKRelease(wk_ua);
+            }
+            result
+        }
+    }
+
+    /// Set a custom user agent
+    pub fn set_user_agent(&self, user_agent: &str) {
+        unsafe {
+            let wk_ua = wk_string_from_str(user_agent);
+            WKPageSetCustomUserAgent(self.raw, wk_ua);
+            WKRelease(wk_ua);
+        }
     }
 
     // ========== JavaScript ==========
@@ -187,11 +233,11 @@ impl WebKitPage {
             }
 
             // Box the callback so it can be passed as a raw pointer
-            let callback_box: Box<Box<dyn FnOnce(std::result::Result<String, String>) + Send>> =
-                Box::new(Box::new(callback));
+            let cb: JsEvalCallback = Box::new(callback);
+            let callback_box: Box<JsEvalCallback> = Box::new(cb);
             let context = Box::into_raw(callback_box) as *mut c_void;
 
-            WKPageRunJavaScriptInMainFrame(
+            WKPageEvaluateJavaScriptInMainFrame(
                 self.raw,
                 wk_script,
                 context,
@@ -212,6 +258,16 @@ impl WebKitPage {
         // is complex. A full implementation would use a channel.
         self.evaluate_script(script, |_| {})?;
         Ok(())
+    }
+
+    // ========== Repaint ==========
+
+    /// Force a repaint of the page
+    /// This triggers WebKit to redraw the content
+    pub fn force_repaint(&self) {
+        unsafe {
+            WKPageForceRepaint(self.raw, std::ptr::null_mut(), force_repaint_callback);
+        }
     }
 
     // ========== Zoom ==========
@@ -271,7 +327,7 @@ impl WebKitPage {
     pub fn execute_command(&self, command: &str) {
         unsafe {
             let wk_command = wk_string_from_str(command);
-            WKPageExecuteEditingCommand(self.raw, wk_command, std::ptr::null_mut());
+            WKPageExecuteCommand(self.raw, wk_command, std::ptr::null_mut());
             WKRelease(wk_command);
         }
     }
@@ -298,10 +354,21 @@ impl WebKitPage {
 
     // ========== Print ==========
 
-    /// Print the page
-    pub fn print(&self) {
+    /// Begin printing (requires print info setup)
+    pub fn begin_printing(&self) {
         unsafe {
-            WKPagePrint(self.raw);
+            let main_frame = WKPageGetMainFrame(self.raw);
+            if !main_frame.is_null() {
+                // Note: A full implementation would create proper print info
+                WKPageBeginPrinting(self.raw, main_frame, std::ptr::null_mut());
+            }
+        }
+    }
+
+    /// End printing
+    pub fn end_printing(&self) {
+        unsafe {
+            WKPageEndPrinting(self.raw);
         }
     }
 
@@ -315,7 +382,7 @@ impl WebKitPage {
     where
         F: NavigationHandler,
     {
-        let mut callbacks = self.callbacks.lock().unwrap();
+        let mut callbacks = self.callbacks.borrow_mut();
         callbacks.set_navigation_handler(self.raw, handler);
     }
 
@@ -324,7 +391,7 @@ impl WebKitPage {
     where
         F: TitleChangeHandler,
     {
-        let mut callbacks = self.callbacks.lock().unwrap();
+        let mut callbacks = self.callbacks.borrow_mut();
         callbacks.set_title_change_handler(self.raw, handler);
     }
 
@@ -335,7 +402,7 @@ impl WebKitPage {
     where
         F: IpcHandler,
     {
-        let mut callbacks = self.callbacks.lock().unwrap();
+        let mut callbacks = self.callbacks.borrow_mut();
         callbacks.set_ipc_handler(self.raw, handler);
     }
 
@@ -344,7 +411,7 @@ impl WebKitPage {
     where
         F: LoadStartHandler,
     {
-        let mut callbacks = self.callbacks.lock().unwrap();
+        let mut callbacks = self.callbacks.borrow_mut();
         callbacks.set_load_start_handler(self.raw, handler);
     }
 
@@ -353,7 +420,7 @@ impl WebKitPage {
     where
         F: LoadFinishHandler,
     {
-        let mut callbacks = self.callbacks.lock().unwrap();
+        let mut callbacks = self.callbacks.borrow_mut();
         callbacks.set_load_finish_handler(self.raw, handler);
     }
 
@@ -362,11 +429,71 @@ impl WebKitPage {
     where
         F: ProgressHandler,
     {
-        let mut callbacks = self.callbacks.lock().unwrap();
+        let mut callbacks = self.callbacks.borrow_mut();
         callbacks.set_progress_handler(self.raw, handler);
     }
 
-    // ========== User Scripts ==========
+    // ========== User Scripts & Message Handlers ==========
+
+    /// Add a script message handler that can receive messages from JavaScript
+    ///
+    /// JavaScript can call `window.webkit.messageHandlers.<name>.postMessage(body)`
+    /// and the callback will be invoked with the message body.
+    ///
+    /// # Parameters
+    ///
+    /// - `name`: The name of the message handler (used in JS as messageHandlers.<name>)
+    /// - `callback`: Function called when a message is received
+    /// - `context`: User data pointer passed to the callback
+    ///
+    /// # Safety
+    ///
+    /// The callback must be a valid function pointer and the context must remain valid
+    /// for the lifetime of the message handler.
+    pub unsafe fn add_script_message_handler(
+        &self,
+        name: &str,
+        callback: unsafe extern "C" fn(WKScriptMessageRef, WKCompletionListenerRef, *const c_void),
+        context: *const c_void,
+    ) -> Result<()> {
+        unsafe {
+            let wk_name = wk_string_from_str(name);
+            if wk_name.is_null() {
+                return Err(WebKitError::JavaScriptError(
+                    "Failed to create handler name string".to_string(),
+                ));
+            }
+
+            // Get the page's user content controller via configuration
+            let config = WKPageCopyPageConfiguration(self.raw);
+            if config.is_null() {
+                WKRelease(wk_name);
+                return Err(WebKitError::JavaScriptError(
+                    "Failed to get page configuration".to_string(),
+                ));
+            }
+
+            let controller = WKPageConfigurationGetUserContentController(config);
+            if controller.is_null() {
+                WKRelease(config);
+                WKRelease(wk_name);
+                return Err(WebKitError::JavaScriptError(
+                    "Failed to get user content controller".to_string(),
+                ));
+            }
+
+            WKUserContentControllerAddScriptMessageHandler(
+                controller,
+                wk_name,
+                Some(callback),
+                context,
+            );
+
+            WKRelease(config);
+            WKRelease(wk_name);
+            Ok(())
+        }
+    }
 
     /// Add an initialization script that runs on every page load
     pub fn add_user_script(&self, script: &str, inject_at_start: bool) -> Result<()> {
@@ -384,10 +511,11 @@ impl WebKitPage {
                 WKUserScriptInjectionTime::AtDocumentEnd
             };
 
+            // Create user script with: source, injection_time, main_frame_only
             let user_script = WKUserScriptCreateWithSource(
                 wk_script,
-                WKUserContentInjectedFrames::AllFrames,
                 injection_time,
+                false, // inject into all frames
             );
 
             WKRelease(wk_script);
@@ -398,11 +526,21 @@ impl WebKitPage {
                 ));
             }
 
-            // Get the page configuration's user content controller
-            // Note: This requires proper setup during view creation
-            // For now, we just release the script as we need the controller
-            WKRelease(user_script);
+            // Get the page's user content controller via configuration
+            let config = WKPageCopyPageConfiguration(self.raw);
+            if !config.is_null() {
+                let controller = WKPageConfigurationGetUserContentController(config);
+                if !controller.is_null() {
+                    WKUserContentControllerAddUserScript(controller, user_script);
+                } else {
+                    log::warn!("User content controller is NULL - script not added");
+                }
+                WKRelease(config);
+            } else {
+                log::warn!("Page configuration is NULL - script not added");
+            }
 
+            WKRelease(user_script);
             Ok(())
         }
     }
@@ -410,18 +548,37 @@ impl WebKitPage {
     // ========== Settings ==========
 
     /// Enable or disable JavaScript
+    /// Note: Preferences must be set on the page configuration before page creation
+    /// for full effect. This attempts to modify via the page group.
     pub fn set_javascript_enabled(&self, enabled: bool) {
         unsafe {
-            let prefs = WKPageGetPreferences(self.raw);
-            WKPreferencesSetJavaScriptEnabled(prefs, enabled);
+            let page_group = WKPageGetPageGroup(self.raw);
+            if !page_group.is_null() {
+                let prefs = WKPageGroupGetPreferences(page_group);
+                if !prefs.is_null() {
+                    WKPreferencesSetJavaScriptEnabled(prefs, enabled);
+                }
+            }
         }
     }
 
     /// Enable or disable developer tools
     pub fn set_developer_tools_enabled(&self, enabled: bool) {
         unsafe {
-            let prefs = WKPageGetPreferences(self.raw);
-            WKPreferencesSetDeveloperExtrasEnabled(prefs, enabled);
+            let page_group = WKPageGetPageGroup(self.raw);
+            if !page_group.is_null() {
+                let prefs = WKPageGroupGetPreferences(page_group);
+                if !prefs.is_null() {
+                    WKPreferencesSetDeveloperExtrasEnabled(prefs, enabled);
+                }
+            }
+        }
+    }
+
+    /// Enable or disable remote inspection (Web Inspector)
+    pub fn set_allows_remote_inspection(&self, allow: bool) {
+        unsafe {
+            WKPageSetAllowsRemoteInspection(self.raw, allow);
         }
     }
 }
@@ -437,8 +594,8 @@ unsafe extern "C" fn javascript_callback_trampoline(
     }
 
     // Reconstruct the boxed callback
-    let callback: Box<Box<dyn FnOnce(std::result::Result<String, String>) + Send>> =
-        Box::from_raw(context as *mut _);
+    let callback: Box<JsEvalCallback> = Box::from_raw(context as *mut _);
+    let cb: JsEvalCallback = *callback;
 
     let result = if !error.is_null() {
         // There was an error - for now just return a generic message
@@ -452,5 +609,8 @@ unsafe extern "C" fn javascript_callback_trampoline(
         Ok(String::new())
     };
 
-    callback(result);
+    cb(result);
 }
+
+/// Callback for WKPageForceRepaint - fire and forget
+extern "C" fn force_repaint_callback(_context: *mut c_void, _error: WKTypeRef) {}

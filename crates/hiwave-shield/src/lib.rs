@@ -6,9 +6,9 @@ pub mod filter_lists;
 
 use adblock::lists::ParseOptions;
 use adblock::Engine;
+use hiwave_core::HiWaveResult;
 use std::sync::atomic::{AtomicU64, Ordering};
 use url::Url;
-use hiwave_core::HiWaveResult;
 
 pub use filter_lists::{FilterListManager, FilterListSource, FILTER_LISTS};
 

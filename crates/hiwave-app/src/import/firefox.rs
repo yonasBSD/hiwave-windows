@@ -5,9 +5,9 @@
 //!
 //! We use the JSON backups for simpler, safer parsing.
 
+use serde::Deserialize;
 use std::fs;
 use std::path::{Path, PathBuf};
-use serde::Deserialize;
 
 use super::{Browser, BrowserProfile, ImportedBookmark};
 
@@ -34,18 +34,16 @@ pub fn find_profiles() -> Vec<BrowserProfile> {
 
     // macOS Firefox location
     #[cfg(target_os = "macos")]
-    let firefox_base = dirs::home_dir()
-        .map(|h| h.join("Library/Application Support/Firefox/Profiles"));
+    let firefox_base =
+        dirs::home_dir().map(|h| h.join("Library/Application Support/Firefox/Profiles"));
 
     // Windows Firefox location
     #[cfg(target_os = "windows")]
-    let firefox_base = dirs::data_dir()
-        .map(|d| d.join("Mozilla/Firefox/Profiles"));
+    let firefox_base = dirs::data_dir().map(|d| d.join("Mozilla/Firefox/Profiles"));
 
     // Linux Firefox location
     #[cfg(target_os = "linux")]
-    let firefox_base = dirs::home_dir()
-        .map(|h| h.join(".mozilla/firefox"));
+    let firefox_base = dirs::home_dir().map(|h| h.join(".mozilla/firefox"));
 
     if let Some(base) = firefox_base {
         if base.exists() {
@@ -58,7 +56,8 @@ pub fn find_profiles() -> Vec<BrowserProfile> {
                             || path.join("bookmarkbackups").exists();
 
                         if has_bookmarks {
-                            let name = path.file_name()
+                            let name = path
+                                .file_name()
                                 .and_then(|n| n.to_str())
                                 .unwrap_or("Unknown")
                                 .to_string();
@@ -170,9 +169,7 @@ fn find_latest_backup(backups_dir: &Path) -> Result<PathBuf, String> {
     if let Ok(entries) = fs::read_dir(backups_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            let name = path.file_name()
-                .and_then(|n| n.to_str())
-                .unwrap_or("");
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
 
             // Look for .json files (not .jsonlz4 compressed files)
             if name.ends_with(".json") && name.starts_with("bookmarks-") {
@@ -187,9 +184,10 @@ fn find_latest_backup(backups_dir: &Path) -> Result<PathBuf, String> {
         }
     }
 
-    latest
-        .map(|(path, _)| path)
-        .ok_or_else(|| "No JSON bookmark backup files found. Firefox may use compressed .jsonlz4 format.".to_string())
+    latest.map(|(path, _)| path).ok_or_else(|| {
+        "No JSON bookmark backup files found. Firefox may use compressed .jsonlz4 format."
+            .to_string()
+    })
 }
 
 /// Convert a Firefox bookmark node to our generic structure
@@ -203,12 +201,15 @@ fn convert_node(node: &FirefoxBookmarkNode) -> ImportedBookmark {
         || node.children.is_some();
 
     if is_folder {
-        let children = node.children
+        let children = node
+            .children
             .as_ref()
-            .map(|c| c.iter()
-                .filter(|n| n.type_code_num != Some(3)) // Skip separators
-                .map(convert_node)
-                .collect())
+            .map(|c| {
+                c.iter()
+                    .filter(|n| n.type_code_num != Some(3)) // Skip separators
+                    .map(convert_node)
+                    .collect()
+            })
             .unwrap_or_default();
 
         ImportedBookmark::folder(title, children)

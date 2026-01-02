@@ -1,0 +1,10 @@
+{"ts": "2026-01-02T19:53:06.560506+00:00", "event_type": "canary_run", "run_id": "20260102T195304Z_e29b855b", "status": "pass", "profile": "debug", "duration_ms": 800}
+{"ts": "2026-01-02T19:53:17.488929+00:00", "event_type": "ci_run", "work_order_id": "define-agent-io", "run_id": "20260102T195317Z_31363614", "status": "pass", "duration_ms": 103}
+{"ts": "2026-01-02T20:02:08.047106+00:00", "event_type": "ci_run", "work_order_id": "reqs-mvp-matrix", "run_id": "20260102T200206Z_d260f6f8", "status": "fail", "duration_ms": 1926}
+{"ts": "2026-01-02T20:02:52.688370+00:00", "event_type": "ci_run", "work_order_id": "reqs-mvp-matrix", "run_id": "20260102T200249Z_7dc5ee02", "status": "fail", "duration_ms": 3456}
+{"ts": "2026-01-02T20:03:22.126740+00:00", "event_type": "ci_run", "work_order_id": "reqs-mvp-matrix", "run_id": "20260102T200322Z_29dc86cd", "status": "pass", "duration_ms": 94}
+{"ts": "2026-01-02T20:08:14.461857+00:00", "event_type": "ci_run", "work_order_id": "webkit-fork-ci", "run_id": "20260102T200814Z_30358398", "status": "pass", "duration_ms": 95}
+{"ts": "2026-01-02T20:09:02.589856+00:00", "event_type": "ci_run", "work_order_id": "hiwave-embedder-harness", "run_id": "20260102T200834Z_159446ae", "status": "pass", "duration_ms": 28541}
+{"ts": "2026-01-02T20:12:13.146860+00:00", "event_type": "ci_run", "work_order_id": "rustkit-viewhost", "run_id": "20260102T201212Z_fffbba96", "status": "fail", "duration_ms": 301}
+{"ts": "2026-01-02T20:12:40.888653+00:00", "event_type": "ci_run", "work_order_id": "rustkit-viewhost", "run_id": "20260102T201235Z_329e3199", "status": "fail", "duration_ms": 5334}
+{"ts": "2026-01-02T20:14:16.172267+00:00", "event_type": "ci_run", "work_order_id": "rustkit-viewhost", "run_id": "20260102T201413Z_22eae6bb", "status": "pass", "duration_ms": 2377}

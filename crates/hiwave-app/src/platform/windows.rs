@@ -50,7 +50,10 @@ impl WindowsPlatform {
     /// Check if using WinCairo WebKit engine
     #[allow(dead_code)]
     pub fn is_using_wincairo(&self) -> bool {
-        matches!(self.capabilities.webview_engine, WebViewEngine::WinCairoWebKit)
+        matches!(
+            self.capabilities.webview_engine,
+            WebViewEngine::WinCairoWebKit
+        )
     }
 
     /// Check if using WebView2 (Chromium) engine
@@ -68,15 +71,15 @@ impl Default for WindowsPlatform {
 
 impl PlatformManager for WindowsPlatform {
     fn initialize_menu(&self, window: &Window, menu: &Menu) -> PlatformResult<()> {
-
         // Initialize menu for the window's HWND
         // Note: On Windows, we need the raw window handle
         #[cfg(target_os = "windows")]
         {
             use tao::platform::windows::WindowExtWindows;
             unsafe {
-                menu.init_for_hwnd(window.hwnd() as _)
-                    .map_err(|e| PlatformError::MenuInitFailed(format!("HWND init failed: {}", e)))?;
+                menu.init_for_hwnd(window.hwnd() as _).map_err(|e| {
+                    PlatformError::MenuInitFailed(format!("HWND init failed: {}", e))
+                })?;
             }
         }
 
@@ -182,7 +185,10 @@ impl PlatformManager for WindowsPlatform {
             let url_lower = url.to_lowercase();
             for pattern in blocked_patterns {
                 if url_lower.contains(pattern) {
-                    debug!("Blocking URL matching pattern '{}' (WebKit): {}", pattern, url);
+                    debug!(
+                        "Blocking URL matching pattern '{}' (WebKit): {}",
+                        pattern, url
+                    );
                     return false;
                 }
             }

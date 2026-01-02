@@ -66,7 +66,9 @@ impl MacOSPlatform {
 
         app_menu
             .append(&PredefinedMenuItem::separator())
-            .map_err(|e| PlatformError::MenuInitFailed(format!("Failed to add separator: {}", e)))?;
+            .map_err(|e| {
+                PlatformError::MenuInitFailed(format!("Failed to add separator: {}", e))
+            })?;
 
         app_menu
             .append(&PredefinedMenuItem::services(None))
@@ -74,7 +76,9 @@ impl MacOSPlatform {
 
         app_menu
             .append(&PredefinedMenuItem::separator())
-            .map_err(|e| PlatformError::MenuInitFailed(format!("Failed to add separator: {}", e)))?;
+            .map_err(|e| {
+                PlatformError::MenuInitFailed(format!("Failed to add separator: {}", e))
+            })?;
 
         app_menu
             .append(&PredefinedMenuItem::hide(None))
@@ -92,14 +96,17 @@ impl MacOSPlatform {
 
         app_menu
             .append(&PredefinedMenuItem::separator())
-            .map_err(|e| PlatformError::MenuInitFailed(format!("Failed to add separator: {}", e)))?;
+            .map_err(|e| {
+                PlatformError::MenuInitFailed(format!("Failed to add separator: {}", e))
+            })?;
 
         app_menu
             .append(&PredefinedMenuItem::quit(None))
             .map_err(|e| PlatformError::MenuInitFailed(format!("Failed to add Quit: {}", e)))?;
 
-        menu.append(&app_menu)
-            .map_err(|e| PlatformError::MenuInitFailed(format!("Failed to append app menu: {}", e)))?;
+        menu.append(&app_menu).map_err(|e| {
+            PlatformError::MenuInitFailed(format!("Failed to append app menu: {}", e))
+        })?;
 
         Ok(())
     }
@@ -118,7 +125,9 @@ impl MacOSPlatform {
 
         edit_menu
             .append(&PredefinedMenuItem::separator())
-            .map_err(|e| PlatformError::MenuInitFailed(format!("Failed to add separator: {}", e)))?;
+            .map_err(|e| {
+                PlatformError::MenuInitFailed(format!("Failed to add separator: {}", e))
+            })?;
 
         edit_menu
             .append(&PredefinedMenuItem::cut(None))
@@ -140,7 +149,9 @@ impl MacOSPlatform {
 
         edit_menu
             .append(&PredefinedMenuItem::separator())
-            .map_err(|e| PlatformError::MenuInitFailed(format!("Failed to add separator: {}", e)))?;
+            .map_err(|e| {
+                PlatformError::MenuInitFailed(format!("Failed to add separator: {}", e))
+            })?;
 
         // Find in page (Cmd+F)
         let find_item = MenuItem::with_id(
@@ -153,8 +164,9 @@ impl MacOSPlatform {
             .append(&find_item)
             .map_err(|e| PlatformError::MenuInitFailed(format!("Failed to add Find: {}", e)))?;
 
-        menu.append(&edit_menu)
-            .map_err(|e| PlatformError::MenuInitFailed(format!("Failed to append edit menu: {}", e)))?;
+        menu.append(&edit_menu).map_err(|e| {
+            PlatformError::MenuInitFailed(format!("Failed to append edit menu: {}", e))
+        })?;
 
         Ok(())
     }
@@ -181,21 +193,26 @@ impl MacOSPlatform {
             true,
             Some(Accelerator::new(Some(Modifiers::META), Code::KeyW)),
         );
-        file_menu
-            .append(&close_tab_item)
-            .map_err(|e| PlatformError::MenuInitFailed(format!("Failed to add Close Tab: {}", e)))?;
+        file_menu.append(&close_tab_item).map_err(|e| {
+            PlatformError::MenuInitFailed(format!("Failed to add Close Tab: {}", e))
+        })?;
 
         file_menu
             .append(&PredefinedMenuItem::separator())
-            .map_err(|e| PlatformError::MenuInitFailed(format!("Failed to add separator: {}", e)))?;
+            .map_err(|e| {
+                PlatformError::MenuInitFailed(format!("Failed to add separator: {}", e))
+            })?;
 
         // Close Window (Cmd+Shift+W) - predefined
         file_menu
             .append(&PredefinedMenuItem::close_window(None))
-            .map_err(|e| PlatformError::MenuInitFailed(format!("Failed to add Close Window: {}", e)))?;
+            .map_err(|e| {
+                PlatformError::MenuInitFailed(format!("Failed to add Close Window: {}", e))
+            })?;
 
-        menu.append(&file_menu)
-            .map_err(|e| PlatformError::MenuInitFailed(format!("Failed to append file menu: {}", e)))?;
+        menu.append(&file_menu).map_err(|e| {
+            PlatformError::MenuInitFailed(format!("Failed to append file menu: {}", e))
+        })?;
 
         Ok(())
     }
@@ -217,7 +234,9 @@ impl MacOSPlatform {
 
         view_menu
             .append(&PredefinedMenuItem::separator())
-            .map_err(|e| PlatformError::MenuInitFailed(format!("Failed to add separator: {}", e)))?;
+            .map_err(|e| {
+                PlatformError::MenuInitFailed(format!("Failed to add separator: {}", e))
+            })?;
 
         // Command Palette (Cmd+K)
         let cmd_palette_item = MenuItem::with_id(
@@ -226,9 +245,9 @@ impl MacOSPlatform {
             true,
             Some(Accelerator::new(Some(Modifiers::META), Code::KeyK)),
         );
-        view_menu
-            .append(&cmd_palette_item)
-            .map_err(|e| PlatformError::MenuInitFailed(format!("Failed to add Command Palette: {}", e)))?;
+        view_menu.append(&cmd_palette_item).map_err(|e| {
+            PlatformError::MenuInitFailed(format!("Failed to add Command Palette: {}", e))
+        })?;
 
         // History (Cmd+Y - using Y instead of H to avoid conflict with Hide)
         let history_item = MenuItem::with_id(
@@ -243,7 +262,9 @@ impl MacOSPlatform {
 
         view_menu
             .append(&PredefinedMenuItem::separator())
-            .map_err(|e| PlatformError::MenuInitFailed(format!("Failed to add separator: {}", e)))?;
+            .map_err(|e| {
+                PlatformError::MenuInitFailed(format!("Failed to add separator: {}", e))
+            })?;
 
         // Toggle Sidebar (Cmd+B)
         let sidebar_item = MenuItem::with_id(
@@ -252,9 +273,9 @@ impl MacOSPlatform {
             true,
             Some(Accelerator::new(Some(Modifiers::META), Code::KeyB)),
         );
-        view_menu
-            .append(&sidebar_item)
-            .map_err(|e| PlatformError::MenuInitFailed(format!("Failed to add Toggle Sidebar: {}", e)))?;
+        view_menu.append(&sidebar_item).map_err(|e| {
+            PlatformError::MenuInitFailed(format!("Failed to add Toggle Sidebar: {}", e))
+        })?;
 
         // Focus URL Bar (Cmd+L)
         let focus_url_item = MenuItem::with_id(
@@ -263,12 +284,13 @@ impl MacOSPlatform {
             true,
             Some(Accelerator::new(Some(Modifiers::META), Code::KeyL)),
         );
-        view_menu
-            .append(&focus_url_item)
-            .map_err(|e| PlatformError::MenuInitFailed(format!("Failed to add Focus URL: {}", e)))?;
+        view_menu.append(&focus_url_item).map_err(|e| {
+            PlatformError::MenuInitFailed(format!("Failed to add Focus URL: {}", e))
+        })?;
 
-        menu.append(&view_menu)
-            .map_err(|e| PlatformError::MenuInitFailed(format!("Failed to append view menu: {}", e)))?;
+        menu.append(&view_menu).map_err(|e| {
+            PlatformError::MenuInitFailed(format!("Failed to append view menu: {}", e))
+        })?;
 
         Ok(())
     }
@@ -299,8 +321,9 @@ impl MacOSPlatform {
             .append(&forward_item)
             .map_err(|e| PlatformError::MenuInitFailed(format!("Failed to add Forward: {}", e)))?;
 
-        menu.append(&history_menu)
-            .map_err(|e| PlatformError::MenuInitFailed(format!("Failed to append history menu: {}", e)))?;
+        menu.append(&history_menu).map_err(|e| {
+            PlatformError::MenuInitFailed(format!("Failed to append history menu: {}", e))
+        })?;
 
         Ok(())
     }
@@ -450,21 +473,13 @@ impl PlatformManager for MacOSPlatform {
 /// Detect streaming site popup URLs
 #[allow(dead_code)] // Used for popup filtering in later phases
 fn is_streaming_popup(url: &str) -> bool {
-    let popup_domains = [
-        "ucast.pro",
-        "loijtoottuleringv.info",
-        "nicatethebene.info",
-    ];
+    let popup_domains = ["ucast.pro", "loijtoottuleringv.info", "nicatethebene.info"];
 
     if popup_domains.iter().any(|d| url.contains(d)) {
         return true;
     }
 
-    let fingerprint_patterns = [
-        "/fp?x-kpsdk",
-        "gql.twitch.tv/",
-        "passport.twitch.tv/",
-    ];
+    let fingerprint_patterns = ["/fp?x-kpsdk", "gql.twitch.tv/", "passport.twitch.tv/"];
 
     fingerprint_patterns.iter().any(|p| url.contains(p))
 }
@@ -477,16 +492,29 @@ fn is_tracker_redirect(url: &str) -> bool {
     }
 
     let tracker_paths = [
-        "/tag?", "/pixel?", "/sync?", "/usersync",
-        "/collect?", "/event?", "/impression?",
-        "/click?", "/redirect?", "/bounce?",
+        "/tag?",
+        "/pixel?",
+        "/sync?",
+        "/usersync",
+        "/collect?",
+        "/event?",
+        "/impression?",
+        "/click?",
+        "/redirect?",
+        "/bounce?",
     ];
 
     let has_tracker_path = tracker_paths.iter().any(|p| url.contains(p));
 
     let adtech_params = [
-        "bp_id=", "initiator=js", "gdpr=", "page_url=",
-        "referrer_url=", "mediavine", "prebid", "rubicon",
+        "bp_id=",
+        "initiator=js",
+        "gdpr=",
+        "page_url=",
+        "referrer_url=",
+        "mediavine",
+        "prebid",
+        "rubicon",
     ];
 
     let adtech_count = adtech_params.iter().filter(|p| url.contains(*p)).count();
@@ -497,8 +525,7 @@ fn is_tracker_redirect(url: &str) -> bool {
     }
 
     // Very strong signal: page_url or referrer_url with initiator=js
-    if (url.contains("page_url=") || url.contains("referrer_url="))
-        && url.contains("initiator=js")
+    if (url.contains("page_url=") || url.contains("referrer_url=")) && url.contains("initiator=js")
     {
         return true;
     }
@@ -543,8 +570,12 @@ mod tests {
 
     #[test]
     fn test_is_tracker_redirect() {
-        assert!(is_tracker_redirect("https://example.com/tag?bp_id=123&initiator=js"));
-        assert!(is_tracker_redirect("https://example.com/pixel?page_url=test&initiator=js"));
+        assert!(is_tracker_redirect(
+            "https://example.com/tag?bp_id=123&initiator=js"
+        ));
+        assert!(is_tracker_redirect(
+            "https://example.com/pixel?page_url=test&initiator=js"
+        ));
         assert!(!is_tracker_redirect("https://example.com/page"));
     }
 

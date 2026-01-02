@@ -4,13 +4,13 @@ use aes_gcm::{
     aead::{Aead, KeyInit, OsRng},
     Aes256Gcm, Nonce,
 };
+use hiwave_core::HiWaveResult;
 use rand::RngCore;
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::path::Path;
 use url::Url;
-use hiwave_core::HiWaveResult;
 
 const LEGACY_SALT: &[u8] = b"pureflow-salt";
 const SALT_LEN: usize = 16;
@@ -37,8 +37,9 @@ impl Vault {
     pub fn new<P: AsRef<Path>>(db_path: P) -> HiWaveResult<Self> {
         log::info!("Opening vault at {:?}", db_path.as_ref());
 
-        let conn = Connection::open(db_path)
-            .map_err(|e| hiwave_core::HiWaveError::Vault(format!("Failed to open database: {}", e)))?;
+        let conn = Connection::open(db_path).map_err(|e| {
+            hiwave_core::HiWaveError::Vault(format!("Failed to open database: {}", e))
+        })?;
 
         // Create tables
         conn.execute(
@@ -56,7 +57,9 @@ impl Vault {
         .map_err(|e| hiwave_core::HiWaveError::Vault(format!("Failed to create table: {}", e)))?;
 
         conn.execute("CREATE INDEX IF NOT EXISTS idx_url ON credentials(url)", [])
-            .map_err(|e| hiwave_core::HiWaveError::Vault(format!("Failed to create index: {}", e)))?;
+            .map_err(|e| {
+                hiwave_core::HiWaveError::Vault(format!("Failed to create index: {}", e))
+            })?;
 
         conn.execute(
             "CREATE TABLE IF NOT EXISTS vault_meta (
@@ -100,7 +103,9 @@ impl Vault {
             let salt = LEGACY_SALT.to_vec();
             let key = derive_key(master_password, &salt);
             self.decrypt_password(&encrypted, &nonce, &key)
-                .map_err(|_| hiwave_core::HiWaveError::Vault("Invalid master password".to_string()))?;
+                .map_err(|_| {
+                    hiwave_core::HiWaveError::Vault("Invalid master password".to_string())
+                })?;
             (salt, key)
         } else {
             let mut salt = vec![0u8; SALT_LEN];
@@ -125,9 +130,16 @@ impl Vault {
         self.master_key.is_some()
     }
 
-    pub fn save_credential(&mut self, url: &Url, username: &str, password: &str) -> HiWaveResult<i64> {
+    pub fn save_credential(
+        &mut self,
+        url: &Url,
+        username: &str,
+        password: &str,
+    ) -> HiWaveResult<i64> {
         if !self.is_unlocked() {
-            return Err(hiwave_core::HiWaveError::Vault("Vault is locked".to_string()));
+            return Err(hiwave_core::HiWaveError::Vault(
+                "Vault is locked".to_string(),
+            ));
         }
 
         let domain = Self::normalize_domain(url)?;
@@ -156,7 +168,9 @@ impl Vault {
 
     pub fn get_credentials(&self, url: &Url) -> HiWaveResult<Vec<Credential>> {
         if !self.is_unlocked() {
-            return Err(hiwave_core::HiWaveError::Vault("Vault is locked".to_string()));
+            return Err(hiwave_core::HiWaveError::Vault(
+                "Vault is locked".to_string(),
+            ));
         }
 
         let domain = Self::normalize_domain(url)?;
@@ -178,19 +192,19 @@ impl Vault {
             let encrypted: Vec<u8> = row.get(3).map_err(|e| {
                 hiwave_core::HiWaveError::Vault(format!("Failed to read encrypted password: {}", e))
             })?;
-            let nonce_bytes: Vec<u8> = row
-                .get(4)
-                .map_err(|e| hiwave_core::HiWaveError::Vault(format!("Failed to read nonce: {}", e)))?;
+            let nonce_bytes: Vec<u8> = row.get(4).map_err(|e| {
+                hiwave_core::HiWaveError::Vault(format!("Failed to read nonce: {}", e))
+            })?;
 
             let password = self.decrypt_password(&encrypted, &nonce_bytes, master_key)?;
 
             credentials.push(Credential {
-                id: row
-                    .get(0)
-                    .map_err(|e| hiwave_core::HiWaveError::Vault(format!("Failed to read id: {}", e)))?,
-                url: row
-                    .get(1)
-                    .map_err(|e| hiwave_core::HiWaveError::Vault(format!("Failed to read url: {}", e)))?,
+                id: row.get(0).map_err(|e| {
+                    hiwave_core::HiWaveError::Vault(format!("Failed to read id: {}", e))
+                })?,
+                url: row.get(1).map_err(|e| {
+                    hiwave_core::HiWaveError::Vault(format!("Failed to read url: {}", e))
+                })?,
                 username: row.get(2).map_err(|e| {
                     hiwave_core::HiWaveError::Vault(format!("Failed to read username: {}", e))
                 })?,
@@ -209,7 +223,9 @@ impl Vault {
 
     pub fn get_all_credentials(&self) -> HiWaveResult<Vec<Credential>> {
         if !self.is_unlocked() {
-            return Err(hiwave_core::HiWaveError::Vault("Vault is locked".to_string()));
+            return Err(hiwave_core::HiWaveError::Vault(
+                "Vault is locked".to_string(),
+            ));
         }
 
         let master_key = self.master_key.as_ref().unwrap();
@@ -230,19 +246,19 @@ impl Vault {
             let encrypted: Vec<u8> = row.get(3).map_err(|e| {
                 hiwave_core::HiWaveError::Vault(format!("Failed to read encrypted password: {}", e))
             })?;
-            let nonce_bytes: Vec<u8> = row
-                .get(4)
-                .map_err(|e| hiwave_core::HiWaveError::Vault(format!("Failed to read nonce: {}", e)))?;
+            let nonce_bytes: Vec<u8> = row.get(4).map_err(|e| {
+                hiwave_core::HiWaveError::Vault(format!("Failed to read nonce: {}", e))
+            })?;
 
             let password = self.decrypt_password(&encrypted, &nonce_bytes, master_key)?;
 
             credentials.push(Credential {
-                id: row
-                    .get(0)
-                    .map_err(|e| hiwave_core::HiWaveError::Vault(format!("Failed to read id: {}", e)))?,
-                url: row
-                    .get(1)
-                    .map_err(|e| hiwave_core::HiWaveError::Vault(format!("Failed to read url: {}", e)))?,
+                id: row.get(0).map_err(|e| {
+                    hiwave_core::HiWaveError::Vault(format!("Failed to read id: {}", e))
+                })?,
+                url: row.get(1).map_err(|e| {
+                    hiwave_core::HiWaveError::Vault(format!("Failed to read url: {}", e))
+                })?,
                 username: row.get(2).map_err(|e| {
                     hiwave_core::HiWaveError::Vault(format!("Failed to read username: {}", e))
                 })?,
@@ -261,7 +277,9 @@ impl Vault {
 
     pub fn delete_credential(&mut self, id: i64) -> HiWaveResult<()> {
         if !self.is_unlocked() {
-            return Err(hiwave_core::HiWaveError::Vault("Vault is locked".to_string()));
+            return Err(hiwave_core::HiWaveError::Vault(
+                "Vault is locked".to_string(),
+            ));
         }
 
         log::info!("Deleting credential {}", id);
@@ -330,7 +348,10 @@ impl Vault {
             .conn
             .prepare("SELECT salt, verifier FROM vault_meta WHERE id = 1")
             .map_err(|e| {
-                hiwave_core::HiWaveError::Vault(format!("Failed to prepare vault metadata query: {}", e))
+                hiwave_core::HiWaveError::Vault(format!(
+                    "Failed to prepare vault metadata query: {}",
+                    e
+                ))
             })?;
 
         let result = stmt.query_row([], |row| {
