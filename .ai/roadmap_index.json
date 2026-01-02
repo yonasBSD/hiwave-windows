@@ -67,6 +67,20 @@
       "work_order_path": ".ai/work_orders/layout-block-inline.json"
     },
     {
+      "id": "js-engine-integration",
+      "title": "Integrate JavaScript engine (Boa/V8) with RustKit",
+      "status": "completed",
+      "depends_on": ["html-dom-pipeline"],
+      "work_order_path": ".ai/work_orders/js-engine-integration.json"
+    },
+    {
+      "id": "dom-bindings",
+      "title": "Create JavaScript-to-DOM bindings for web API compatibility",
+      "status": "completed",
+      "depends_on": ["js-engine-integration", "html-dom-pipeline"],
+      "work_order_path": ".ai/work_orders/dom-bindings.json"
+    },
+    {
       "id": "define-agent-io",
       "title": "Define WorkOrder/VerificationReport schemas + shared RoadmapIndex",
       "status": "in_progress",
