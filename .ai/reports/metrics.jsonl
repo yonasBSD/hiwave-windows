@@ -8,3 +8,6 @@
 {"ts": "2026-01-02T20:12:13.146860+00:00", "event_type": "ci_run", "work_order_id": "rustkit-viewhost", "run_id": "20260102T201212Z_fffbba96", "status": "fail", "duration_ms": 301}
 {"ts": "2026-01-02T20:12:40.888653+00:00", "event_type": "ci_run", "work_order_id": "rustkit-viewhost", "run_id": "20260102T201235Z_329e3199", "status": "fail", "duration_ms": 5334}
 {"ts": "2026-01-02T20:14:16.172267+00:00", "event_type": "ci_run", "work_order_id": "rustkit-viewhost", "run_id": "20260102T201413Z_22eae6bb", "status": "pass", "duration_ms": 2377}
+{"ts": "2026-01-02T20:22:59.716338+00:00", "event_type": "ci_run", "work_order_id": "rustkit-compositor", "run_id": "20260102T202243Z_6c3d2e99", "status": "pass", "duration_ms": 16061}
+{"ts": "2026-01-02T20:23:25.793342+00:00", "event_type": "ci_run", "work_order_id": "engine-scheduler-core", "run_id": "20260102T202309Z_45f85974", "status": "fail", "duration_ms": 16657}
+{"ts": "2026-01-02T20:23:52.161229+00:00", "event_type": "ci_run", "work_order_id": "engine-scheduler-core", "run_id": "20260102T202351Z_a60f4a39", "status": "pass", "duration_ms": 995}

@@ -2,7 +2,7 @@
   "schema_version": "work_order.v1",
   "id": "rustkit-compositor",
   "title": "Implement GPU compositor with per-view swapchain/DirectComposition visual",
-  "status": "pending",
+  "status": "completed",
   "depends_on": ["rustkit-viewhost"],
   "goal": "Create a GPU compositor that maintains per-view surfaces, correctly handles resize, and enables multiple concurrent views to render independently.",
   "scope": {

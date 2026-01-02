@@ -11,6 +11,8 @@ members = [
     "crates/webkit-wincairo",
     "crates/hiwave-smoke",
     "crates/rustkit-viewhost",
+    "crates/rustkit-compositor",
+    "crates/rustkit-core",
 ]
 
 [workspace.package]

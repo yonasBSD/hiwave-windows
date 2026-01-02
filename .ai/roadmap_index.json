@@ -34,14 +34,14 @@
     {
       "id": "rustkit-compositor",
       "title": "Implement GPU compositor with per-view swapchain/DirectComposition visual",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["rustkit-viewhost"],
       "work_order_path": ".ai/work_orders/rustkit-compositor.json"
     },
     {
       "id": "engine-scheduler-core",
       "title": "Implement engine core runtime (task queues, timers, navigation state machine)",
-      "status": "pending",
+      "status": "completed",
       "depends_on": ["rustkit-viewhost"],
       "work_order_path": ".ai/work_orders/engine-scheduler-core.json"
     },

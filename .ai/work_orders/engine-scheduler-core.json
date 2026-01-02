@@ -2,7 +2,7 @@
   "schema_version": "work_order.v1",
   "id": "engine-scheduler-core",
   "title": "Implement engine core runtime (task queues, timers, navigation state machine)",
-  "status": "pending",
+  "status": "completed",
   "depends_on": ["rustkit-viewhost"],
   "goal": "Create the core engine runtime with task scheduling, timers, deterministic event delivery, and navigation state machine for reliable page lifecycle events.",
   "scope": {
