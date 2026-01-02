@@ -81,6 +81,27 @@
       "work_order_path": ".ai/work_orders/dom-bindings.json"
     },
     {
+      "id": "networking-http",
+      "title": "Implement HTTP networking layer with async fetch support",
+      "status": "completed",
+      "depends_on": ["engine-scheduler-core"],
+      "work_order_path": ".ai/work_orders/networking-http.json"
+    },
+    {
+      "id": "request-interception",
+      "title": "Implement request interception for URL filtering and modification",
+      "status": "completed",
+      "depends_on": ["networking-http"],
+      "work_order_path": ".ai/work_orders/request-interception.json"
+    },
+    {
+      "id": "download-manager",
+      "title": "Implement download manager with progress tracking and cancellation",
+      "status": "completed",
+      "depends_on": ["networking-http"],
+      "work_order_path": ".ai/work_orders/download-manager.json"
+    },
+    {
       "id": "define-agent-io",
       "title": "Define WorkOrder/VerificationReport schemas + shared RoadmapIndex",
       "status": "in_progress",

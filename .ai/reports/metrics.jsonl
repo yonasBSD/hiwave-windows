@@ -27,3 +27,6 @@
 {"ts": "2026-01-02T20:40:00.218277+00:00", "event_type": "ci_run", "work_order_id": "layout-block-inline", "run_id": "20260102T203959Z_226fabe7", "status": "pass", "duration_ms": 473}
 {"ts": "2026-01-02T20:48:06.240437+00:00", "event_type": "ci_run", "work_order_id": "js-engine-integration", "run_id": "20260102T204742Z_e6a27089", "status": "pass", "duration_ms": 23818}
 {"ts": "2026-01-02T20:48:31.064938+00:00", "event_type": "ci_run", "work_order_id": "dom-bindings", "run_id": "20260102T204819Z_7c049095", "status": "pass", "duration_ms": 12033}
+{"ts": "2026-01-02T20:57:47.694260+00:00", "event_type": "ci_run", "work_order_id": "networking-http", "run_id": "20260102T205732Z_cacf7d0b", "status": "fail", "duration_ms": 15510}
+{"ts": "2026-01-02T20:58:30.256873+00:00", "event_type": "ci_run", "work_order_id": "networking-http", "run_id": "20260102T205823Z_1b3d0c1a", "status": "fail", "duration_ms": 6316}
+{"ts": "2026-01-02T20:59:00.516630+00:00", "event_type": "ci_run", "work_order_id": "networking-http", "run_id": "20260102T205859Z_9bd05251", "status": "pass", "duration_ms": 1248}
