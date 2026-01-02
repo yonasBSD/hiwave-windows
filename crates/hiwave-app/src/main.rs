@@ -50,6 +50,9 @@ mod ipc;
 mod state;
 mod webview;
 
+#[cfg(all(target_os = "windows", feature = "rustkit"))]
+mod webview_rustkit;
+
 use hiwave_shield::ResourceType;
 use ipc::{IpcMessage, JS_BRIDGE};
 use state::AppState;

@@ -1,7 +1,7 @@
 //! WebView abstraction for HiWave
 //!
 //! This module provides an abstraction layer over different WebView implementations,
-//! allowing HiWave to use either WRY (WebView2 on Windows) or WinCairo WebKit.
+//! allowing HiWave to use either WRY (WebView2 on Windows), WinCairo WebKit, or RustKit.
 //!
 //! # Architecture
 //!
@@ -15,6 +15,7 @@
 //! The actual implementation is selected at compile time via feature flags:
 //! - Default: Uses WRY (WebView2 on Windows)
 //! - `wincairo` feature: Uses WinCairo WebKit
+//! - `rustkit` feature: Uses RustKit engine (pure Rust)
 
 use wry::dpi::{LogicalPosition, LogicalSize};
 use wry::Rect;
@@ -30,12 +31,17 @@ pub use wry::WebViewBuilder;
 // HiWaveWebView - Unified type alias for WebView backends
 // ============================================================================
 
-/// Unified WebView type that works with both backends.
+/// Unified WebView type that works with all backends.
+///
+/// Note: This type is used for Chrome, Shelf, Settings, and other UI windows.
+/// It always uses WRY/WebView2 for stability. The RustKit engine is only used
+/// for the Content WebView when the `rustkit` feature is enabled.
 ///
 /// - Default build: Uses `wry::WebView` (WebView2 on Windows)
-/// - WinCairo build: Uses `webkit_wincairo::WebKitView`
+/// - `wincairo` feature: Uses `webkit_wincairo::WebKitView` for content
+/// - `rustkit` feature: Uses `RustKitView` for content (via separate API)
 ///
-/// Both types implement the `IWebView` trait for common operations.
+/// All types implement the `IWebView` trait for common operations.
 #[cfg(not(all(target_os = "windows", feature = "wincairo")))]
 pub type HiWaveWebView = wry::WebView;
 
@@ -375,11 +381,23 @@ pub fn is_wincairo_enabled() -> bool {
     cfg!(all(target_os = "windows", feature = "wincairo"))
 }
 
+/// Check if we're using RustKit engine
+#[allow(dead_code)]
+pub fn is_rustkit_enabled() -> bool {
+    cfg!(all(target_os = "windows", feature = "rustkit"))
+}
+
 /// Get the current WebView engine name
 pub fn engine_name() -> &'static str {
-    #[cfg(all(target_os = "windows", feature = "wincairo"))]
+    #[cfg(all(target_os = "windows", feature = "rustkit"))]
+    return "RustKit";
+
+    #[cfg(all(target_os = "windows", feature = "wincairo", not(feature = "rustkit")))]
     return "WinCairo WebKit";
 
-    #[cfg(not(all(target_os = "windows", feature = "wincairo")))]
+    #[cfg(not(any(
+        all(target_os = "windows", feature = "wincairo"),
+        all(target_os = "windows", feature = "rustkit")
+    )))]
     return "WebView2 (WRY)";
 }

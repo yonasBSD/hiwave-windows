@@ -13,6 +13,7 @@ path = "src/main.rs"
 [features]
 default = []
 wincairo = ["webkit-wincairo", "windows-sys"]
+rustkit = ["rustkit-engine", "rustkit-viewhost", "windows", "tokio"]
 
 [dependencies]
 # WebView
@@ -51,3 +52,9 @@ hiwave-analytics = { workspace = true }
 [target.'cfg(target_os = "windows")'.dependencies]
 webkit-wincairo = { workspace = true, optional = true }
 windows-sys = { version = "0.52", features = ["Win32_Foundation"], optional = true }
+
+# RustKit engine (optional, Windows only)
+rustkit-engine = { workspace = true, optional = true }
+rustkit-viewhost = { workspace = true, optional = true }
+windows = { version = "0.58", features = ["Win32_Foundation"], optional = true }
+tokio = { version = "1.42", features = ["rt", "time"], optional = true }

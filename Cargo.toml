@@ -71,7 +71,7 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 dirs = "5.0"
 rfd = "0.15"
 
-# Internal dependencies
+# Internal dependencies - HiWave crates
 hiwave-core = { path = "crates/hiwave-core" }
 hiwave-shield = { path = "crates/hiwave-shield" }
 hiwave-vault = { path = "crates/hiwave-vault" }
@@ -82,6 +82,19 @@ hiwave-app = { path = "crates/hiwave-app" }
 # WinCairo WebKit bindings (Windows only)
 webkit-wincairo-sys = { path = "crates/webkit-wincairo-sys" }
 webkit-wincairo = { path = "crates/webkit-wincairo" }
+
+# RustKit browser engine crates
+rustkit-common = { path = "crates/rustkit-common" }
+rustkit-viewhost = { path = "crates/rustkit-viewhost" }
+rustkit-compositor = { path = "crates/rustkit-compositor" }
+rustkit-core = { path = "crates/rustkit-core" }
+rustkit-dom = { path = "crates/rustkit-dom" }
+rustkit-css = { path = "crates/rustkit-css" }
+rustkit-layout = { path = "crates/rustkit-layout" }
+rustkit-js = { path = "crates/rustkit-js" }
+rustkit-bindings = { path = "crates/rustkit-bindings" }
+rustkit-net = { path = "crates/rustkit-net" }
+rustkit-engine = { path = "crates/rustkit-engine" }
 
 [profile.release]
 opt-level = 3

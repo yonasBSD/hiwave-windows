@@ -116,6 +116,13 @@
       "work_order_path": ".ai/work_orders/observability-hardening.json"
     },
     {
+      "id": "hiwave-integration",
+      "title": "Integrate RustKit engine into HiWave as alternative backend",
+      "status": "completed",
+      "depends_on": ["multiview-integration", "observability-hardening"],
+      "work_order_path": ".ai/work_orders/hiwave-integration.json"
+    },
+    {
       "id": "define-agent-io",
       "title": "Define WorkOrder/VerificationReport schemas + shared RoadmapIndex",
       "status": "in_progress",
