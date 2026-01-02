@@ -41,3 +41,4 @@
 {"ts": "2026-01-02T21:33:46.599719+00:00", "event_type": "ci_run", "work_order_id": "wpt-harness", "run_id": "20260102T213345Z_9a28dd6b", "status": "pass", "duration_ms": 1123}
 {"ts": "2026-01-02T21:36:32.447902+00:00", "event_type": "ci_run", "work_order_id": "perf-benchmarks", "run_id": "20260102T213632Z_79f1a215", "status": "fail", "duration_ms": 137}
 {"ts": "2026-01-02T21:37:23.596064+00:00", "event_type": "ci_run", "work_order_id": "perf-benchmarks", "run_id": "20260102T213706Z_316e3311", "status": "pass", "duration_ms": 17231}
+{"ts": "2026-01-02T21:48:44.884578+00:00", "event_type": "ci_run", "work_order_id": "wincairo-removal", "run_id": "20260102T214811Z_575cb049", "status": "pass", "duration_ms": 32896}

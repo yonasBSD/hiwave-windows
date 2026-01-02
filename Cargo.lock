@@ -2217,9 +2217,7 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "urlencoding",
- "webkit-wincairo",
  "windows 0.58.0",
- "windows-sys 0.52.0",
  "wry",
 ]
 
@@ -6219,24 +6217,6 @@ checksum = "5a6580f308b1fad9207618087a65c04e7a10bc77e02c8e84e9b00dd4b12fa0bb"
 dependencies = [
  "js-sys",
  "wasm-bindgen",
-]
-
-[[package]]
-name = "webkit-wincairo"
-version = "0.1.0"
-dependencies = [
- "log",
- "thiserror 2.0.17",
- "webkit-wincairo-sys",
- "windows-sys 0.52.0",
-]
-
-[[package]]
-name = "webkit-wincairo-sys"
-version = "0.1.0"
-dependencies = [
- "cc",
- "windows-sys 0.52.0",
 ]
 
 [[package]]

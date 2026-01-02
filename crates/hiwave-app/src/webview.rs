@@ -1,7 +1,7 @@
 //! WebView abstraction for HiWave
 //!
 //! This module provides an abstraction layer over different WebView implementations,
-//! allowing HiWave to use either WRY (WebView2 on Windows), WinCairo WebKit, or RustKit.
+//! allowing HiWave to use either WRY (WebView2 on Windows) or RustKit (pure Rust engine).
 //!
 //! # Architecture
 //!
@@ -14,7 +14,6 @@
 //!
 //! The actual implementation is selected at compile time via feature flags:
 //! - Default: Uses WRY (WebView2 on Windows)
-//! - `wincairo` feature: Uses WinCairo WebKit
 //! - `rustkit` feature: Uses RustKit engine (pure Rust)
 
 use wry::dpi::{LogicalPosition, LogicalSize};
@@ -22,9 +21,6 @@ use wry::Rect;
 
 // Re-export WRY types for convenience
 pub use wry::WebView;
-
-#[cfg(not(all(target_os = "windows", feature = "wincairo")))]
-#[allow(unused_imports)]
 pub use wry::WebViewBuilder;
 
 // ============================================================================
@@ -38,15 +34,10 @@ pub use wry::WebViewBuilder;
 /// for the Content WebView when the `rustkit` feature is enabled.
 ///
 /// - Default build: Uses `wry::WebView` (WebView2 on Windows)
-/// - `wincairo` feature: Uses `webkit_wincairo::WebKitView` for content
 /// - `rustkit` feature: Uses `RustKitView` for content (via separate API)
 ///
 /// All types implement the `IWebView` trait for common operations.
-#[cfg(not(all(target_os = "windows", feature = "wincairo")))]
 pub type HiWaveWebView = wry::WebView;
-
-#[cfg(all(target_os = "windows", feature = "wincairo"))]
-pub type HiWaveWebView = webkit_wincairo::WebKitView;
 
 // ============================================================================
 // Helper functions
@@ -82,7 +73,7 @@ pub fn set_webview_bounds(webview: &WebView, x: f64, y: f64, width: f64, height:
 /// Common interface for WebView implementations
 ///
 /// This trait abstracts over the differences between WRY (WebView2) and
-/// WinCairo WebKit, allowing main.rs to work with either backend.
+/// RustKit, allowing main.rs to work with either backend.
 ///
 /// Note: This trait is NOT Send because WebView handles are not thread-safe.
 /// All WebView operations must be performed on the main/UI thread.
@@ -214,172 +205,8 @@ impl IWebView for wry::WebView {
 }
 
 // ============================================================================
-// Feature-gated WinCairo support
-// ============================================================================
-
-#[cfg(all(target_os = "windows", feature = "wincairo"))]
-pub mod wincairo_support {
-    //! WinCairo WebKit support module
-    //!
-    //! This module is only compiled when the `wincairo` feature is enabled.
-    //! It provides the infrastructure for using WinCairo WebKit instead of WebView2.
-
-    use super::{IWebView, Rect};
-    use hiwave_core::HiWaveResult;
-    use std::sync::{Arc, Mutex, OnceLock};
-    use webkit_wincairo::{ViewBounds, WebKitContext, WebKitView};
-
-    // Re-export types needed by main.rs
-    pub use webkit_wincairo::ViewBounds as WebKitViewBounds;
-
-    /// Shared WebKit context for all views
-    /// We use OnceLock<Result<...>> to cache both success and failure states
-    static WEBKIT_CONTEXT: OnceLock<Result<Arc<WebKitContext>, String>> = OnceLock::new();
-
-    /// Mutex to ensure only one thread attempts initialization
-    static INIT_MUTEX: Mutex<()> = Mutex::new(());
-
-    /// Get or create the shared WebKit context
-    pub fn get_webkit_context() -> HiWaveResult<Arc<WebKitContext>> {
-        // Fast path: check if already initialized
-        if let Some(result) = WEBKIT_CONTEXT.get() {
-            return result
-                .clone()
-                .map_err(|e| hiwave_core::HiWaveError::WebView(e));
-        }
-
-        // Slow path: initialize with lock
-        let _guard = INIT_MUTEX.lock().unwrap();
-
-        // Double-check after acquiring lock
-        if let Some(result) = WEBKIT_CONTEXT.get() {
-            return result
-                .clone()
-                .map_err(|e| hiwave_core::HiWaveError::WebView(e));
-        }
-
-        // Actually initialize - WebKitContext::new() already returns Arc<WebKitContext>
-        let result = WebKitContext::new().map_err(|e| e.to_string());
-
-        let _ = WEBKIT_CONTEXT.set(result.clone());
-
-        result.map_err(|e| hiwave_core::HiWaveError::WebView(e))
-    }
-
-    /// Create a WinCairo WebView
-    ///
-    /// # Parameters
-    /// - `parent`: Parent window handle (HWND)
-    /// - `bounds`: Initial bounds for the view
-    ///
-    /// # Returns
-    /// A new WebKitView instance
-    pub fn create_webkit_view(
-        parent: windows_sys::Win32::Foundation::HWND,
-        bounds: ViewBounds,
-    ) -> HiWaveResult<WebKitView> {
-        let context = get_webkit_context()?;
-        WebKitView::new(&context, bounds, parent)
-            .map_err(|e| hiwave_core::HiWaveError::WebView(e.to_string()))
-    }
-
-    /// Helper to evaluate script on a WebKit view
-    #[allow(dead_code)]
-    pub fn eval_webkit_script(view: &WebKitView, script: &str) {
-        let _ = view.page().evaluate_script_sync(script);
-    }
-
-    /// Helper to set bounds on a WebKit view
-    #[allow(dead_code)]
-    pub fn set_webkit_bounds(view: &WebKitView, x: i32, y: i32, width: u32, height: u32) {
-        view.set_bounds(ViewBounds::new(x, y, width, height));
-    }
-
-    /// Helper to load URL on a WebKit view
-    #[allow(dead_code)]
-    pub fn load_webkit_url(view: &WebKitView, url: &str) -> HiWaveResult<()> {
-        view.page()
-            .load_url(url)
-            .map_err(|e| hiwave_core::HiWaveError::WebView(e.to_string()))
-    }
-
-    /// Helper to load HTML on a WebKit view
-    #[allow(dead_code)]
-    pub fn load_webkit_html(view: &WebKitView, html: &str) -> HiWaveResult<()> {
-        view.page()
-            .load_html(html, None)
-            .map_err(|e| hiwave_core::HiWaveError::WebView(e.to_string()))
-    }
-
-    // ========================================================================
-    // IWebView implementation for WebKitView
-    // ========================================================================
-
-    impl IWebView for WebKitView {
-        fn load_url(&self, url: &str) {
-            let _ = self.page().load_url(url);
-        }
-
-        fn load_html(&self, html: &str) {
-            let _ = self.page().load_html(html, None);
-        }
-
-        fn evaluate_script(&self, script: &str) {
-            let _ = self.page().evaluate_script_sync(script);
-        }
-
-        fn set_bounds(&self, rect: Rect) {
-            // Convert WRY Rect to ViewBounds
-            // Note: WRY uses dpi::Position which can be Physical or Logical
-            // For simplicity, we treat all as logical coordinates
-            let (x, y) = match rect.position {
-                wry::dpi::Position::Logical(pos) => (pos.x as i32, pos.y as i32),
-                wry::dpi::Position::Physical(pos) => (pos.x, pos.y),
-            };
-            let (width, height) = match rect.size {
-                wry::dpi::Size::Logical(size) => (size.width as u32, size.height as u32),
-                wry::dpi::Size::Physical(size) => (size.width, size.height),
-            };
-            WebKitView::set_bounds(self, ViewBounds::new(x, y, width, height));
-        }
-
-        fn url(&self) -> Option<String> {
-            self.page().url()
-        }
-
-        fn set_zoom(&self, level: f64) {
-            self.page().set_zoom(level);
-        }
-
-        fn print(&self) {
-            // WinCairo WebKit print support - may need implementation
-            // For now, this is a no-op
-        }
-
-        fn focus(&self) {
-            WebKitView::focus(self);
-        }
-
-        fn clear_all_browsing_data(&self) {
-            // Clear cookies and cache through the context
-            // This would need to be implemented in webkit-wincairo
-        }
-
-        fn set_visible(&self, visible: bool) {
-            WebKitView::set_visible(self, visible);
-        }
-    }
-}
-
-// ============================================================================
 // Engine detection
 // ============================================================================
-
-/// Check if we're using WinCairo WebKit
-#[allow(dead_code)]
-pub fn is_wincairo_enabled() -> bool {
-    cfg!(all(target_os = "windows", feature = "wincairo"))
-}
 
 /// Check if we're using RustKit engine
 #[allow(dead_code)]
@@ -392,12 +219,6 @@ pub fn engine_name() -> &'static str {
     #[cfg(all(target_os = "windows", feature = "rustkit"))]
     return "RustKit";
 
-    #[cfg(all(target_os = "windows", feature = "wincairo", not(feature = "rustkit")))]
-    return "WinCairo WebKit";
-
-    #[cfg(not(any(
-        all(target_os = "windows", feature = "wincairo"),
-        all(target_os = "windows", feature = "rustkit")
-    )))]
+    #[cfg(not(all(target_os = "windows", feature = "rustkit")))]
     return "WebView2 (WRY)";
 }

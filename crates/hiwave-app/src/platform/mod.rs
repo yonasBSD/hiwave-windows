@@ -68,28 +68,34 @@ pub enum WebViewEngine {
     WebKit,
     /// WebView2 (Windows, Chromium-based)
     WebView2,
-    /// WinCairo WebKit (Windows, WebKit-based - Chromium independent)
-    WinCairoWebKit,
+    /// RustKit (Windows, pure Rust browser engine)
+    RustKit,
 }
 
 impl WebViewEngine {
     /// Returns true if this engine tends to be aggressive with new window requests
     #[allow(dead_code)] // Used for popup filtering in later phases
     pub fn is_aggressive_popup_opener(&self) -> bool {
-        // Both WebKit variants are aggressive with popups
-        matches!(self, WebViewEngine::WebKit | WebViewEngine::WinCairoWebKit)
+        // WebKit is aggressive with popups
+        matches!(self, WebViewEngine::WebKit)
     }
 
     /// Returns true if this engine is WebKit-based (not Chromium)
     #[allow(dead_code)]
     pub fn is_webkit_based(&self) -> bool {
-        matches!(self, WebViewEngine::WebKit | WebViewEngine::WinCairoWebKit)
+        matches!(self, WebViewEngine::WebKit)
     }
 
     /// Returns true if this engine is Chromium-based
     #[allow(dead_code)]
     pub fn is_chromium_based(&self) -> bool {
         matches!(self, WebViewEngine::WebView2)
+    }
+
+    /// Returns true if this engine is RustKit
+    #[allow(dead_code)]
+    pub fn is_rustkit(&self) -> bool {
+        matches!(self, WebViewEngine::RustKit)
     }
 }
 

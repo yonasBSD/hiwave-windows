@@ -2,7 +2,7 @@
 //!
 //! Supports two WebView engines:
 //! - WebView2 (default): Chromium-based, less aggressive with popups
-//! - WinCairo WebKit (optional): WebKit-based, more aggressive popup filtering
+//! - RustKit (optional): Pure Rust browser engine
 //!
 //! The native menu is optional but provides a consistent user experience.
 
@@ -30,10 +30,10 @@ impl WindowsPlatform {
         });
 
         // Detect which WebView engine to use based on feature flags
-        #[cfg(feature = "wincairo")]
-        let webview_engine = WebViewEngine::WinCairoWebKit;
+        #[cfg(feature = "rustkit")]
+        let webview_engine = WebViewEngine::RustKit;
 
-        #[cfg(not(feature = "wincairo"))]
+        #[cfg(not(feature = "rustkit"))]
         let webview_engine = WebViewEngine::WebView2;
 
         Self {
@@ -47,13 +47,10 @@ impl WindowsPlatform {
         }
     }
 
-    /// Check if using WinCairo WebKit engine
+    /// Check if using RustKit engine
     #[allow(dead_code)]
-    pub fn is_using_wincairo(&self) -> bool {
-        matches!(
-            self.capabilities.webview_engine,
-            WebViewEngine::WinCairoWebKit
-        )
+    pub fn is_using_rustkit(&self) -> bool {
+        matches!(self.capabilities.webview_engine, WebViewEngine::RustKit)
     }
 
     /// Check if using WebView2 (Chromium) engine
@@ -164,49 +161,19 @@ impl PlatformManager for WindowsPlatform {
             return false;
         }
 
-        // WinCairo WebKit uses more aggressive filtering (same as macOS WebKit)
-        if self.capabilities.webview_engine.is_webkit_based() {
-            // Extended ad/tracking patterns for WebKit
-            let blocked_patterns = [
-                "googlesyndication.com",
-                "doubleclick.net",
-                "googleadservices.com",
-                "facebook.com/tr",
-                "connect.facebook.net",
-                "criteo.com",
-                "tapad.com",
-                "lijit.com",
-                "/beacon",
-                "/pixel",
-                "/track",
-                "/sdk/",
-            ];
+        // Standard blocking patterns
+        let blocked_patterns = [
+            "googlesyndication.com",
+            "doubleclick.net",
+            "googleadservices.com",
+            "facebook.com/tr",
+        ];
 
-            let url_lower = url.to_lowercase();
-            for pattern in blocked_patterns {
-                if url_lower.contains(pattern) {
-                    debug!(
-                        "Blocking URL matching pattern '{}' (WebKit): {}",
-                        pattern, url
-                    );
-                    return false;
-                }
-            }
-        } else {
-            // WebView2 uses lighter filtering
-            let blocked_patterns = [
-                "googlesyndication.com",
-                "doubleclick.net",
-                "googleadservices.com",
-                "facebook.com/tr",
-            ];
-
-            let url_lower = url.to_lowercase();
-            for pattern in blocked_patterns {
-                if url_lower.contains(pattern) {
-                    debug!("Blocking URL matching pattern '{}': {}", pattern, url);
-                    return false;
-                }
+        let url_lower = url.to_lowercase();
+        for pattern in blocked_patterns {
+            if url_lower.contains(pattern) {
+                debug!("Blocking URL matching pattern '{}': {}", pattern, url);
+                return false;
             }
         }
 
@@ -215,10 +182,8 @@ impl PlatformManager for WindowsPlatform {
             return true;
         }
 
-        // Default behavior depends on engine
-        // WebKit: more conservative (block by default)
         // WebView2: more permissive (allow by default)
-        !self.capabilities.webview_engine.is_webkit_based()
+        true
     }
 }
 
@@ -236,10 +201,10 @@ mod tests {
         assert_eq!(caps.platform_name, "Windows");
 
         // Engine depends on feature flag
-        #[cfg(feature = "wincairo")]
-        assert_eq!(caps.webview_engine, WebViewEngine::WinCairoWebKit);
+        #[cfg(feature = "rustkit")]
+        assert_eq!(caps.webview_engine, WebViewEngine::RustKit);
 
-        #[cfg(not(feature = "wincairo"))]
+        #[cfg(not(feature = "rustkit"))]
         assert_eq!(caps.webview_engine, WebViewEngine::WebView2);
     }
 
@@ -262,43 +227,19 @@ mod tests {
         assert!(platform.should_open_as_tab("https://example.com/page", None));
     }
 
-    #[cfg(not(feature = "wincairo"))]
-    #[test]
-    fn test_webview2_less_aggressive() {
-        let platform = WindowsPlatform::new();
-        let caps = platform.capabilities();
-
-        // WebView2 should not be marked as aggressive
-        assert!(!caps.webview_engine.is_aggressive_popup_opener());
-        assert!(caps.webview_engine.is_chromium_based());
-        assert!(!caps.webview_engine.is_webkit_based());
-    }
-
-    #[cfg(feature = "wincairo")]
-    #[test]
-    fn test_wincairo_aggressive() {
-        let platform = WindowsPlatform::new();
-        let caps = platform.capabilities();
-
-        // WinCairo WebKit should be marked as aggressive
-        assert!(caps.webview_engine.is_aggressive_popup_opener());
-        assert!(caps.webview_engine.is_webkit_based());
-        assert!(!caps.webview_engine.is_chromium_based());
-    }
-
     #[test]
     fn test_engine_detection_helpers() {
         let platform = WindowsPlatform::new();
 
-        #[cfg(feature = "wincairo")]
+        #[cfg(feature = "rustkit")]
         {
-            assert!(platform.is_using_wincairo());
+            assert!(platform.is_using_rustkit());
             assert!(!platform.is_using_webview2());
         }
 
-        #[cfg(not(feature = "wincairo"))]
+        #[cfg(not(feature = "rustkit"))]
         {
-            assert!(!platform.is_using_wincairo());
+            assert!(!platform.is_using_rustkit());
             assert!(platform.is_using_webview2());
         }
     }

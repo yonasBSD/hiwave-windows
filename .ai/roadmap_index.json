@@ -137,6 +137,13 @@
       "work_order_path": ".ai/work_orders/perf-benchmarks.json"
     },
     {
+      "id": "wincairo-removal",
+      "title": "Remove WinCairo WebKit and transition to RustKit",
+      "status": "completed",
+      "depends_on": ["perf-benchmarks", "hiwave-integration"],
+      "work_order_path": ".ai/work_orders/wincairo-removal.json"
+    },
+    {
       "id": "define-agent-io",
       "title": "Define WorkOrder/VerificationReport schemas + shared RoadmapIndex",
       "status": "in_progress",

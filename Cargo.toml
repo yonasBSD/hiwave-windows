@@ -7,8 +7,6 @@ members = [
     "crates/hiwave-shell",
     "crates/hiwave-analytics",
     "crates/hiwave-app",
-    "crates/webkit-wincairo-sys",
-    "crates/webkit-wincairo",
     "crates/hiwave-smoke",
     "crates/rustkit-viewhost",
     "crates/rustkit-compositor",
@@ -80,10 +78,6 @@ hiwave-vault = { path = "crates/hiwave-vault" }
 hiwave-shell = { path = "crates/hiwave-shell" }
 hiwave-analytics = { path = "crates/hiwave-analytics" }
 hiwave-app = { path = "crates/hiwave-app" }
-
-# WinCairo WebKit bindings (Windows only)
-webkit-wincairo-sys = { path = "crates/webkit-wincairo-sys" }
-webkit-wincairo = { path = "crates/webkit-wincairo" }
 
 # RustKit browser engine crates
 rustkit-common = { path = "crates/rustkit-common" }

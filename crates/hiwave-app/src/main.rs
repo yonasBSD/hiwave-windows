@@ -28,11 +28,6 @@ use tracing_subscriber::FmtSubscriber;
 use webview::{engine_name, HiWaveWebView, IWebView};
 use wry::{Rect, WebViewBuilder};
 
-// WinCairo-specific imports
-#[cfg(all(target_os = "windows", feature = "wincairo"))]
-use tao::platform::windows::WindowExtWindows;
-#[cfg(all(target_os = "windows", feature = "wincairo"))]
-use webview::wincairo_support::{create_webkit_view, WebKitViewBounds};
 
 /// Default height of the chrome top bar area (workspace + tabs + toolbar)
 const CHROME_HEIGHT_DEFAULT: u32 = 104;
@@ -110,7 +105,6 @@ fn create_window_icon() -> Option<Icon> {
 #[derive(Debug, Clone, Copy)]
 enum ShelfScope {
     Workspace,
-    #[cfg_attr(all(target_os = "windows", feature = "wincairo"), allow(dead_code))]
     All,
 }
 
@@ -293,9 +287,6 @@ enum UserEvent {
     ActivateTabByIndex {
         index: usize,
     },
-    // WinCairo-specific: activate views after event loop starts
-    #[cfg(all(target_os = "windows", feature = "wincairo"))]
-    ActivateWinCairoViews,
 }
 
 fn apply_layout(
@@ -323,9 +314,6 @@ fn apply_layout(
     let content_width = (width - sidebar_width - right_sidebar_width).max(0.0);
     let content_height = (height - chrome_height - shelf_height).max(0.0);
 
-    #[cfg(all(target_os = "windows", feature = "wincairo"))]
-    let chrome_height_rect = chrome_height;
-    #[cfg(not(all(target_os = "windows", feature = "wincairo")))]
     let chrome_height_rect = height;
     let chrome_rect = Rect {
         position: LogicalPosition::new(0, 0).into(),
@@ -692,7 +680,7 @@ fn main() {
     let settings_proxy_for_handler = proxy.clone();
     let chrome_ready_flag = Arc::new(AtomicBool::new(false));
 
-    // WRY (WebView2) Chrome WebView creation - always uses WRY even with wincairo feature
+    // WRY (WebView2) Chrome WebView creation
     let chrome_webview = WebViewBuilder::new()
         .with_html(CHROME_HTML)
         .with_devtools(cfg!(debug_assertions))
@@ -1118,8 +1106,7 @@ fn main() {
         .build_as_child(&window)
         .expect("Failed to create Chrome WebView");
 
-    // Note: Chrome always uses WRY (WebView2) even with wincairo feature
-    // Only Content WebView uses WinCairo WebKit
+    // Chrome always uses WRY (WebView2)
 
     info!(
         "Chrome WebView created (full window, top bar height {}px)",
@@ -1127,7 +1114,6 @@ fn main() {
     );
 
     // === CONTENT WEBVIEW (created second, below chrome) ===
-    // Note: Some proxy clones are only used in WRY path, not WinCairo
     #[allow(unused_variables)]
     let content_proxy = proxy.clone();
     #[allow(unused_variables)]
@@ -1166,7 +1152,6 @@ fn main() {
             .unwrap_or_else(|| NEW_TAB_URL.to_string())
     };
     // WRY (WebView2) Content WebView creation
-    #[cfg(not(all(target_os = "windows", feature = "wincairo")))]
     let content_webview = WebViewBuilder::new()
         .with_html(ABOUT_HTML)
         .with_devtools(cfg!(debug_assertions))
@@ -1557,125 +1542,18 @@ fn main() {
         .expect("Failed to create Content WebView");
 
     // WRY initial URL loading
-    #[cfg(not(all(target_os = "windows", feature = "wincairo")))]
     if !is_new_tab_url(&initial_url) {
         if let Err(e) = content_webview.load_url(&initial_url) {
             error!("Failed to load initial URL: {}", e);
         }
     }
-
-    // WinCairo (WebKit) Content WebView creation
-    #[cfg(all(target_os = "windows", feature = "wincairo"))]
-    let content_webview = {
-        let hwnd = window.hwnd() as windows_sys::Win32::Foundation::HWND;
-        let (x, y) = match content_bounds.position {
-            wry::dpi::Position::Logical(pos) => (pos.x as i32, pos.y as i32),
-            wry::dpi::Position::Physical(pos) => (pos.x, pos.y),
-        };
-        let (width, height) = match content_bounds.size {
-            wry::dpi::Size::Logical(size) => (size.width as u32, size.height as u32),
-            wry::dpi::Size::Physical(size) => (size.width, size.height),
-        };
-        let bounds = WebKitViewBounds::new(x, y, width, height);
-        let mut view =
-            create_webkit_view(hwnd, bounds).expect("Failed to create Content WebView (WinCairo)");
-
-        // Load the about page as initial content
-        let _ = view.page().load_html(ABOUT_HTML, None);
-
-        // Set navigation handler via page callbacks
-        let content_proxy_wk = content_proxy.clone();
-        let content_state_wk = Arc::clone(&content_state);
-        view.page_mut()
-            .set_navigation_handler(move |url: &str, _nav_type, _user_initiated| {
-                info!("Content navigating to (WinCairo): {}", url);
-
-                if is_new_tab_url(url) {
-                    let _ = content_proxy_wk
-                        .send_event(UserEvent::UpdateActiveTabUrl(NEW_TAB_URL.to_string()));
-                    let _ = content_proxy_wk.send_event(UserEvent::UpdateUrl(String::new()));
-                    return webkit_wincairo::NavigationDecision::Allow;
-                }
-                if is_about_url(url) {
-                    let _ = content_proxy_wk
-                        .send_event(UserEvent::UpdateActiveTabUrl(ABOUT_URL.to_string()));
-                    let _ =
-                        content_proxy_wk.send_event(UserEvent::UpdateUrl(ABOUT_URL.to_string()));
-                    let _ = content_proxy_wk.send_event(UserEvent::LoadAboutPage);
-                    return webkit_wincairo::NavigationDecision::Allow;
-                }
-
-                // Check Shield for blocking
-                if let Ok(s) = content_state_wk.lock() {
-                    if s.shield.is_enabled() {
-                        if let Ok(parsed_url) = url::Url::parse(url) {
-                            if s.shield.should_block(
-                                &parsed_url,
-                                &parsed_url,
-                                ResourceType::Document,
-                            ) {
-                                return webkit_wincairo::NavigationDecision::Cancel;
-                            }
-                        }
-                    }
-                }
-
-                let _ = content_proxy_wk.send_event(UserEvent::SetLoading(true));
-                let _ = content_proxy_wk.send_event(UserEvent::UpdateUrl(url.to_string()));
-                let _ = content_proxy_wk.send_event(UserEvent::UpdateActiveTabUrl(url.to_string()));
-                webkit_wincairo::NavigationDecision::Allow
-            });
-
-        // Set IPC handler
-        let content_proxy_ipc_wk = content_proxy_ipc.clone();
-        let content_state_ipc_wk = Arc::clone(&content_state_ipc);
-        view.page_mut().set_ipc_handler(move |body: &str| {
-            info!("Content IPC (WinCairo): {}", body);
-            if let Ok(msg) = serde_json::from_str::<IpcMessage>(body) {
-                match &msg {
-                    IpcMessage::GoBack => {
-                        let _ = content_proxy_ipc_wk.send_event(UserEvent::GoBack);
-                    }
-                    IpcMessage::GoForward => {
-                        let _ = content_proxy_ipc_wk.send_event(UserEvent::GoForward);
-                    }
-                    IpcMessage::CreateTab { url } => {
-                        let _ = ipc::commands::handle_message(&content_state_ipc_wk, msg.clone());
-                        let _ = content_proxy_ipc_wk.send_event(UserEvent::SyncTabs);
-                        if let Some(u) = url {
-                            let _ = content_proxy_ipc_wk.send_event(UserEvent::Navigate(u.clone()));
-                        }
-                    }
-                    IpcMessage::ExitFocusMode => {
-                        let _ = ipc::commands::handle_message(&content_state_ipc_wk, msg.clone());
-                        let _ = content_proxy_ipc_wk.send_event(UserEvent::ExitFocusMode);
-                    }
-                    IpcMessage::ToggleFocusMode => {
-                        let _ = ipc::commands::handle_message(&content_state_ipc_wk, msg.clone());
-                        let _ = content_proxy_ipc_wk.send_event(UserEvent::ToggleFocusMode);
-                    }
-                    _ => {}
-                }
-            }
-        });
-
-        // Load initial URL if not new tab
-        if !is_new_tab_url(&initial_url) {
-            let _ = view.page().load_url(&initial_url);
-        }
-
-        // Note: set_visible(true) is called later via ActivateWinCairoViews event
-        // to ensure the event loop is running before WebKit activation
-
-        view
-    };
     info!("Content WebView created (content area)");
 
     // === SHELF WEBVIEW (created third, at bottom) ===
     let shelf_proxy = proxy.clone();
     let shelf_state = Arc::clone(&state);
 
-    // WRY (WebView2) Shelf WebView creation - always uses WRY even with wincairo feature
+    // WRY (WebView2) Shelf WebView creation
     let shelf_webview = WebViewBuilder::new()
         .with_html(SHELF_HTML)
         .with_devtools(cfg!(debug_assertions))
@@ -1769,8 +1647,7 @@ fn main() {
         .build_as_child(&window)
         .expect("Failed to create Shelf WebView");
 
-    // Note: Shelf always uses WRY (WebView2) even with wincairo feature
-    // Only Content WebView uses WinCairo WebKit
+    // Shelf always uses WRY (WebView2)
 
     info!("Shelf WebView created (bottom, starts hidden)");
     info!("Three-WebView architecture initialized");
@@ -1786,22 +1663,13 @@ fn main() {
     }
 
     // Store WebViews in Arcs for event loop access
-    // Chrome and Shelf always use WRY (WebView2)
-    // Content uses WinCairo WebKit when feature enabled, WRY otherwise
     let chrome_webview: Arc<wry::WebView> = Arc::new(chrome_webview);
     let shelf_webview: Arc<wry::WebView> = Arc::new(shelf_webview);
-
-    #[cfg(all(target_os = "windows", feature = "wincairo"))]
-    let content_webview: Arc<webkit_wincairo::WebKitView> = Arc::new(content_webview);
-    #[cfg(not(all(target_os = "windows", feature = "wincairo")))]
     let content_webview: Arc<wry::WebView> = Arc::new(content_webview);
 
     let chrome_for_events: Arc<wry::WebView> = Arc::clone(&chrome_webview);
     let shelf_for_events: Arc<wry::WebView> = Arc::clone(&shelf_webview);
 
-    #[cfg(all(target_os = "windows", feature = "wincairo"))]
-    let content_for_events: Arc<webkit_wincairo::WebKitView> = Arc::clone(&content_webview);
-    #[cfg(not(all(target_os = "windows", feature = "wincairo")))]
     let content_for_events: Arc<wry::WebView> = Arc::clone(&content_webview);
     let state_for_events = Arc::clone(&state);
     let chrome_height_for_events = Arc::clone(&chrome_height);
@@ -1817,12 +1685,7 @@ fn main() {
         // Short delay to ensure event loop is running
         std::thread::sleep(std::time::Duration::from_millis(100));
 
-        // WinCairo: Activate views first (requires event loop to be running)
-        #[cfg(all(target_os = "windows", feature = "wincairo"))]
-        let _ = init_proxy.send_event(UserEvent::ActivateWinCairoViews);
-
-        // Wait a bit for views to activate before syncing data (WRY only)
-        #[cfg(not(all(target_os = "windows", feature = "wincairo")))]
+        // Wait a bit for views to activate before syncing data
         {
             std::thread::sleep(std::time::Duration::from_millis(400));
             let _ = init_proxy.send_event(UserEvent::SyncTabs);
@@ -1834,7 +1697,6 @@ fn main() {
     });
 
     // Track settings window (created on demand)
-    // Use HiWaveWebView type alias to support both WRY and WinCairo backends
     let settings_window: Arc<Mutex<Option<(tao::window::Window, HiWaveWebView)>>> =
         Arc::new(Mutex::new(None));
     let settings_window_for_events = Arc::clone(&settings_window);
@@ -2134,33 +1996,6 @@ fn main() {
                             payload.to_string()
                         );
                         let _ = content_for_events.evaluate_script(&script);
-                    }
-                    // WinCairo: Activate Content WebView after event loop is running
-                    #[cfg(all(target_os = "windows", feature = "wincairo"))]
-                    UserEvent::ActivateWinCairoViews => {
-                        info!("Activating WinCairo WebKit content view (event loop is running)");
-                        // Only content uses WinCairo - Chrome and Shelf use WRY (WebView2)
-                        content_for_events.set_visible(true);
-                        // Shelf stays hidden until expanded
-                        info!("WinCairo content view activated");
-                        {
-                            let proxy = proxy.clone();
-                            let chrome_ready_flag = Arc::clone(&chrome_ready_flag_for_events);
-                            std::thread::spawn(move || {
-                                std::thread::sleep(std::time::Duration::from_millis(800));
-                                if chrome_ready_flag.load(Ordering::SeqCst) {
-                                    return;
-                                }
-                                info!("Chrome ready handshake timed out, forcing state sync");
-                                let _ = proxy.send_event(UserEvent::SyncTabs);
-                                let _ = proxy.send_event(UserEvent::SyncWorkspaces);
-                                let _ = proxy.send_event(UserEvent::SyncDownloads);
-                                let _ =
-                                    proxy.send_event(UserEvent::SyncShelf(ShelfScope::Workspace));
-                                let _ = proxy.send_event(UserEvent::SyncHistory);
-                                let _ = proxy.send_event(UserEvent::SyncShieldStats);
-                            });
-                        }
                     }
                     UserEvent::SyncTabs => {
                         info!("Syncing tabs to Chrome UI");
@@ -2533,7 +2368,6 @@ fn main() {
                             let settings_proxy = settings_proxy_for_handler.clone();
 
                             // WRY (WebView2) Settings WebView creation
-                            #[cfg(not(all(target_os = "windows", feature = "wincairo")))]
                             let settings_webview = WebViewBuilder::new()
                                 .with_html(SETTINGS_HTML)
                                 .with_devtools(cfg!(debug_assertions))
@@ -2634,63 +2468,6 @@ fn main() {
                                 })
                                 .build(&settings_win)
                                 .expect("Failed to create settings WebView");
-
-                            // WinCairo (WebKit) Settings WebView creation
-                            #[cfg(all(target_os = "windows", feature = "wincairo"))]
-                            let settings_webview = {
-                                let hwnd = settings_win.hwnd() as windows_sys::Win32::Foundation::HWND;
-                                let size = settings_win.inner_size();
-                                let bounds = WebKitViewBounds::new(0, 0, size.width, size.height);
-                                let mut view = create_webkit_view(hwnd, bounds)
-                                    .expect("Failed to create Settings WebView (WinCairo)");
-
-                                // Load Settings HTML
-                                let _ = view.page().load_html(SETTINGS_HTML, None);
-
-                                // Add initialization script
-                                let _ = view.page().add_user_script(JS_BRIDGE, true);
-
-                                // Set IPC handler
-                                let settings_proxy_wk = settings_proxy.clone();
-                                view.page_mut().set_ipc_handler(move |body: &str| {
-                                    if let Ok(ipc_msg) = serde_json::from_str::<IpcMessage>(body) {
-                                        match ipc_msg {
-                                            IpcMessage::CloseSettings => {
-                                                let _ = settings_proxy_wk.send_event(UserEvent::CloseSettings);
-                                            }
-                                            IpcMessage::GetSettings => {
-                                                let _ = settings_proxy_wk.send_event(UserEvent::GetSettings);
-                                            }
-                                            IpcMessage::SaveSettings { settings } => {
-                                                let _ = settings_proxy_wk.send_event(UserEvent::SaveSettings(settings));
-                                            }
-                                            IpcMessage::GetVaultStatus => {
-                                                let _ = settings_proxy_wk.send_event(UserEvent::GetVaultStatus);
-                                            }
-                                            IpcMessage::UnlockVault { password } => {
-                                                let _ = settings_proxy_wk.send_event(UserEvent::UnlockVault(password));
-                                            }
-                                            IpcMessage::LockVault => {
-                                                let _ = settings_proxy_wk.send_event(UserEvent::LockVault);
-                                            }
-                                            IpcMessage::GetAllCredentials => {
-                                                let _ = settings_proxy_wk.send_event(UserEvent::GetAllCredentials);
-                                            }
-                                            IpcMessage::SaveCredential { url, username, password } => {
-                                                let _ = settings_proxy_wk.send_event(UserEvent::SaveCredential { url, username, password });
-                                            }
-                                            IpcMessage::DeleteCredential { id } => {
-                                                let _ = settings_proxy_wk.send_event(UserEvent::DeleteCredential(id));
-                                            }
-                                            _ => {
-                                                info!("Settings window (WinCairo) received unhandled IPC: {:?}", ipc_msg);
-                                            }
-                                        }
-                                    }
-                                });
-
-                                view
-                            };
 
                             *settings_guard = Some((settings_win, settings_webview));
                         }

@@ -12,11 +12,11 @@ path = "src/main.rs"
 
 [features]
 default = []
-wincairo = ["webkit-wincairo", "windows-sys"]
+# RustKit: Pure Rust browser engine for content rendering
 rustkit = ["rustkit-engine", "rustkit-viewhost", "windows", "tokio"]
 
 [dependencies]
-# WebView
+# WebView (for Chrome UI, Shelf, and secondary windows)
 wry = { workspace = true }
 tao = { workspace = true }
 muda = { workspace = true }
@@ -48,12 +48,8 @@ hiwave-shield = { workspace = true }
 hiwave-vault = { workspace = true }
 hiwave-analytics = { workspace = true }
 
-# WinCairo WebKit (optional, Windows only)
-[target.'cfg(target_os = "windows")'.dependencies]
-webkit-wincairo = { workspace = true, optional = true }
-windows-sys = { version = "0.52", features = ["Win32_Foundation"], optional = true }
-
 # RustKit engine (optional, Windows only)
+[target.'cfg(target_os = "windows")'.dependencies]
 rustkit-engine = { workspace = true, optional = true }
 rustkit-viewhost = { workspace = true, optional = true }
 windows = { version = "0.58", features = ["Win32_Foundation"], optional = true }
