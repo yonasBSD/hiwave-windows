@@ -19,6 +19,7 @@ members = [
     "crates/rustkit-js",
     "crates/rustkit-bindings",
     "crates/rustkit-net",
+    "crates/rustkit-engine",
 ]
 
 [workspace.package]

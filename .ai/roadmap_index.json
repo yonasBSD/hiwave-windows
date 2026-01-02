@@ -102,6 +102,13 @@
       "work_order_path": ".ai/work_orders/download-manager.json"
     },
     {
+      "id": "multiview-integration",
+      "title": "Create multi-view orchestration layer that integrates all RustKit crates",
+      "status": "completed",
+      "depends_on": ["rustkit-viewhost", "rustkit-compositor", "html-dom-pipeline", "js-engine-integration", "networking-http"],
+      "work_order_path": ".ai/work_orders/multiview-integration.json"
+    },
+    {
       "id": "define-agent-io",
       "title": "Define WorkOrder/VerificationReport schemas + shared RoadmapIndex",
       "status": "in_progress",
