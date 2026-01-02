@@ -1,12 +1,12 @@
 //! Layout tests.
 
+use crate::{TestError, TestResult, TestSummary};
+use rustkit_css::ComputedStyle;
+use rustkit_layout::{BoxType, Dimensions, LayoutBox, Rect};
 use std::fs;
 use std::path::Path;
 use std::time::Instant;
-use rustkit_layout::{LayoutBox, BoxType, Dimensions, Rect};
-use rustkit_css::ComputedStyle;
 use tracing::debug;
-use crate::{TestError, TestResult, TestSummary};
 
 /// Layout test runner.
 pub struct LayoutTestRunner;
@@ -27,7 +27,7 @@ impl LayoutTestRunner {
         for entry in walkdir::WalkDir::new(dir)
             .into_iter()
             .filter_map(|e| e.ok())
-            .filter(|e| e.path().extension().map_or(false, |ext| ext == "html"))
+            .filter(|e| e.path().extension().is_some_and(|ext| ext == "html"))
         {
             let result = self.run_file(entry.path())?;
             summary.add(result);
@@ -38,7 +38,8 @@ impl LayoutTestRunner {
 
     /// Run a single layout test.
     pub fn run_file(&self, path: &Path) -> Result<TestResult, TestError> {
-        let name = path.file_name()
+        let name = path
+            .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("unknown")
             .to_string();
@@ -47,7 +48,7 @@ impl LayoutTestRunner {
         let start = Instant::now();
 
         // Read HTML
-        let html = match fs::read_to_string(path) {
+        let _html = match fs::read_to_string(path) {
             Ok(h) => h,
             Err(e) => return Ok(TestResult::error(&name, 0, e.to_string())),
         };
@@ -57,8 +58,10 @@ impl LayoutTestRunner {
         let mut root = LayoutBox::new(BoxType::Block, style);
 
         // Create containing block (viewport)
-        let mut containing = Dimensions::default();
-        containing.content = Rect::new(0.0, 0.0, 800.0, 600.0);
+        let containing = Dimensions {
+            content: Rect::new(0.0, 0.0, 800.0, 600.0),
+            ..Default::default()
+        };
 
         // Perform layout
         root.layout(&containing);
@@ -82,7 +85,9 @@ impl LayoutTestRunner {
         if expected.trim() == actual.trim() {
             Ok(TestResult::pass(&name, duration))
         } else {
-            Ok(TestResult::fail_with_diff(&name, duration, expected, actual))
+            Ok(TestResult::fail_with_diff(
+                &name, duration, expected, actual,
+            ))
         }
     }
 }

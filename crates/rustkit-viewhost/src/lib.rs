@@ -10,6 +10,9 @@
 //! 3. **DPI awareness**: Per-monitor DPI scaling
 //! 4. **Focus management**: Proper focus chain for keyboard events
 
+// Allow Arc with non-Send/Sync types - intentional for Win32 HWND handling
+#![allow(clippy::arc_with_non_send_sync)]
+
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
 use thiserror::Error;
@@ -23,7 +26,10 @@ use windows::{
         Graphics::Gdi::{BeginPaint, EndPaint, InvalidateRect, HBRUSH, PAINTSTRUCT},
         System::LibraryLoader::GetModuleHandleW,
         UI::{
-            HiDpi::{GetDpiForWindow, SetProcessDpiAwarenessContext, DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2},
+            HiDpi::{
+                GetDpiForWindow, SetProcessDpiAwarenessContext,
+                DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
+            },
             Input::KeyboardAndMouse::SetFocus,
             WindowsAndMessaging::*,
         },
@@ -65,11 +71,21 @@ pub struct Bounds {
 
 impl Bounds {
     pub fn new(x: i32, y: i32, width: u32, height: u32) -> Self {
-        Self { x, y, width, height }
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
     }
 
     pub fn zero() -> Self {
-        Self { x: 0, y: 0, width: 0, height: 0 }
+        Self {
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 0,
+        }
     }
 }
 
@@ -114,6 +130,7 @@ pub enum ViewEvent {
 pub type EventCallback = Box<dyn Fn(ViewEvent) + Send + Sync>;
 
 /// Per-view state.
+#[allow(dead_code)]
 struct ViewState {
     id: ViewId,
     #[cfg(windows)]
@@ -161,7 +178,11 @@ impl ViewHost {
 
     /// Create a new child view under the given parent HWND.
     #[cfg(windows)]
-    pub fn create_view(&self, parent: HWND, initial_bounds: Bounds) -> Result<ViewId, ViewHostError> {
+    pub fn create_view(
+        &self,
+        parent: HWND,
+        initial_bounds: Bounds,
+    ) -> Result<ViewId, ViewHostError> {
         if parent.0.is_null() {
             return Err(ViewHostError::InvalidParent);
         }
@@ -176,7 +197,7 @@ impl ViewHost {
         // Create child window
         let hwnd = unsafe {
             let class_name = Self::register_class()?;
-            
+
             CreateWindowExW(
                 WINDOW_EX_STYLE(0),
                 class_name,
@@ -228,7 +249,11 @@ impl ViewHost {
 
     /// Create a new view (non-Windows stub).
     #[cfg(not(windows))]
-    pub fn create_view(&self, _parent: (), initial_bounds: Bounds) -> Result<ViewId, ViewHostError> {
+    pub fn create_view(
+        &self,
+        _parent: (),
+        initial_bounds: Bounds,
+    ) -> Result<ViewId, ViewHostError> {
         let view_id = ViewId::new();
         let state = Arc::new(Mutex::new(ViewState {
             id: view_id,
@@ -245,7 +270,9 @@ impl ViewHost {
     /// Set the bounds of a view.
     pub fn set_bounds(&self, view_id: ViewId, bounds: Bounds) -> Result<(), ViewHostError> {
         let views = self.views.read().unwrap();
-        let state = views.get(&view_id).ok_or(ViewHostError::ViewNotFound(view_id))?;
+        let state = views
+            .get(&view_id)
+            .ok_or(ViewHostError::ViewNotFound(view_id))?;
 
         let mut state = state.lock().unwrap();
         state.bounds = bounds;
@@ -262,7 +289,7 @@ impl ViewHost {
                     bounds.height as i32,
                     SWP_NOZORDER | SWP_NOACTIVATE,
                 );
-                
+
                 // Force repaint
                 let _ = InvalidateRect(state.hwnd, None, false);
             }
@@ -275,7 +302,9 @@ impl ViewHost {
     /// Get the current bounds of a view.
     pub fn get_bounds(&self, view_id: ViewId) -> Result<Bounds, ViewHostError> {
         let views = self.views.read().unwrap();
-        let state = views.get(&view_id).ok_or(ViewHostError::ViewNotFound(view_id))?;
+        let state = views
+            .get(&view_id)
+            .ok_or(ViewHostError::ViewNotFound(view_id))?;
         let bounds = state.lock().unwrap().bounds;
         Ok(bounds)
     }
@@ -283,7 +312,9 @@ impl ViewHost {
     /// Set view visibility.
     pub fn set_visible(&self, view_id: ViewId, visible: bool) -> Result<(), ViewHostError> {
         let views = self.views.read().unwrap();
-        let state = views.get(&view_id).ok_or(ViewHostError::ViewNotFound(view_id))?;
+        let state = views
+            .get(&view_id)
+            .ok_or(ViewHostError::ViewNotFound(view_id))?;
 
         let mut state = state.lock().unwrap();
         state.visible = visible;
@@ -302,7 +333,9 @@ impl ViewHost {
     /// Focus a view.
     pub fn focus(&self, view_id: ViewId) -> Result<(), ViewHostError> {
         let views = self.views.read().unwrap();
-        let state = views.get(&view_id).ok_or(ViewHostError::ViewNotFound(view_id))?;
+        let state = views
+            .get(&view_id)
+            .ok_or(ViewHostError::ViewNotFound(view_id))?;
 
         let state = state.lock().unwrap();
 
@@ -321,7 +354,9 @@ impl ViewHost {
     #[cfg(windows)]
     pub fn get_hwnd(&self, view_id: ViewId) -> Result<HWND, ViewHostError> {
         let views = self.views.read().unwrap();
-        let state = views.get(&view_id).ok_or(ViewHostError::ViewNotFound(view_id))?;
+        let state = views
+            .get(&view_id)
+            .ok_or(ViewHostError::ViewNotFound(view_id))?;
         let hwnd = state.lock().unwrap().hwnd;
         Ok(hwnd)
     }
@@ -329,7 +364,9 @@ impl ViewHost {
     /// Get the DPI for a view.
     pub fn get_dpi(&self, view_id: ViewId) -> Result<u32, ViewHostError> {
         let views = self.views.read().unwrap();
-        let state = views.get(&view_id).ok_or(ViewHostError::ViewNotFound(view_id))?;
+        let state = views
+            .get(&view_id)
+            .ok_or(ViewHostError::ViewNotFound(view_id))?;
         let dpi = state.lock().unwrap().dpi;
         Ok(dpi)
     }
@@ -370,33 +407,44 @@ impl ViewHost {
     #[cfg(windows)]
     fn register_class() -> Result<PCWSTR, ViewHostError> {
         use std::sync::Once;
-        
+
         static REGISTER: Once = Once::new();
         static CLASS_NAME: &[u16] = &[
-            b'R' as u16, b'u' as u16, b's' as u16, b't' as u16, b'K' as u16,
-            b'i' as u16, b't' as u16, b'V' as u16, b'i' as u16, b'e' as u16,
-            b'w' as u16, b'H' as u16, b'o' as u16, b's' as u16, b't' as u16, 0,
+            b'R' as u16,
+            b'u' as u16,
+            b's' as u16,
+            b't' as u16,
+            b'K' as u16,
+            b'i' as u16,
+            b't' as u16,
+            b'V' as u16,
+            b'i' as u16,
+            b'e' as u16,
+            b'w' as u16,
+            b'H' as u16,
+            b'o' as u16,
+            b's' as u16,
+            b't' as u16,
+            0,
         ];
 
-        REGISTER.call_once(|| {
-            unsafe {
-                let wc = WNDCLASSEXW {
-                    cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
-                    style: CS_HREDRAW | CS_VREDRAW,
-                    lpfnWndProc: Some(Self::wnd_proc),
-                    cbClsExtra: 0,
-                    cbWndExtra: 0,
-                    hInstance: GetModuleHandleW(None).unwrap_or_default().into(),
-                    hIcon: HICON::default(),
-                    hCursor: LoadCursorW(None, IDC_ARROW).unwrap_or_default(),
-                    hbrBackground: HBRUSH::default(),
-                    lpszMenuName: PCWSTR::null(),
-                    lpszClassName: PCWSTR::from_raw(CLASS_NAME.as_ptr()),
-                    hIconSm: HICON::default(),
-                };
+        REGISTER.call_once(|| unsafe {
+            let wc = WNDCLASSEXW {
+                cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
+                style: CS_HREDRAW | CS_VREDRAW,
+                lpfnWndProc: Some(Self::wnd_proc),
+                cbClsExtra: 0,
+                cbWndExtra: 0,
+                hInstance: GetModuleHandleW(None).unwrap_or_default().into(),
+                hIcon: HICON::default(),
+                hCursor: LoadCursorW(None, IDC_ARROW).unwrap_or_default(),
+                hbrBackground: HBRUSH::default(),
+                lpszMenuName: PCWSTR::null(),
+                lpszClassName: PCWSTR::from_raw(CLASS_NAME.as_ptr()),
+                hIconSm: HICON::default(),
+            };
 
-                let _ = RegisterClassExW(&wc);
-            }
+            let _ = RegisterClassExW(&wc);
         });
 
         Ok(PCWSTR::from_raw(CLASS_NAME.as_ptr()))
@@ -512,16 +560,16 @@ mod tests {
     fn test_view_lifecycle_stub() {
         let host = ViewHost::new();
         let bounds = Bounds::new(0, 0, 800, 600);
-        
+
         let view_id = host.create_view((), bounds).unwrap();
         assert_eq!(host.view_count(), 1);
-        
+
         assert_eq!(host.get_bounds(view_id).unwrap(), bounds);
-        
+
         let new_bounds = Bounds::new(10, 10, 1024, 768);
         host.set_bounds(view_id, new_bounds).unwrap();
         assert_eq!(host.get_bounds(view_id).unwrap(), new_bounds);
-        
+
         host.destroy_view(view_id).unwrap();
         assert_eq!(host.view_count(), 0);
     }

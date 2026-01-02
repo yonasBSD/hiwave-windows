@@ -21,7 +21,6 @@ use wry::Rect;
 
 // Re-export WRY types for convenience
 pub use wry::WebView;
-pub use wry::WebViewBuilder;
 
 // ============================================================================
 // HiWaveWebView - Unified type alias for WebView backends

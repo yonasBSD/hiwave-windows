@@ -32,9 +32,24 @@ pub struct Color {
 }
 
 impl Color {
-    pub const TRANSPARENT: Color = Color { r: 0, g: 0, b: 0, a: 0.0 };
-    pub const BLACK: Color = Color { r: 0, g: 0, b: 0, a: 1.0 };
-    pub const WHITE: Color = Color { r: 255, g: 255, b: 255, a: 1.0 };
+    pub const TRANSPARENT: Color = Color {
+        r: 0,
+        g: 0,
+        b: 0,
+        a: 0.0,
+    };
+    pub const BLACK: Color = Color {
+        r: 0,
+        g: 0,
+        b: 0,
+        a: 1.0,
+    };
+    pub const WHITE: Color = Color {
+        r: 255,
+        g: 255,
+        b: 255,
+        a: 1.0,
+    };
 
     pub fn new(r: u8, g: u8, b: u8, a: f32) -> Self {
         Self { r, g, b, a }
@@ -62,7 +77,7 @@ impl Default for Color {
 }
 
 /// A CSS length value.
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub enum Length {
     /// Pixels.
     Px(f32),
@@ -75,6 +90,7 @@ pub enum Length {
     /// Auto.
     Auto,
     /// Zero.
+    #[default]
     Zero,
 }
 
@@ -89,12 +105,6 @@ impl Length {
             Length::Auto => 0.0, // Context-dependent
             Length::Zero => 0.0,
         }
-    }
-}
-
-impl Default for Length {
-    fn default() -> Self {
-        Length::Zero
     }
 }
 
@@ -293,14 +303,14 @@ impl Stylesheet {
         let mut stylesheet = Stylesheet::new();
 
         // Simple CSS parser (not full spec)
-        let mut chars = css.chars().peekable();
+        let chars = css.chars().peekable();
         let mut current_selector = String::new();
         let mut in_block = false;
         let mut current_property = String::new();
         let mut current_value = String::new();
         let mut in_value = false;
 
-        while let Some(c) = chars.next() {
+        for c in chars {
             if !in_block {
                 if c == '{' {
                     in_block = true;
@@ -308,46 +318,44 @@ impl Stylesheet {
                 } else {
                     current_selector.push(c);
                 }
-            } else {
-                if c == '}' {
-                    // End of block
-                    if !current_property.is_empty() && !current_value.is_empty() {
-                        stylesheet.rules.push(Rule {
-                            selector: current_selector.clone(),
-                            declarations: vec![Declaration {
-                                property: current_property.trim().to_string(),
-                                value: PropertyValue::Specified(current_value.trim().to_string()),
-                                important: current_value.contains("!important"),
-                            }],
-                        });
-                    }
-                    in_block = false;
-                    current_selector.clear();
-                    current_property.clear();
-                    current_value.clear();
-                    in_value = false;
-                } else if c == ':' && !in_value {
-                    in_value = true;
-                } else if c == ';' {
-                    // End of declaration
-                    if !current_property.is_empty() && !current_value.is_empty() {
-                        stylesheet.rules.push(Rule {
-                            selector: current_selector.clone(),
-                            declarations: vec![Declaration {
-                                property: current_property.trim().to_string(),
-                                value: PropertyValue::Specified(current_value.trim().to_string()),
-                                important: current_value.contains("!important"),
-                            }],
-                        });
-                    }
-                    current_property.clear();
-                    current_value.clear();
-                    in_value = false;
-                } else if in_value {
-                    current_value.push(c);
-                } else {
-                    current_property.push(c);
+            } else if c == '}' {
+                // End of block
+                if !current_property.is_empty() && !current_value.is_empty() {
+                    stylesheet.rules.push(Rule {
+                        selector: current_selector.clone(),
+                        declarations: vec![Declaration {
+                            property: current_property.trim().to_string(),
+                            value: PropertyValue::Specified(current_value.trim().to_string()),
+                            important: current_value.contains("!important"),
+                        }],
+                    });
                 }
+                in_block = false;
+                current_selector.clear();
+                current_property.clear();
+                current_value.clear();
+                in_value = false;
+            } else if c == ':' && !in_value {
+                in_value = true;
+            } else if c == ';' {
+                // End of declaration
+                if !current_property.is_empty() && !current_value.is_empty() {
+                    stylesheet.rules.push(Rule {
+                        selector: current_selector.clone(),
+                        declarations: vec![Declaration {
+                            property: current_property.trim().to_string(),
+                            value: PropertyValue::Specified(current_value.trim().to_string()),
+                            important: current_value.contains("!important"),
+                        }],
+                    });
+                }
+                current_property.clear();
+                current_value.clear();
+                in_value = false;
+            } else if in_value {
+                current_value.push(c);
+            } else {
+                current_property.push(c);
             }
         }
 
@@ -379,8 +387,7 @@ pub fn parse_color(value: &str) -> Option<Color> {
     }
 
     // Hex colors
-    if value.starts_with('#') {
-        let hex = &value[1..];
+    if let Some(hex) = value.strip_prefix('#') {
         let (r, g, b, a) = match hex.len() {
             3 => {
                 let r = u8::from_str_radix(&hex[0..1], 16).ok()? * 17;
@@ -534,4 +541,3 @@ mod tests {
         assert_eq!(child.display, Display::Block);
     }
 }
-

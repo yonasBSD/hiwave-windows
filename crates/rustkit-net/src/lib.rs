@@ -24,11 +24,11 @@ use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, error, info, trace, warn};
 use url::Url;
 
-pub mod intercept;
 pub mod download;
+pub mod intercept;
 
+pub use download::{Download, DownloadEvent, DownloadId, DownloadManager, DownloadState};
 pub use intercept::{InterceptAction, InterceptHandler, RequestInterceptor};
-pub use download::{Download, DownloadId, DownloadManager, DownloadState, DownloadEvent};
 
 /// Errors that can occur in networking.
 #[derive(Error, Debug)]
@@ -163,6 +163,7 @@ pub struct Response {
 
 /// Response body variants.
 #[derive(Debug)]
+#[allow(dead_code)]
 enum ResponseBody {
     /// Full body already loaded.
     Full(Bytes),
@@ -196,15 +197,13 @@ impl Response {
     /// Get the body as text.
     pub async fn text(self) -> Result<String, NetError> {
         let bytes = self.bytes().await?;
-        String::from_utf8(bytes.to_vec())
-            .map_err(|e| NetError::RequestFailed(e.to_string()))
+        String::from_utf8(bytes.to_vec()).map_err(|e| NetError::RequestFailed(e.to_string()))
     }
 
     /// Get the body as JSON.
     pub async fn json<T: serde::de::DeserializeOwned>(self) -> Result<T, NetError> {
         let bytes = self.bytes().await?;
-        serde_json::from_slice(&bytes)
-            .map_err(|e| NetError::RequestFailed(e.to_string()))
+        serde_json::from_slice(&bytes).map_err(|e| NetError::RequestFailed(e.to_string()))
     }
 
     /// Get a suggested filename from Content-Disposition or URL.
@@ -225,8 +224,9 @@ impl Response {
         }
 
         // Fall back to URL path
-        self.url.path_segments()
-            .and_then(|segments| segments.last())
+        self.url
+            .path_segments()
+            .and_then(|mut segments| segments.next_back())
             .filter(|s| !s.is_empty())
             .map(|s| s.to_string())
     }
@@ -318,13 +318,15 @@ impl ResourceLoader {
                     return Box::pin(self.fetch(new_request)).await;
                 }
                 InterceptAction::Modify(modified) => {
-                    return Box::pin(self.fetch(modified)).await;
+                    return Box::pin(self.fetch(*modified)).await;
                 }
             }
         }
 
         // Build reqwest request
-        let mut req_builder = self.client.request(request.method.clone(), request.url.clone());
+        let mut req_builder = self
+            .client
+            .request(request.method.clone(), request.url.clone());
 
         // Add headers
         for (name, value) in request.headers.iter() {
@@ -392,9 +394,15 @@ impl ResourceLoader {
     }
 
     /// Start a download.
-    pub async fn start_download(&self, url: Url, destination: PathBuf) -> Result<DownloadId, NetError> {
+    pub async fn start_download(
+        &self,
+        url: Url,
+        destination: PathBuf,
+    ) -> Result<DownloadId, NetError> {
         let request = Request::get(url);
-        self.download_manager.start(request, destination, self.client.clone()).await
+        self.download_manager
+            .start(request, destination, self.client.clone())
+            .await
     }
 }
 
@@ -501,4 +509,3 @@ mod tests {
         assert!(config.cookies_enabled);
     }
 }
-

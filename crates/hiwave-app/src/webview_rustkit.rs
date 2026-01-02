@@ -16,12 +16,12 @@
 //! RustKit views are NOT thread-safe. All operations must be performed on the
 //! main UI thread. This is consistent with WebView2 and WinCairo WebKit behavior.
 
-use std::cell::RefCell;
 use super::webview::IWebView;
 use hiwave_core::HiWaveResult;
+use std::cell::RefCell;
 use tracing::{debug, error, info, warn};
-use wry::Rect;
 use windows::Win32::Foundation::HWND;
+use wry::Rect;
 
 // Re-export types for convenience
 pub use rustkit_engine::{Engine, EngineBuilder, EngineViewId};
@@ -63,7 +63,8 @@ impl RustKitView {
             .build()
             .map_err(|e| hiwave_core::HiWaveError::WebView(e.to_string()))?;
 
-        let view_id = engine.create_view(parent, bounds)
+        let view_id = engine
+            .create_view(parent, bounds)
             .map_err(|e| hiwave_core::HiWaveError::WebView(e.to_string()))?;
 
         info!(?view_id, "RustKit view created");
@@ -121,7 +122,11 @@ impl RustKitView {
 
     /// Execute JavaScript synchronously.
     pub fn execute_script_sync(&self, script: &str) -> Option<String> {
-        match self.engine.borrow_mut().execute_script(self.view_id, script) {
+        match self
+            .engine
+            .borrow_mut()
+            .execute_script(self.view_id, script)
+        {
             Ok(result) => Some(result),
             Err(e) => {
                 debug!(error = %e, "Script execution failed");
@@ -181,7 +186,10 @@ impl IWebView for RustKitView {
             return Some(url);
         }
 
-        self.engine.borrow().get_url(self.view_id).map(|u| u.to_string())
+        self.engine
+            .borrow()
+            .get_url(self.view_id)
+            .map(|u| u.to_string())
     }
 
     fn set_zoom(&self, level: f64) {

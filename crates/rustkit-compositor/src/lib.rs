@@ -172,12 +172,13 @@ impl Compositor {
         width: u32,
         height: u32,
     ) -> Result<(), CompositorError> {
-        use raw_window_handle::{HasWindowHandle, RawWindowHandle, Win32WindowHandle};
+        use raw_window_handle::{RawWindowHandle, Win32WindowHandle};
 
         debug!(?view_id, width, height, "Creating surface for HWND");
 
         // Create raw window handle
-        let mut handle = Win32WindowHandle::new(std::num::NonZeroIsize::new(hwnd.0 as isize).unwrap());
+        let mut handle =
+            Win32WindowHandle::new(std::num::NonZeroIsize::new(hwnd.0 as isize).unwrap());
         handle.hinstance = std::num::NonZeroIsize::new(
             windows::Win32::System::LibraryLoader::GetModuleHandleW(None)
                 .unwrap_or_default()
@@ -240,7 +241,12 @@ impl Compositor {
     }
 
     /// Resize a surface.
-    pub fn resize_surface(&self, view_id: ViewId, width: u32, height: u32) -> Result<(), CompositorError> {
+    pub fn resize_surface(
+        &self,
+        view_id: ViewId,
+        width: u32,
+        height: u32,
+    ) -> Result<(), CompositorError> {
         let mut surfaces = self.surfaces.write().unwrap();
         let state = surfaces
             .get_mut(&view_id)
@@ -251,12 +257,20 @@ impl Compositor {
     }
 
     /// Resize a surface from Bounds.
-    pub fn resize_surface_from_bounds(&self, view_id: ViewId, bounds: Bounds) -> Result<(), CompositorError> {
+    pub fn resize_surface_from_bounds(
+        &self,
+        view_id: ViewId,
+        bounds: Bounds,
+    ) -> Result<(), CompositorError> {
         self.resize_surface(view_id, bounds.width, bounds.height)
     }
 
     /// Render a solid color to a surface (for testing).
-    pub fn render_solid_color(&self, view_id: ViewId, color: [f64; 4]) -> Result<(), CompositorError> {
+    pub fn render_solid_color(
+        &self,
+        view_id: ViewId,
+        color: [f64; 4],
+    ) -> Result<(), CompositorError> {
         let surfaces = self.surfaces.read().unwrap();
         let state = surfaces
             .get(&view_id)
@@ -356,4 +370,3 @@ mod tests {
     // Note: GPU tests require a display and are typically run manually
     // or in integration test environments with GPU access.
 }
-

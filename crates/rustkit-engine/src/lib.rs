@@ -21,9 +21,9 @@ use rustkit_core::{LoadEvent, NavigationRequest, NavigationStateMachine};
 use rustkit_css::ComputedStyle;
 use rustkit_dom::Document;
 use rustkit_js::JsRuntime;
-use rustkit_layout::{DisplayList, LayoutBox, BoxType, Dimensions, Rect};
+use rustkit_layout::{BoxType, Dimensions, DisplayList, LayoutBox, Rect};
 use rustkit_net::{LoaderConfig, NetError, Request, ResourceLoader};
-use rustkit_viewhost::{ViewHost, ViewId, Bounds};
+use rustkit_viewhost::{Bounds, ViewHost, ViewId};
 use thiserror::Error;
 use tokio::sync::mpsc;
 use tracing::{debug, info, trace};
@@ -71,15 +71,9 @@ impl EngineViewId {
 #[derive(Debug, Clone)]
 pub enum EngineEvent {
     /// Navigation started.
-    NavigationStarted {
-        view_id: EngineViewId,
-        url: Url,
-    },
+    NavigationStarted { view_id: EngineViewId, url: Url },
     /// Navigation committed (first bytes received).
-    NavigationCommitted {
-        view_id: EngineViewId,
-        url: Url,
-    },
+    NavigationCommitted { view_id: EngineViewId, url: Url },
     /// Page fully loaded.
     PageLoaded {
         view_id: EngineViewId,
@@ -110,17 +104,13 @@ pub enum EngineEvent {
         height: u32,
     },
     /// View received focus.
-    ViewFocused {
-        view_id: EngineViewId,
-    },
+    ViewFocused { view_id: EngineViewId },
     /// Download started.
-    DownloadStarted {
-        url: Url,
-        filename: String,
-    },
+    DownloadStarted { url: Url, filename: String },
 }
 
 /// View state.
+#[allow(dead_code)]
 struct ViewState {
     id: EngineViewId,
     viewhost_id: ViewId,
@@ -182,8 +172,7 @@ impl Engine {
         let viewhost = ViewHost::new();
 
         // Initialize Compositor
-        let compositor = Compositor::new()
-            .map_err(|e| EngineError::RenderError(e.to_string()))?;
+        let compositor = Compositor::new().map_err(|e| EngineError::RenderError(e.to_string()))?;
 
         // Initialize ResourceLoader
         let loader_config = LoaderConfig {
@@ -191,10 +180,8 @@ impl Engine {
             cookies_enabled: config.cookies_enabled,
             ..Default::default()
         };
-        let loader = Arc::new(
-            ResourceLoader::new(loader_config)
-                .map_err(EngineError::NetworkError)?
-        );
+        let loader =
+            Arc::new(ResourceLoader::new(loader_config).map_err(EngineError::NetworkError)?);
 
         // Event channel
         let (event_tx, event_rx) = mpsc::unbounded_channel();
@@ -221,26 +208,31 @@ impl Engine {
     }
 
     /// Create a new view.
-    pub fn create_view(&mut self, parent: HWND, bounds: Bounds) -> Result<EngineViewId, EngineError> {
+    pub fn create_view(
+        &mut self,
+        parent: HWND,
+        bounds: Bounds,
+    ) -> Result<EngineViewId, EngineError> {
         let id = EngineViewId::new();
 
         debug!(?id, ?bounds, "Creating view");
 
         // Create viewhost view
-        let viewhost_id = self.viewhost.create_view(parent, bounds)
+        let viewhost_id = self
+            .viewhost
+            .create_view(parent, bounds)
             .map_err(|e| EngineError::ViewError(e.to_string()))?;
 
         // Create compositor surface
-        let hwnd = self.viewhost.get_hwnd(viewhost_id)
+        let hwnd = self
+            .viewhost
+            .get_hwnd(viewhost_id)
             .map_err(|e| EngineError::ViewError(e.to_string()))?;
 
         unsafe {
-            self.compositor.create_surface_for_hwnd(
-                viewhost_id,
-                hwnd,
-                bounds.width,
-                bounds.height,
-            ).map_err(|e| EngineError::RenderError(e.to_string()))?;
+            self.compositor
+                .create_surface_for_hwnd(viewhost_id, hwnd, bounds.width, bounds.height)
+                .map_err(|e| EngineError::RenderError(e.to_string()))?;
         }
 
         // Create navigation state machine
@@ -264,7 +256,8 @@ impl Engine {
         self.views.insert(id, view_state);
 
         // Render initial background
-        self.compositor.render_solid_color(viewhost_id, self.config.background_color)
+        self.compositor
+            .render_solid_color(viewhost_id, self.config.background_color)
             .map_err(|e| EngineError::RenderError(e.to_string()))?;
 
         info!(?id, "View created");
@@ -273,7 +266,9 @@ impl Engine {
 
     /// Destroy a view.
     pub fn destroy_view(&mut self, id: EngineViewId) -> Result<(), EngineError> {
-        let view = self.views.remove(&id)
+        let view = self
+            .views
+            .remove(&id)
             .ok_or(EngineError::ViewNotFound(id))?;
 
         // Destroy compositor surface
@@ -288,17 +283,18 @@ impl Engine {
 
     /// Resize a view.
     pub fn resize_view(&mut self, id: EngineViewId, bounds: Bounds) -> Result<(), EngineError> {
-        let view = self.views.get(&id)
-            .ok_or(EngineError::ViewNotFound(id))?;
+        let view = self.views.get(&id).ok_or(EngineError::ViewNotFound(id))?;
 
         debug!(?id, ?bounds, "Resizing view");
 
         // Resize viewhost
-        self.viewhost.set_bounds(view.viewhost_id, bounds)
+        self.viewhost
+            .set_bounds(view.viewhost_id, bounds)
             .map_err(|e| EngineError::ViewError(e.to_string()))?;
 
         // Resize compositor surface
-        self.compositor.resize_surface(view.viewhost_id, bounds.width, bounds.height)
+        self.compositor
+            .resize_surface(view.viewhost_id, bounds.width, bounds.height)
             .map_err(|e| EngineError::RenderError(e.to_string()))?;
 
         // Re-layout if we have content
@@ -318,14 +314,17 @@ impl Engine {
 
     /// Load a URL in a view.
     pub async fn load_url(&mut self, id: EngineViewId, url: Url) -> Result<(), EngineError> {
-        let view = self.views.get_mut(&id)
+        let view = self
+            .views
+            .get_mut(&id)
             .ok_or(EngineError::ViewNotFound(id))?;
 
         info!(?id, %url, "Loading URL");
 
         // Start navigation
         let request = NavigationRequest::new(url.clone());
-        view.navigation.start_navigation(request)
+        view.navigation
+            .start_navigation(request)
             .map_err(|e| EngineError::NavigationError(e.to_string()))?;
 
         // Emit event
@@ -341,7 +340,8 @@ impl Engine {
         if !response.ok() {
             let error = format!("HTTP {}", response.status);
             let view = self.views.get_mut(&id).unwrap();
-            view.navigation.fail_navigation(error.clone())
+            view.navigation
+                .fail_navigation(error.clone())
                 .map_err(|e| EngineError::NavigationError(e.to_string()))?;
 
             let _ = self.event_tx.send(EngineEvent::NavigationFailed {
@@ -355,7 +355,8 @@ impl Engine {
 
         // Commit navigation
         let view = self.views.get_mut(&id).unwrap();
-        view.navigation.commit_navigation()
+        view.navigation
+            .commit_navigation()
             .map_err(|e| EngineError::NavigationError(e.to_string()))?;
 
         let _ = self.event_tx.send(EngineEvent::NavigationCommitted {
@@ -365,8 +366,8 @@ impl Engine {
 
         // Parse HTML
         let html = response.text().await?;
-        let document = Document::parse_html(&html)
-            .map_err(|e| EngineError::RenderError(e.to_string()))?;
+        let document =
+            Document::parse_html(&html).map_err(|e| EngineError::RenderError(e.to_string()))?;
         let document = Rc::new(document);
 
         // Get title
@@ -380,16 +381,17 @@ impl Engine {
 
         // Initialize JavaScript if enabled
         if self.config.javascript_enabled {
-            let js_runtime = JsRuntime::new()
+            let js_runtime = JsRuntime::new().map_err(|e| EngineError::JsError(e.to_string()))?;
+
+            let bindings =
+                DomBindings::new(js_runtime).map_err(|e| EngineError::JsError(e.to_string()))?;
+
+            bindings
+                .set_document(document.clone())
                 .map_err(|e| EngineError::JsError(e.to_string()))?;
 
-            let bindings = DomBindings::new(js_runtime)
-                .map_err(|e| EngineError::JsError(e.to_string()))?;
-
-            bindings.set_document(document.clone())
-                .map_err(|e| EngineError::JsError(e.to_string()))?;
-
-            bindings.set_location(&url)
+            bindings
+                .set_location(&url)
                 .map_err(|e| EngineError::JsError(e.to_string()))?;
 
             let view = self.views.get_mut(&id).unwrap();
@@ -401,7 +403,8 @@ impl Engine {
 
         // Finish navigation
         let view = self.views.get_mut(&id).unwrap();
-        view.navigation.finish_navigation()
+        view.navigation
+            .finish_navigation()
             .map_err(|e| EngineError::NavigationError(e.to_string()))?;
 
         // Emit events
@@ -423,21 +426,31 @@ impl Engine {
 
     /// Re-layout a view.
     fn relayout(&mut self, id: EngineViewId) -> Result<(), EngineError> {
-        let view = self.views.get(&id)
-            .ok_or(EngineError::ViewNotFound(id))?;
+        let view = self.views.get(&id).ok_or(EngineError::ViewNotFound(id))?;
 
-        let _document = view.document.as_ref()
+        let _document = view
+            .document
+            .as_ref()
             .ok_or(EngineError::RenderError("No document".into()))?;
 
         // Get view bounds
-        let bounds = self.viewhost.get_bounds(view.viewhost_id)
+        let bounds = self
+            .viewhost
+            .get_bounds(view.viewhost_id)
             .map_err(|e| EngineError::ViewError(e.to_string()))?;
 
-        debug!(?id, width = bounds.width, height = bounds.height, "Performing layout");
+        debug!(
+            ?id,
+            width = bounds.width,
+            height = bounds.height,
+            "Performing layout"
+        );
 
         // Create containing block
-        let mut containing_block = Dimensions::default();
-        containing_block.content = Rect::new(0.0, 0.0, bounds.width as f32, bounds.height as f32);
+        let containing_block = Dimensions {
+            content: Rect::new(0.0, 0.0, bounds.width as f32, bounds.height as f32),
+            ..Default::default()
+        };
 
         // Build layout tree (simplified - just body)
         let style = ComputedStyle::new();
@@ -462,28 +475,34 @@ impl Engine {
 
     /// Render a view.
     fn render(&mut self, id: EngineViewId) -> Result<(), EngineError> {
-        let view = self.views.get(&id)
-            .ok_or(EngineError::ViewNotFound(id))?;
+        let view = self.views.get(&id).ok_or(EngineError::ViewNotFound(id))?;
 
         trace!(?id, "Rendering view");
 
         // For now, just render background
         // Full rendering would iterate display list
-        self.compositor.render_solid_color(view.viewhost_id, self.config.background_color)
+        self.compositor
+            .render_solid_color(view.viewhost_id, self.config.background_color)
             .map_err(|e| EngineError::RenderError(e.to_string()))?;
 
         Ok(())
     }
 
     /// Execute JavaScript in a view.
-    pub fn execute_script(&mut self, id: EngineViewId, script: &str) -> Result<String, EngineError> {
-        let view = self.views.get(&id)
-            .ok_or(EngineError::ViewNotFound(id))?;
+    pub fn execute_script(
+        &mut self,
+        id: EngineViewId,
+        script: &str,
+    ) -> Result<String, EngineError> {
+        let view = self.views.get(&id).ok_or(EngineError::ViewNotFound(id))?;
 
-        let bindings = view.bindings.as_ref()
+        let bindings = view
+            .bindings
+            .as_ref()
             .ok_or(EngineError::JsError("JavaScript not initialized".into()))?;
 
-        let result = bindings.evaluate(script)
+        let result = bindings
+            .evaluate(script)
             .map_err(|e| EngineError::JsError(e.to_string()))?;
 
         Ok(format!("{:?}", result))
@@ -501,14 +520,16 @@ impl Engine {
 
     /// Check if a view can go back.
     pub fn can_go_back(&self, id: EngineViewId) -> bool {
-        self.views.get(&id)
+        self.views
+            .get(&id)
             .map(|v| v.navigation.can_go_back())
             .unwrap_or(false)
     }
 
     /// Check if a view can go forward.
     pub fn can_go_forward(&self, id: EngineViewId) -> bool {
-        self.views.get(&id)
+        self.views
+            .get(&id)
             .map(|v| v.navigation.can_go_forward())
             .unwrap_or(false)
     }

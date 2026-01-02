@@ -9,16 +9,14 @@
 //! - Retry and timeout utilities
 //! - Result extension traits
 
-use std::fmt;
 use std::time::Duration;
 use thiserror::Error;
-use tracing::{debug, warn};
 
 pub mod logging;
 pub mod retry;
 
-pub use logging::{LogConfig, LogFormat, init_logging};
-pub use retry::{RetryConfig, retry_with_backoff};
+pub use logging::{init_logging, LogConfig, LogFormat};
+pub use retry::{retry_with_backoff, RetryConfig};
 
 /// Unified error type for RustKit.
 #[derive(Error, Debug)]
@@ -206,9 +204,7 @@ impl RustKitError {
     pub fn is_retryable(&self) -> bool {
         matches!(
             self,
-            RustKitError::Network { .. }
-                | RustKitError::Timeout(_)
-                | RustKitError::Io(_)
+            RustKitError::Network { .. } | RustKitError::Timeout(_) | RustKitError::Io(_)
         )
     }
 
@@ -278,7 +274,10 @@ mod tests {
     fn test_error_categories() {
         assert_eq!(RustKitError::view("test").category(), "view");
         assert_eq!(RustKitError::network("test").category(), "network");
-        assert_eq!(RustKitError::Timeout(Duration::from_secs(1)).category(), "timeout");
+        assert_eq!(
+            RustKitError::Timeout(Duration::from_secs(1)).category(),
+            "timeout"
+        );
     }
 
     #[test]
@@ -301,4 +300,3 @@ mod tests {
         ));
     }
 }
-

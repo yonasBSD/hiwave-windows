@@ -1658,7 +1658,7 @@ fn handle_import_bookmarks(
                 last_visited: None,
             };
 
-            if let Ok(_) = state.shell.create_tab(tab_info) {
+            if state.shell.create_tab(tab_info).is_ok() {
                 actual_tabs_created += 1;
             }
         }

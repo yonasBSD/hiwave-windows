@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 use thiserror::Error;
-use tracing::{debug, info, trace, warn};
+use tracing::{debug, info, trace};
 
 /// Errors that can occur in JS operations.
 #[derive(Error, Debug)]
@@ -89,6 +89,7 @@ pub type ConsoleHandler = Box<dyn Fn(LogLevel, &str) + Send + Sync>;
 pub type TimerCallback = Box<dyn FnOnce() + Send + 'static>;
 
 /// Pending timer.
+#[allow(dead_code)]
 struct PendingTimer {
     callback: String, // JS code to execute
     delay: Duration,
@@ -215,7 +216,7 @@ impl JsRuntime {
             return;
         }
 
-        let flush_result = self.evaluate_script("console._flush()");
+        let _flush_result = self.evaluate_script("console._flush()");
         // Note: In a real implementation, we'd parse the returned array
         // and call the console handler for each log entry
     }
@@ -374,7 +375,9 @@ mod tests {
     fn test_global_variable() {
         let mut runtime = JsRuntime::new().unwrap();
 
-        runtime.set_global("testVar", JsValue::Number(42.0)).unwrap();
+        runtime
+            .set_global("testVar", JsValue::Number(42.0))
+            .unwrap();
         let result = runtime.evaluate_script("testVar * 2").unwrap();
         assert!(matches!(result, JsValue::Number(n) if (n - 84.0).abs() < f64::EPSILON));
     }
@@ -414,7 +417,9 @@ mod tests {
     fn test_function_execution() {
         let mut runtime = JsRuntime::new().unwrap();
 
-        runtime.evaluate_script("function add(a, b) { return a + b; }").unwrap();
+        runtime
+            .evaluate_script("function add(a, b) { return a + b; }")
+            .unwrap();
         let result = runtime.evaluate_script("add(2, 3)").unwrap();
         assert!(matches!(result, JsValue::Number(n) if (n - 5.0).abs() < f64::EPSILON));
     }
@@ -443,4 +448,3 @@ mod tests {
         assert!(result.is_err());
     }
 }
-

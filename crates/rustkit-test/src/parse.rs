@@ -1,12 +1,12 @@
 //! HTML/CSS parse tests.
 
+use crate::{TestError, TestResult, TestSummary};
+use rustkit_dom::{Document, Node, NodeType};
 use std::fs;
 use std::path::Path;
-use std::time::Instant;
 use std::rc::Rc;
-use rustkit_dom::{Document, Node, NodeType};
+use std::time::Instant;
 use tracing::debug;
-use crate::{TestError, TestResult, TestSummary};
 
 /// Parse test runner.
 pub struct ParseTestRunner;
@@ -27,7 +27,7 @@ impl ParseTestRunner {
         for entry in walkdir::WalkDir::new(dir)
             .into_iter()
             .filter_map(|e| e.ok())
-            .filter(|e| e.path().extension().map_or(false, |ext| ext == "html"))
+            .filter(|e| e.path().extension().is_some_and(|ext| ext == "html"))
         {
             let result = self.run_file(entry.path())?;
             summary.add(result);
@@ -38,7 +38,8 @@ impl ParseTestRunner {
 
     /// Run a single parse test.
     pub fn run_file(&self, path: &Path) -> Result<TestResult, TestError> {
-        let name = path.file_name()
+        let name = path
+            .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("unknown")
             .to_string();
@@ -54,7 +55,7 @@ impl ParseTestRunner {
 
         // Check for expected output file
         let expected_path = path.with_extension("expected");
-        
+
         // Parse HTML
         let doc = match Document::parse_html(&html) {
             Ok(d) => d,
@@ -83,7 +84,9 @@ impl ParseTestRunner {
         if expected.trim() == actual.trim() {
             Ok(TestResult::pass(&name, duration))
         } else {
-            Ok(TestResult::fail_with_diff(&name, duration, expected, actual))
+            Ok(TestResult::fail_with_diff(
+                &name, duration, expected, actual,
+            ))
         }
     }
 }
@@ -108,7 +111,11 @@ fn format_node(node: &Rc<Node>, output: &mut String, indent: usize) {
         NodeType::Document => {
             output.push_str("#document\n");
         }
-        NodeType::Element { tag_name, attributes, .. } => {
+        NodeType::Element {
+            tag_name,
+            attributes,
+            ..
+        } => {
             output.push_str(&format!("{}<{}>\n", prefix, tag_name));
             for (name, value) in attributes {
                 output.push_str(&format!("{}  {}=\"{}\"\n", prefix, name, value));

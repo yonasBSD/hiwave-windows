@@ -10,7 +10,7 @@
 //! 3. **Text shaping**: Use DirectWrite for accurate text measurement
 //! 4. **Display list**: Generate paint commands
 
-use rustkit_css::{ComputedStyle, Length, Color};
+use rustkit_css::{Color, ComputedStyle, Length};
 use thiserror::Error;
 
 /// Errors that can occur in layout.
@@ -34,7 +34,12 @@ pub struct Rect {
 
 impl Rect {
     pub fn new(x: f32, y: f32, width: f32, height: f32) -> Self {
-        Self { x, y, width, height }
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
     }
 
     pub fn zero() -> Self {
@@ -191,8 +196,10 @@ impl LayoutBox {
         // Get values from style
         let margin_left = self.length_to_px(style.margin_left, containing_block.content.width);
         let margin_right = self.length_to_px(style.margin_right, containing_block.content.width);
-        let border_left = self.length_to_px(style.border_left_width, containing_block.content.width);
-        let border_right = self.length_to_px(style.border_right_width, containing_block.content.width);
+        let border_left =
+            self.length_to_px(style.border_left_width, containing_block.content.width);
+        let border_right =
+            self.length_to_px(style.border_right_width, containing_block.content.width);
         let padding_left = self.length_to_px(style.padding_left, containing_block.content.width);
         let padding_right = self.length_to_px(style.padding_right, containing_block.content.width);
 
@@ -317,7 +324,9 @@ pub struct DisplayList {
 impl DisplayList {
     /// Create an empty display list.
     pub fn new() -> Self {
-        Self { commands: Vec::new() }
+        Self {
+            commands: Vec::new(),
+        }
     }
 
     /// Build display list from a layout box.
@@ -355,7 +364,10 @@ impl DisplayList {
         let s = &layout_box.style;
 
         // Only render if there's a visible border
-        if d.border.top > 0.0 || d.border.right > 0.0 || d.border.bottom > 0.0 || d.border.left > 0.0
+        if d.border.top > 0.0
+            || d.border.right > 0.0
+            || d.border.bottom > 0.0
+            || d.border.left > 0.0
         {
             self.commands.push(DisplayCommand::Border {
                 color: s.border_top_color, // Simplified: use same color for all sides
@@ -397,18 +409,18 @@ pub struct TextMetrics {
 }
 
 /// Measure text (simplified - uses average character width approximation).
-/// 
+///
 /// In a production engine, this would use DirectWrite or HarfBuzz for accurate shaping.
 pub fn measure_text(text: &str, _font_family: &str, font_size: f32) -> TextMetrics {
     // Approximate metrics based on font size
     // Typical Latin font has ~0.5em average character width
     let avg_char_width = font_size * 0.5;
     let width = text.chars().count() as f32 * avg_char_width;
-    
+
     // Standard line metrics
     let ascent = font_size * 0.8;
     let descent = font_size * 0.2;
-    
+
     TextMetrics {
         width,
         height: ascent + descent,
@@ -434,9 +446,24 @@ mod tests {
     fn test_dimensions_boxes() {
         let mut d = Dimensions::default();
         d.content = Rect::new(20.0, 20.0, 100.0, 50.0);
-        d.padding = EdgeSizes { top: 5.0, right: 5.0, bottom: 5.0, left: 5.0 };
-        d.border = EdgeSizes { top: 1.0, right: 1.0, bottom: 1.0, left: 1.0 };
-        d.margin = EdgeSizes { top: 10.0, right: 10.0, bottom: 10.0, left: 10.0 };
+        d.padding = EdgeSizes {
+            top: 5.0,
+            right: 5.0,
+            bottom: 5.0,
+            left: 5.0,
+        };
+        d.border = EdgeSizes {
+            top: 1.0,
+            right: 1.0,
+            bottom: 1.0,
+            left: 1.0,
+        };
+        d.margin = EdgeSizes {
+            top: 10.0,
+            right: 10.0,
+            bottom: 10.0,
+            left: 10.0,
+        };
 
         let pb = d.padding_box();
         assert_eq!(pb.width, 110.0);
@@ -462,11 +489,10 @@ mod tests {
     fn test_display_list_build() {
         let mut style = ComputedStyle::new();
         style.background_color = Color::from_rgb(255, 255, 255);
-        
+
         let layout_box = LayoutBox::new(BoxType::Block, style);
         let display_list = DisplayList::build(&layout_box);
-        
+
         assert!(!display_list.commands.is_empty());
     }
 }
-

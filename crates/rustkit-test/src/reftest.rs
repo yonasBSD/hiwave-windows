@@ -3,11 +3,11 @@
 //! Reference tests compare rendered output against reference images
 //! or reference HTML that should produce identical output.
 
+use crate::{TestError, TestResult, TestSummary};
 use std::fs;
 use std::path::Path;
 use std::time::Instant;
 use tracing::debug;
-use crate::{TestError, TestResult, TestSummary};
 
 /// Reference test types.
 #[derive(Debug, Clone, Copy)]
@@ -46,7 +46,7 @@ impl RefTestRunner {
             .max_depth(1)
             .into_iter()
             .filter_map(|e| e.ok())
-            .filter(|e| e.path().extension().map_or(false, |ext| ext == "html"))
+            .filter(|e| e.path().extension().is_some_and(|ext| ext == "html"))
         {
             let result = self.run_file(entry.path())?;
             summary.add(result);
@@ -64,7 +64,7 @@ impl RefTestRunner {
 
         for line in content.lines() {
             let line = line.trim();
-            
+
             // Skip comments and empty lines
             if line.is_empty() || line.starts_with('#') {
                 continue;
@@ -95,7 +95,8 @@ impl RefTestRunner {
 
     /// Run a single reference test.
     pub fn run_file(&self, path: &Path) -> Result<TestResult, TestError> {
-        let name = path.file_name()
+        let name = path
+            .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("unknown")
             .to_string();
@@ -118,7 +119,8 @@ impl RefTestRunner {
         ref_path: &Path,
         test_type: RefTestType,
     ) -> Result<TestResult, TestError> {
-        let name = test_path.file_name()
+        let name = test_path
+            .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("unknown")
             .to_string();
@@ -156,14 +158,22 @@ impl RefTestRunner {
                 if matches {
                     Ok(TestResult::pass(&name, duration))
                 } else {
-                    Ok(TestResult::fail(&name, duration, "Output does not match reference"))
+                    Ok(TestResult::fail(
+                        &name,
+                        duration,
+                        "Output does not match reference",
+                    ))
                 }
             }
             RefTestType::Mismatch => {
                 if !matches {
                     Ok(TestResult::pass(&name, duration))
                 } else {
-                    Ok(TestResult::fail(&name, duration, "Output unexpectedly matches reference"))
+                    Ok(TestResult::fail(
+                        &name,
+                        duration,
+                        "Output unexpectedly matches reference",
+                    ))
                 }
             }
         }
@@ -196,4 +206,3 @@ mod tests {
         assert_eq!(normalized, "<div>\ntest\n</div>");
     }
 }
-

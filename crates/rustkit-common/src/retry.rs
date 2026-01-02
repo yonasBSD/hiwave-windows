@@ -58,8 +58,8 @@ impl RetryConfig {
             return Duration::ZERO;
         }
 
-        let base_delay = self.initial_delay.as_secs_f64()
-            * self.backoff_multiplier.powi((attempt - 2) as i32);
+        let base_delay =
+            self.initial_delay.as_secs_f64() * self.backoff_multiplier.powi((attempt - 2) as i32);
 
         let delay = Duration::from_secs_f64(base_delay.min(self.max_delay.as_secs_f64()));
 
@@ -243,4 +243,3 @@ mod tests {
         assert!(matches!(result, Err(crate::RustKitError::Timeout(_))));
     }
 }
-

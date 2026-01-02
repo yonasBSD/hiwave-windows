@@ -19,21 +19,20 @@
 //! println!("Passed: {}/{}", results.passed, results.total);
 //! ```
 
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 use thiserror::Error;
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
-pub mod parse;
-pub mod style;
 pub mod layout;
+pub mod parse;
 pub mod reftest;
+pub mod style;
 
-pub use parse::ParseTestRunner;
-pub use style::StyleTestRunner;
 pub use layout::LayoutTestRunner;
+pub use parse::ParseTestRunner;
 pub use reftest::RefTestRunner;
+pub use style::StyleTestRunner;
 
 /// Errors that can occur in testing.
 #[derive(Error, Debug)]
@@ -230,6 +229,7 @@ impl Default for TestConfig {
 
 /// Main test harness.
 pub struct TestHarness {
+    #[allow(dead_code)]
     config: TestConfig,
     parse_runner: ParseTestRunner,
     style_runner: StyleTestRunner,
@@ -303,14 +303,18 @@ impl TestHarness {
     /// Run a specific test file.
     pub fn run_file(&self, path: impl AsRef<Path>) -> Result<TestResult, TestError> {
         let path = path.as_ref();
-        let name = path.file_name()
+        let name = path
+            .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("unknown");
 
         debug!(?path, "Running test file");
 
         // Determine test type from path
-        let parent = path.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str());
+        let parent = path
+            .parent()
+            .and_then(|p| p.file_name())
+            .and_then(|n| n.to_str());
 
         match parent {
             Some("parse") => self.parse_runner.run_file(path),
@@ -387,4 +391,3 @@ mod tests {
         assert!(diff.contains("+modified"));
     }
 }
-

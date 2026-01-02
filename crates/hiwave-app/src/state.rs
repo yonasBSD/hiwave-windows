@@ -1294,7 +1294,7 @@ impl AppState {
         if let Ok(parsed) = Url::parse(url) {
             if let Some(name) = parsed
                 .path_segments()
-                .and_then(|segments| segments.filter(|seg| !seg.is_empty()).last())
+                .and_then(|segments| segments.filter(|seg| !seg.is_empty()).next_back())
             {
                 return name.to_string();
             }

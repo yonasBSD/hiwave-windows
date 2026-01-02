@@ -6,7 +6,6 @@
 pub mod commands;
 
 use serde::{Deserialize, Serialize};
-use serde_json;
 
 /// IPC message from JavaScript to Rust
 #[derive(Debug, Clone, Deserialize)]

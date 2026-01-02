@@ -71,9 +71,16 @@ impl DownloadProgress {
 #[derive(Debug, Clone)]
 pub enum DownloadEvent {
     /// Download started.
-    Started { id: DownloadId, url: String, filename: String },
+    Started {
+        id: DownloadId,
+        url: String,
+        filename: String,
+    },
     /// Progress update.
-    Progress { id: DownloadId, progress: DownloadProgress },
+    Progress {
+        id: DownloadId,
+        progress: DownloadProgress,
+    },
     /// Download completed.
     Completed { id: DownloadId, path: PathBuf },
     /// Download failed.
@@ -183,7 +190,8 @@ impl DownloadManager {
             id,
             url: url.clone(),
             filename,
-        }).await;
+        })
+        .await;
 
         // Spawn download task
         let _downloads = Arc::new(RwLock::new(HashMap::<DownloadId, Download>::new()));
@@ -197,12 +205,16 @@ impl DownloadManager {
                 client,
                 &mut cancel_rx,
                 event_tx.as_ref(),
-            ).await;
+            )
+            .await;
 
             match result {
                 Ok(()) => {
                     if let Some(tx) = event_tx.as_ref() {
-                        let _ = tx.send(DownloadEvent::Completed { id, path: destination });
+                        let _ = tx.send(DownloadEvent::Completed {
+                            id,
+                            path: destination,
+                        });
                     }
                 }
                 Err(NetError::Cancelled) => {
@@ -235,10 +247,7 @@ impl DownloadManager {
         event_tx: Option<&mpsc::UnboundedSender<DownloadEvent>>,
     ) -> Result<(), NetError> {
         // Send request
-        let response = client
-            .get(request.url.clone())
-            .send()
-            .await?;
+        let response = client.get(request.url.clone()).send().await?;
 
         let total_size = response.content_length();
 
@@ -317,7 +326,11 @@ impl DownloadManager {
 
     /// Get download progress.
     pub async fn get_progress(&self, id: DownloadId) -> Option<DownloadProgress> {
-        self.downloads.read().await.get(&id).map(|d| d.progress.clone())
+        self.downloads
+            .read()
+            .await
+            .get(&id)
+            .map(|d| d.progress.clone())
     }
 
     /// List all downloads.
@@ -389,4 +402,3 @@ mod tests {
         assert!(list.is_empty());
     }
 }
-

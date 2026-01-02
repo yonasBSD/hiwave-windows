@@ -1,11 +1,11 @@
 //! CSS style computation tests.
 
+use crate::{TestError, TestResult, TestSummary};
+use rustkit_css::Stylesheet;
 use std::fs;
 use std::path::Path;
 use std::time::Instant;
-use rustkit_css::{Stylesheet, ComputedStyle};
 use tracing::debug;
-use crate::{TestError, TestResult, TestSummary};
 
 /// Style test runner.
 pub struct StyleTestRunner;
@@ -26,7 +26,11 @@ impl StyleTestRunner {
         for entry in walkdir::WalkDir::new(dir)
             .into_iter()
             .filter_map(|e| e.ok())
-            .filter(|e| e.path().extension().map_or(false, |ext| ext == "css" || ext == "html"))
+            .filter(|e| {
+                e.path()
+                    .extension()
+                    .is_some_and(|ext| ext == "css" || ext == "html")
+            })
         {
             let result = self.run_file(entry.path())?;
             summary.add(result);
@@ -37,7 +41,8 @@ impl StyleTestRunner {
 
     /// Run a single style test.
     pub fn run_file(&self, path: &Path) -> Result<TestResult, TestError> {
-        let name = path.file_name()
+        let name = path
+            .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or("unknown")
             .to_string();
@@ -52,7 +57,7 @@ impl StyleTestRunner {
         };
 
         // Extract CSS (from <style> or .css file)
-        let css = if path.extension().map_or(false, |e| e == "html") {
+        let css = if path.extension().is_some_and(|e| e == "html") {
             extract_style_from_html(&content)
         } else {
             content
@@ -88,7 +93,9 @@ impl StyleTestRunner {
         if expected.trim() == actual.trim() {
             Ok(TestResult::pass(&name, duration))
         } else {
-            Ok(TestResult::fail_with_diff(&name, duration, expected, actual))
+            Ok(TestResult::fail_with_diff(
+                &name, duration, expected, actual,
+            ))
         }
     }
 }
@@ -102,7 +109,7 @@ impl Default for StyleTestRunner {
 /// Extract CSS from <style> tags in HTML.
 fn extract_style_from_html(html: &str) -> String {
     let mut css = String::new();
-    
+
     // Simple extraction - find <style>...</style> blocks
     let mut in_style = false;
     for line in html.lines() {
@@ -144,4 +151,3 @@ mod tests {
         assert!(css.contains("color: red"));
     }
 }
-

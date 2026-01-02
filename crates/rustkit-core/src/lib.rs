@@ -183,7 +183,10 @@ impl NavigationStateMachine {
     }
 
     /// Start a new navigation.
-    pub fn start_navigation(&mut self, request: NavigationRequest) -> Result<NavigationId, CoreError> {
+    pub fn start_navigation(
+        &mut self,
+        request: NavigationRequest,
+    ) -> Result<NavigationId, CoreError> {
         let nav_id = request.id;
         let url = request.url.clone();
 
@@ -208,9 +211,10 @@ impl NavigationStateMachine {
             ));
         }
 
-        let nav = self.current_navigation.as_ref().ok_or_else(|| {
-            CoreError::NavigationFailed("No current navigation".into())
-        })?;
+        let nav = self
+            .current_navigation
+            .as_ref()
+            .ok_or_else(|| CoreError::NavigationFailed("No current navigation".into()))?;
 
         debug!(navigation_id = ?nav.id, "Navigation committed");
 
@@ -226,9 +230,10 @@ impl NavigationStateMachine {
 
     /// Update load progress.
     pub fn update_progress(&mut self, progress: f64) -> Result<(), CoreError> {
-        let nav = self.current_navigation.as_ref().ok_or_else(|| {
-            CoreError::NavigationFailed("No current navigation".into())
-        })?;
+        let nav = self
+            .current_navigation
+            .as_ref()
+            .ok_or_else(|| CoreError::NavigationFailed("No current navigation".into()))?;
 
         trace!(navigation_id = ?nav.id, progress, "Progress update");
 
@@ -248,9 +253,10 @@ impl NavigationStateMachine {
             ));
         }
 
-        let nav = self.current_navigation.take().ok_or_else(|| {
-            CoreError::NavigationFailed("No current navigation".into())
-        })?;
+        let nav = self
+            .current_navigation
+            .take()
+            .ok_or_else(|| CoreError::NavigationFailed("No current navigation".into()))?;
 
         info!(navigation_id = ?nav.id, elapsed_ms = ?nav.started_at.elapsed().as_millis(), "Navigation finished");
 
@@ -279,9 +285,10 @@ impl NavigationStateMachine {
 
     /// Mark navigation as failed.
     pub fn fail_navigation(&mut self, error: String) -> Result<(), CoreError> {
-        let nav = self.current_navigation.take().ok_or_else(|| {
-            CoreError::NavigationFailed("No current navigation".into())
-        })?;
+        let nav = self
+            .current_navigation
+            .take()
+            .ok_or_else(|| CoreError::NavigationFailed("No current navigation".into()))?;
 
         error!(navigation_id = ?nav.id, %error, "Navigation failed");
 
@@ -306,7 +313,10 @@ impl NavigationStateMachine {
 
     /// Check if navigation is in progress.
     pub fn is_loading(&self) -> bool {
-        matches!(self.state, NavigationState::Provisional | NavigationState::Committed)
+        matches!(
+            self.state,
+            NavigationState::Provisional | NavigationState::Committed
+        )
     }
 
     /// Get current URL.
@@ -365,6 +375,7 @@ pub type Task = Box<dyn FnOnce() + Send + 'static>;
 pub type TimerCallback = Box<dyn Fn() + Send + Sync + 'static>;
 
 /// Timer configuration.
+#[allow(dead_code)]
 struct TimerEntry {
     id: TimerId,
     callback: Arc<TimerCallback>,
@@ -526,19 +537,22 @@ mod tests {
 
         // Navigate to page 1
         let url1 = Url::parse("https://example.com/1").unwrap();
-        nav.start_navigation(NavigationRequest::new(url1.clone())).unwrap();
+        nav.start_navigation(NavigationRequest::new(url1.clone()))
+            .unwrap();
         nav.commit_navigation().unwrap();
         nav.finish_navigation().unwrap();
 
         // Navigate to page 2
         let url2 = Url::parse("https://example.com/2").unwrap();
-        nav.start_navigation(NavigationRequest::new(url2.clone())).unwrap();
+        nav.start_navigation(NavigationRequest::new(url2.clone()))
+            .unwrap();
         nav.commit_navigation().unwrap();
         nav.finish_navigation().unwrap();
 
         // Navigate to page 3
         let url3 = Url::parse("https://example.com/3").unwrap();
-        nav.start_navigation(NavigationRequest::new(url3.clone())).unwrap();
+        nav.start_navigation(NavigationRequest::new(url3.clone()))
+            .unwrap();
         nav.commit_navigation().unwrap();
         nav.finish_navigation().unwrap();
 
@@ -568,4 +582,3 @@ mod tests {
         assert!(TaskPriority::Normal > TaskPriority::Idle);
     }
 }
-

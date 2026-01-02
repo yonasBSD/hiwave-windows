@@ -10,12 +10,12 @@
 //! 3. **Query support**: Element lookup by ID, class, tag name
 //! 4. **Mutation support**: Node insertion, removal, attribute modification
 
-use std::cell::{Cell, RefCell};
-use std::collections::HashMap;
-use std::rc::{Rc, Weak};
 use html5ever::parse_document;
 use html5ever::tendril::TendrilSink;
 use markup5ever_rcdom::{Handle, NodeData, RcDom};
+use std::cell::{Cell, RefCell};
+use std::collections::HashMap;
+use std::rc::{Rc, Weak};
 use thiserror::Error;
 use tracing::debug;
 
@@ -156,12 +156,18 @@ impl Node {
 
     /// Get previous sibling.
     pub fn previous_sibling(&self) -> Option<Rc<Node>> {
-        self.prev_sibling.borrow().as_ref().and_then(|w| w.upgrade())
+        self.prev_sibling
+            .borrow()
+            .as_ref()
+            .and_then(|w| w.upgrade())
     }
 
     /// Get next sibling.
     pub fn next_sibling(&self) -> Option<Rc<Node>> {
-        self.next_sibling.borrow().as_ref().and_then(|w| w.upgrade())
+        self.next_sibling
+            .borrow()
+            .as_ref()
+            .and_then(|w| w.upgrade())
     }
 
     /// Check if this is an element node.
@@ -240,20 +246,19 @@ impl Document {
         for child_handle in handle.children.borrow().iter() {
             let node_type = match &child_handle.data {
                 NodeData::Document => continue, // Skip document node itself
-                NodeData::Doctype { name, public_id, system_id } => {
-                    NodeType::DocumentType {
-                        name: name.to_string(),
-                        public_id: public_id.to_string(),
-                        system_id: system_id.to_string(),
-                    }
-                }
+                NodeData::Doctype {
+                    name,
+                    public_id,
+                    system_id,
+                } => NodeType::DocumentType {
+                    name: name.to_string(),
+                    public_id: public_id.to_string(),
+                    system_id: system_id.to_string(),
+                },
                 NodeData::Element { name, attrs, .. } => {
                     let mut attributes = HashMap::new();
                     for attr in attrs.borrow().iter() {
-                        attributes.insert(
-                            attr.name.local.to_string(),
-                            attr.value.to_string(),
-                        );
+                        attributes.insert(attr.name.local.to_string(), attr.value.to_string());
                     }
                     NodeType::Element {
                         tag_name: name.local.to_string(),
@@ -261,12 +266,8 @@ impl Document {
                         attributes,
                     }
                 }
-                NodeData::Text { contents } => {
-                    NodeType::Text(contents.borrow().to_string())
-                }
-                NodeData::Comment { contents } => {
-                    NodeType::Comment(contents.to_string())
-                }
+                NodeData::Text { contents } => NodeType::Text(contents.borrow().to_string()),
+                NodeData::Comment { contents } => NodeType::Comment(contents.to_string()),
                 NodeData::ProcessingInstruction { target, contents } => {
                     NodeType::ProcessingInstruction {
                         target: target.to_string(),
@@ -302,17 +303,26 @@ impl Document {
 
     /// Get the document element (<html>).
     pub fn document_element(&self) -> Option<Rc<Node>> {
-        self.root.children().into_iter().find(|n| n.tag_name() == Some("html"))
+        self.root
+            .children()
+            .into_iter()
+            .find(|n| n.tag_name() == Some("html"))
     }
 
     /// Get the <head> element.
     pub fn head(&self) -> Option<Rc<Node>> {
-        self.document_element()?.children().into_iter().find(|n| n.tag_name() == Some("head"))
+        self.document_element()?
+            .children()
+            .into_iter()
+            .find(|n| n.tag_name() == Some("head"))
     }
 
     /// Get the <body> element.
     pub fn body(&self) -> Option<Rc<Node>> {
-        self.document_element()?.children().into_iter().find(|n| n.tag_name() == Some("body"))
+        self.document_element()?
+            .children()
+            .into_iter()
+            .find(|n| n.tag_name() == Some("body"))
     }
 
     /// Get element by ID.
@@ -355,7 +365,10 @@ impl Document {
     /// Get the title of the document.
     pub fn title(&self) -> Option<String> {
         let head = self.head()?;
-        let title_elem = head.children().into_iter().find(|n| n.tag_name() == Some("title"))?;
+        let title_elem = head
+            .children()
+            .into_iter()
+            .find(|n| n.tag_name() == Some("title"))?;
         Some(title_elem.text_content())
     }
 
@@ -367,6 +380,7 @@ impl Document {
         self.traverse_node(&self.root, &mut callback);
     }
 
+    #[allow(clippy::only_used_in_recursion)]
     fn traverse_node<F>(&self, node: &Rc<Node>, callback: &mut F)
     where
         F: FnMut(&Rc<Node>),
@@ -392,14 +406,12 @@ impl QuerySelector {
     /// Supports: tag, #id, .class
     pub fn select(doc: &Document, selector: &str) -> Vec<Rc<Node>> {
         let selector = selector.trim();
-        
-        if selector.starts_with('#') {
+
+        if let Some(id) = selector.strip_prefix('#') {
             // ID selector
-            let id = &selector[1..];
             doc.get_element_by_id(id).into_iter().collect()
-        } else if selector.starts_with('.') {
+        } else if let Some(class) = selector.strip_prefix('.') {
             // Class selector
-            let class = &selector[1..];
             doc.get_elements_by_class_name(class)
         } else {
             // Tag selector
@@ -421,7 +433,7 @@ mod tests {
 </html>"#;
 
         let doc = Document::parse_html(html).unwrap();
-        
+
         // Check structure
         assert!(doc.document_element().is_some());
         assert!(doc.head().is_some());
@@ -480,7 +492,9 @@ mod tests {
         let doc = Document::parse_html(html).unwrap();
 
         let body = doc.body().unwrap();
-        let paragraphs: Vec<_> = body.children().into_iter()
+        let paragraphs: Vec<_> = body
+            .children()
+            .into_iter()
             .filter(|n| n.is_element())
             .collect();
 
@@ -491,9 +505,14 @@ mod tests {
         let second = &paragraphs[1];
         let third = &paragraphs[2];
 
-        assert!(first.previous_sibling().is_none() || !first.previous_sibling().unwrap().is_element());
-        assert_eq!(second.previous_sibling().map(|n| n.text_content().trim().to_string()), 
-                   Some("A".to_string()));
+        assert!(
+            first.previous_sibling().is_none() || !first.previous_sibling().unwrap().is_element()
+        );
+        assert_eq!(
+            second
+                .previous_sibling()
+                .map(|n| n.text_content().trim().to_string()),
+            Some("A".to_string())
+        );
     }
 }
-

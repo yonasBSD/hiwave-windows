@@ -1,7 +1,7 @@
 //! Request interception for URL filtering and modification.
 
-use std::sync::Arc;
 use crate::{Request, Url};
+use std::sync::Arc;
 use tracing::{debug, trace};
 
 /// Action to take for an intercepted request.
@@ -14,7 +14,7 @@ pub enum InterceptAction {
     /// Redirect to a different URL.
     Redirect(Url),
     /// Modify the request.
-    Modify(Request),
+    Modify(Box<Request>),
 }
 
 /// Handler for intercepting requests.
@@ -307,10 +307,7 @@ mod tests {
     #[tokio::test]
     async fn test_interceptor_redirect() {
         let mut interceptor = RequestInterceptor::new();
-        interceptor.redirect(
-            UrlPattern::exact("https://old.com/"),
-            "https://new.com/",
-        );
+        interceptor.redirect(UrlPattern::exact("https://old.com/"), "https://new.com/");
 
         let request = test_request("https://old.com/");
         let action = interceptor.intercept(&request).await;
@@ -322,4 +319,3 @@ mod tests {
         }
     }
 }
-

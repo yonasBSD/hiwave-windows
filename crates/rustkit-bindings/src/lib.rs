@@ -9,12 +9,12 @@
 //! 3. **Performance**: Minimize overhead at the boundary
 //! 4. **Extensibility**: Easy to add new APIs
 
+use rustkit_dom::{Document, Node, NodeId};
+use rustkit_js::{JsError, JsRuntime, JsValue};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::atomic::{AtomicU64, Ordering};
-use rustkit_dom::{Document, Node, NodeId};
-use rustkit_js::{JsRuntime, JsValue, JsError};
 use thiserror::Error;
 use tracing::{debug, trace};
 use url::Url;
@@ -76,26 +76,31 @@ impl Location {
         Self {
             href: url.to_string(),
             protocol: format!("{}:", url.scheme()),
-            host: url.host_str().map(|h| {
-                if let Some(port) = url.port() {
-                    format!("{}:{}", h, port)
-                } else {
-                    h.to_string()
-                }
-            }).unwrap_or_default(),
+            host: url
+                .host_str()
+                .map(|h| {
+                    if let Some(port) = url.port() {
+                        format!("{}:{}", h, port)
+                    } else {
+                        h.to_string()
+                    }
+                })
+                .unwrap_or_default(),
             hostname: url.host_str().unwrap_or("").to_string(),
             port: url.port().map(|p| p.to_string()).unwrap_or_default(),
             pathname: url.path().to_string(),
             search: url.query().map(|q| format!("?{}", q)).unwrap_or_default(),
-            hash: url.fragment().map(|f| format!("#{}", f)).unwrap_or_default(),
+            hash: url
+                .fragment()
+                .map(|f| format!("#{}", f))
+                .unwrap_or_default(),
             origin: url.origin().unicode_serialization(),
         }
     }
 
     /// Create a Location from a string.
     pub fn from_string(href: &str) -> Result<Self, BindingError> {
-        let url = Url::parse(href)
-            .map_err(|e| BindingError::InvalidArgument(e.to_string()))?;
+        let url = Url::parse(href).map_err(|e| BindingError::InvalidArgument(e.to_string()))?;
         Ok(Self::from_url(&url))
     }
 }
@@ -355,9 +360,11 @@ impl DomBindings {
 
         // Index elements by ID
         document.traverse(|node| {
-            if let Some(id) = node.get_attribute("id") {
+            if let Some(_id) = node.get_attribute("id") {
                 let node_id = node.id.raw();
-                self.node_map.borrow_mut().insert(node_id as u64, node.clone());
+                self.node_map
+                    .borrow_mut()
+                    .insert(node_id as u64, node.clone());
             }
         });
 
@@ -423,7 +430,10 @@ impl DomBindings {
 
     /// Evaluate a script in the bound context.
     pub fn evaluate(&self, script: &str) -> Result<JsValue, BindingError> {
-        self.runtime.borrow_mut().evaluate_script(script).map_err(Into::into)
+        self.runtime
+            .borrow_mut()
+            .evaluate_script(script)
+            .map_err(Into::into)
     }
 
     /// Add an event listener.
@@ -530,7 +540,9 @@ mod tests {
         let runtime = JsRuntime::new().unwrap();
         let bindings = DomBindings::new(runtime).unwrap();
 
-        bindings.evaluate("localStorage.setItem('key', 'value')").unwrap();
+        bindings
+            .evaluate("localStorage.setItem('key', 'value')")
+            .unwrap();
         let result = bindings.evaluate("localStorage.getItem('key')").unwrap();
         assert!(matches!(result, JsValue::String(s) if s == "value"));
     }
@@ -546,4 +558,3 @@ mod tests {
         assert!(matches!(width, JsValue::Number(n) if (n - 1024.0).abs() < f64::EPSILON));
     }
 }
-

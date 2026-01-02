@@ -92,13 +92,11 @@ impl LogConfig {
 pub fn init_logging(config: LogConfig) {
     // Build filter
     let filter = if let Some(ref custom_filter) = config.filter {
-        EnvFilter::try_new(custom_filter).unwrap_or_else(|_| {
-            EnvFilter::new(format!("{}", config.level))
-        })
+        EnvFilter::try_new(custom_filter)
+            .unwrap_or_else(|_| EnvFilter::new(format!("{}", config.level)))
     } else {
-        EnvFilter::try_from_default_env().unwrap_or_else(|_| {
-            EnvFilter::new(format!("{}", config.level))
-        })
+        EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| EnvFilter::new(format!("{}", config.level)))
     };
 
     // Span events
@@ -135,9 +133,7 @@ pub fn init_logging(config: LogConfig) {
                 .init();
         }
         LogFormat::Json => {
-            let fmt_layer = fmt::layer()
-                .json()
-                .with_span_events(span_events);
+            let fmt_layer = fmt::layer().json().with_span_events(span_events);
 
             tracing_subscriber::registry()
                 .with(filter)
@@ -171,4 +167,3 @@ mod tests {
         assert_eq!(config.filter, Some("rustkit=debug".to_string()));
     }
 }
-
