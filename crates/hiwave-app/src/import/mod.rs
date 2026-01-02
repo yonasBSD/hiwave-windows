@@ -5,11 +5,11 @@
 //! - Passwords → Flow Vault credentials (CSV import)
 
 pub mod chrome;
-pub mod firefox;
 pub mod converter;
+pub mod firefox;
 
-use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
 
 /// Supported browsers for import
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

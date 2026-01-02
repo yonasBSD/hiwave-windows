@@ -1,4 +1,4 @@
-﻿[workspace]
+[workspace]
 resolver = "2"
 members = [
     "crates/hiwave-core",
@@ -9,6 +9,8 @@ members = [
     "crates/hiwave-app",
     "crates/webkit-wincairo-sys",
     "crates/webkit-wincairo",
+    "crates/hiwave-smoke",
+    "crates/rustkit-viewhost",
 ]
 
 [workspace.package]

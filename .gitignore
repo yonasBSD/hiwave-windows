@@ -31,3 +31,15 @@ nul
 # Local config
 *.local.toml
 
+# WinCairo WebKit DLLs (large binaries - use setup script)
+deps/wincairo/*.dll
+deps/wincairo/*.lib
+deps/wincairo/*.pdb
+!deps/wincairo/README.md
+deps/wincairo/*
+!deps/wincairo/include
+
+# AI Orchestrator (local-first)
+.ai/artifacts/
+.ai/cache/
+

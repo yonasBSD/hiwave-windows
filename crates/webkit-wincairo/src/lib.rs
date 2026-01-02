@@ -7,35 +7,49 @@
 //!
 //! ```no_run
 //! use webkit_wincairo::{WebKitContext, WebKitView, ViewBounds};
+//! use windows_sys::Win32::Foundation::HWND;
 //!
-//! // Create a shared context
-//! let context = WebKitContext::new()?;
+//! fn main() -> webkit_wincairo::Result<()> {
+//!     // In a real embedder, pass the parent HWND you are embedding into.
+//!     // For documentation purposes we use 0.
+//!     let parent_hwnd: HWND = 0;
 //!
-//! // Create a view embedded in a window
-//! let bounds = ViewBounds::new(0, 0, 800, 600);
-//! let view = WebKitView::new(&context, bounds, parent_hwnd)?;
+//!     // Create a shared context
+//!     let context = WebKitContext::new()?;
 //!
-//! // Load a URL
-//! view.page().load_url("https://example.com")?;
+//!     // Create a view embedded in a window
+//!     let bounds = ViewBounds::new(0, 0, 800, 600);
+//!     let view = WebKitView::new(&context, bounds, parent_hwnd)?;
+//!
+//!     // Load a URL
+//!     view.page().load_url("https://example.com")?;
+//!     Ok(())
+//! }
 //! ```
 
 #![cfg(target_os = "windows")]
 
-mod error;
-mod context;
-mod view;
-mod page;
 mod callbacks;
+mod context;
+mod error;
+mod page;
+mod view;
 
-pub use error::{WebKitError, Result};
+pub use callbacks::{IpcHandler, NavigationDecision, NavigationHandler, TitleChangeHandler};
 pub use context::WebKitContext;
-pub use view::{WebKitView, ViewBounds};
+pub use error::{Result, WebKitError};
 pub use page::WebKitPage;
-pub use callbacks::{NavigationDecision, NavigationHandler, TitleChangeHandler, IpcHandler};
+pub use view::{ViewBounds, WebKitView};
 
 // Re-export useful types from sys crate
 pub use webkit_wincairo_sys::{
+    wk_string_to_string,
+    WKCompletionListenerRef,
     WKNavigationType,
-    WKUserScriptInjectionTime,
+    WKScriptMessageGetBody,
+    // Types for script message handler IPC
+    WKScriptMessageRef,
+    WKStringRef,
     WKUserContentInjectedFrames,
+    WKUserScriptInjectionTime,
 };

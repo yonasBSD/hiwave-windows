@@ -9,11 +9,14 @@
 mod import;
 mod platform;
 
-use std::sync::{Arc, Mutex};
 use muda::Menu;
 use platform::get_platform_manager;
 #[cfg(target_os = "macos")]
 use platform::menu_ids;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex,
+};
 use tao::{
     dpi::{LogicalPosition, LogicalSize},
     event::{Event, WindowEvent},
@@ -22,16 +25,14 @@ use tao::{
 };
 use tracing::{error, info, warn, Level};
 use tracing_subscriber::FmtSubscriber;
-use wry::Rect;
-#[cfg(not(all(target_os = "windows", feature = "wincairo")))]
-use wry::WebViewBuilder;
-use webview::{engine_name, IWebView, HiWaveWebView};
+use webview::{engine_name, HiWaveWebView, IWebView};
+use wry::{Rect, WebViewBuilder};
 
 // WinCairo-specific imports
 #[cfg(all(target_os = "windows", feature = "wincairo"))]
-use webview::wincairo_support::{create_webkit_view, WebKitViewBounds};
-#[cfg(all(target_os = "windows", feature = "wincairo"))]
 use tao::platform::windows::WindowExtWindows;
+#[cfg(all(target_os = "windows", feature = "wincairo"))]
+use webview::wincairo_support::{create_webkit_view, WebKitViewBounds};
 
 /// Default height of the chrome top bar area (workspace + tabs + toolbar)
 const CHROME_HEIGHT_DEFAULT: u32 = 104;
@@ -49,9 +50,9 @@ mod ipc;
 mod state;
 mod webview;
 
+use hiwave_shield::ResourceType;
 use ipc::{IpcMessage, JS_BRIDGE};
 use state::AppState;
-use hiwave_shield::ResourceType;
 
 /// The HTML content for the browser chrome
 const CHROME_HTML: &str = include_str!("ui/chrome.html");
@@ -106,7 +107,17 @@ fn create_window_icon() -> Option<Icon> {
 #[derive(Debug, Clone, Copy)]
 enum ShelfScope {
     Workspace,
+    #[cfg_attr(all(target_os = "windows", feature = "wincairo"), allow(dead_code))]
     All,
+}
+
+impl ShelfScope {
+    fn as_str(self) -> &'static str {
+        match self {
+            ShelfScope::Workspace => "workspace",
+            ShelfScope::All => "all",
+        }
+    }
 }
 
 impl ShelfScope {
@@ -114,13 +125,6 @@ impl ShelfScope {
         match scope {
             Some("all") => ShelfScope::All,
             _ => ShelfScope::Workspace,
-        }
-    }
-
-    fn as_str(self) -> &'static str {
-        match self {
-            ShelfScope::Workspace => "workspace",
-            ShelfScope::All => "all",
         }
     }
 }
@@ -174,7 +178,10 @@ enum UserEvent {
     // Import events
     GetBrowserProfiles(String),
     ImportBrowserProfilesResult(String),
-    ImportBookmarks { browser: String, profile_path: String },
+    ImportBookmarks {
+        browser: String,
+        profile_path: String,
+    },
     ImportBookmarksResult(String),
     // Settings events
     GetSettings,
@@ -182,18 +189,33 @@ enum UserEvent {
     SaveSettings(serde_json::Value),
     SettingsSaved,
     // Export/Import events
-    ExportData { include_settings: bool, include_workspaces: bool },
+    ExportData {
+        include_settings: bool,
+        include_workspaces: bool,
+    },
     ExportDataResult(String),
-    SaveExportToFile { data: String, suggested_name: String },
-    ImportStateData { data: String, replace: bool },
+    SaveExportToFile {
+        data: String,
+        suggested_name: String,
+    },
+    ImportStateData {
+        data: String,
+        replace: bool,
+    },
     ImportStateDataResult(String),
     PickImportFile,
     // Clear data event
-    ClearBrowsingData { history: bool, downloads: bool, shelf: bool },
+    ClearBrowsingData {
+        history: bool,
+        downloads: bool,
+        shelf: bool,
+    },
     ClearBrowsingDataResult(String),
     // Cellar events
     GetCellar,
-    RestoreFromCellar { id: String },
+    RestoreFromCellar {
+        id: String,
+    },
     ClearCellar,
     // Decay ticker
     DecayTick,
@@ -225,30 +247,52 @@ enum UserEvent {
     ResetZoom,
     SyncZoomLevel,
     // Tab audio state
-    TabAudioStateChanged { playing: bool },
-    ToggleTabMute { id: String },
+    TabAudioStateChanged {
+        playing: bool,
+    },
+    ToggleTabMute {
+        id: String,
+    },
     // Autofill
     TriggerAutofill,
-    SendAutofillCredentials { credentials_json: String },
+    SendAutofillCredentials {
+        credentials_json: String,
+    },
     // Vault settings events (from settings webview)
     GetVaultStatus,
     UnlockVault(String),
     LockVault,
     GetAllCredentials,
-    SaveCredential { url: String, username: String, password: String },
+    SaveCredential {
+        url: String,
+        username: String,
+        password: String,
+    },
     DeleteCredential(i64),
     // Analytics settings events (from settings webview)
     GetAnalyticsSettings,
-    UpdateAnalyticsSettings { enabled: bool, retention_days: i32, weekly_report: bool, report_day: String },
+    UpdateAnalyticsSettings {
+        enabled: bool,
+        retention_days: i32,
+        weekly_report: bool,
+        report_day: String,
+    },
     ClearAnalyticsData,
-    ExportAnalyticsData { format: String },
+    ExportAnalyticsData {
+        format: String,
+    },
     // UI shortcuts (forwarded from content WebView on Windows)
     CloseActiveTab,
     FocusAddressBar,
     OpenFind,
     ToggleSidebar,
     OpenCommandPalette,
-    ActivateTabByIndex { index: usize },
+    ActivateTabByIndex {
+        index: usize,
+    },
+    // WinCairo-specific: activate views after event loop starts
+    #[cfg(all(target_os = "windows", feature = "wincairo"))]
+    ActivateWinCairoViews,
 }
 
 fn apply_layout(
@@ -276,9 +320,13 @@ fn apply_layout(
     let content_width = (width - sidebar_width - right_sidebar_width).max(0.0);
     let content_height = (height - chrome_height - shelf_height).max(0.0);
 
+    #[cfg(all(target_os = "windows", feature = "wincairo"))]
+    let chrome_height_rect = chrome_height;
+    #[cfg(not(all(target_os = "windows", feature = "wincairo")))]
+    let chrome_height_rect = height;
     let chrome_rect = Rect {
         position: LogicalPosition::new(0, 0).into(),
-        size: LogicalSize::new(width, height).into(),
+        size: LogicalSize::new(width, chrome_height_rect).into(),
     };
 
     let content_rect = Rect {
@@ -306,10 +354,8 @@ fn sync_tabs_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &impl IWebView) {
             .list_tabs(workspace_id)
             .iter()
             .map(|tab| {
-                let decay_level = hiwave_shell::BrowserShell::calculate_decay_level(
-                    tab.last_visited,
-                    decay_days,
-                );
+                let decay_level =
+                    hiwave_shell::BrowserShell::calculate_decay_level(tab.last_visited, decay_days);
                 serde_json::json!({
                     "id": tab.id.0,
                     "title": tab.title.clone().unwrap_or_else(|| "New Tab".to_string()),
@@ -336,25 +382,31 @@ fn sync_workspaces_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &impl IWebVie
         let active_ws_id = s.shell.get_active_workspace().map(|w| w.id);
         let active_tab_id = s.shell.get_active_tab().map(|t| t.id);
         let decay_days = s.user_settings.tab_decay_days;
-        let workspaces: Vec<serde_json::Value> = s.shell.list_workspaces()
+        let workspaces: Vec<serde_json::Value> = s
+            .shell
+            .list_workspaces()
             .iter()
             .map(|ws| {
-                let tabs: Vec<serde_json::Value> = ws.tabs.iter().filter_map(|tab_id| {
-                    s.shell.get_tab(*tab_id).map(|tab| {
-                        let decay_level = hiwave_shell::BrowserShell::calculate_decay_level(
-                            tab.last_visited,
-                            decay_days,
-                        );
-                        serde_json::json!({
-                            "id": tab.id.0.to_string(),
-                            "title": tab.title.clone().unwrap_or_else(|| "New Tab".to_string()),
-                            "url": tab.url.to_string(),
-                            "is_active": active_tab_id == Some(tab.id),
-                            "locked": tab.locked,
-                            "decay_level": decay_level,
+                let tabs: Vec<serde_json::Value> = ws
+                    .tabs
+                    .iter()
+                    .filter_map(|tab_id| {
+                        s.shell.get_tab(*tab_id).map(|tab| {
+                            let decay_level = hiwave_shell::BrowserShell::calculate_decay_level(
+                                tab.last_visited,
+                                decay_days,
+                            );
+                            serde_json::json!({
+                                "id": tab.id.0.to_string(),
+                                "title": tab.title.clone().unwrap_or_else(|| "New Tab".to_string()),
+                                "url": tab.url.to_string(),
+                                "is_active": active_tab_id == Some(tab.id),
+                                "locked": tab.locked,
+                                "decay_level": decay_level,
+                            })
                         })
                     })
-                }).collect();
+                    .collect();
                 serde_json::json!({
                     "id": ws.id.0.to_string(),
                     "name": ws.name,
@@ -469,7 +521,7 @@ fn load_report_page(content: &impl IWebView) {
     // Embed Chart.js library inline in the report HTML
     let report_with_chartjs = REPORT_HTML.replace(
         "<!-- Chart.js is injected by Rust before page load -->",
-        &format!("<script>{}</script>", CHART_JS)
+        &format!("<script>{}</script>", CHART_JS),
     );
     let _ = content.load_html(&report_with_chartjs);
 }
@@ -635,9 +687,9 @@ fn main() {
     let chrome_state = Arc::clone(&state);
     let chrome_proxy = proxy.clone();
     let settings_proxy_for_handler = proxy.clone();
+    let chrome_ready_flag = Arc::new(AtomicBool::new(false));
 
-    // WRY (WebView2) Chrome WebView creation
-    #[cfg(not(all(target_os = "windows", feature = "wincairo")))]
+    // WRY (WebView2) Chrome WebView creation - always uses WRY even with wincairo feature
     let chrome_webview = WebViewBuilder::new()
         .with_html(CHROME_HTML)
         .with_devtools(cfg!(debug_assertions))
@@ -1063,128 +1115,8 @@ fn main() {
         .build_as_child(&window)
         .expect("Failed to create Chrome WebView");
 
-    // WinCairo (WebKit) Chrome WebView creation
-    #[cfg(all(target_os = "windows", feature = "wincairo"))]
-    let chrome_webview = {
-        let hwnd = window.hwnd() as windows_sys::Win32::Foundation::HWND;
-        let (x, y) = match chrome_bounds.position {
-            wry::dpi::Position::Logical(pos) => (pos.x as i32, pos.y as i32),
-            wry::dpi::Position::Physical(pos) => (pos.x, pos.y),
-        };
-        let (width, height) = match chrome_bounds.size {
-            wry::dpi::Size::Logical(size) => (size.width as u32, size.height as u32),
-            wry::dpi::Size::Physical(size) => (size.width, size.height),
-        };
-        let bounds = WebKitViewBounds::new(x, y, width, height);
-        let mut view = create_webkit_view(hwnd, bounds)
-            .expect("Failed to create Chrome WebView (WinCairo)");
-
-        // Load Chrome HTML
-        let _ = view.page().load_html(CHROME_HTML, None);
-
-        // Add initialization script
-        let _ = view.page().add_user_script(JS_BRIDGE, true);
-
-        // Set IPC handler - forwards messages similar to WRY
-        let chrome_proxy_wk = chrome_proxy.clone();
-        let chrome_state_wk = Arc::clone(&chrome_state);
-        view.page_mut().set_ipc_handler(move |body: &str| {
-            info!("Chrome IPC (WinCairo): {}", body);
-
-            match serde_json::from_str::<IpcMessage>(body) {
-                Ok(msg) => match &msg {
-                    IpcMessage::Navigate { url } => {
-                        let _ = chrome_proxy_wk.send_event(UserEvent::Navigate(url.clone()));
-                    }
-                    IpcMessage::GoBack => {
-                        let _ = chrome_proxy_wk.send_event(UserEvent::GoBack);
-                    }
-                    IpcMessage::GoForward => {
-                        let _ = chrome_proxy_wk.send_event(UserEvent::GoForward);
-                    }
-                    IpcMessage::Reload => {
-                        let _ = chrome_proxy_wk.send_event(UserEvent::Reload);
-                    }
-                    IpcMessage::Stop => {
-                        let _ = chrome_proxy_wk.send_event(UserEvent::Stop);
-                    }
-                    IpcMessage::CreateTab { ref url } => {
-                        let nav_url = url.clone();
-                        let _ = ipc::commands::handle_message(&chrome_state_wk, msg.clone());
-                        let _ = chrome_proxy_wk.send_event(UserEvent::SyncTabs);
-                        let _ = chrome_proxy_wk.send_event(UserEvent::SyncWorkspaces);
-                        if let Some(u) = nav_url {
-                            let _ = chrome_proxy_wk.send_event(UserEvent::Navigate(u));
-                        } else {
-                            let _ = chrome_proxy_wk.send_event(UserEvent::NewTab);
-                        }
-                    }
-                    IpcMessage::CloseTab { .. } => {
-                        let _ = ipc::commands::handle_message(&chrome_state_wk, msg.clone());
-                        let _ = chrome_proxy_wk.send_event(UserEvent::SyncTabs);
-                        let _ = chrome_proxy_wk.send_event(UserEvent::SyncWorkspaces);
-                        if let Ok(s) = chrome_state_wk.lock() {
-                            if let Some(active_tab) = s.shell.get_active_tab() {
-                                let url = active_tab.url.to_string();
-                                let _ = chrome_proxy_wk.send_event(UserEvent::Navigate(url));
-                            }
-                        }
-                    }
-                    IpcMessage::ActivateTab { ref id } => {
-                        let already_active = chrome_state_wk
-                            .lock()
-                            .ok()
-                            .and_then(|s| s.shell.get_active_tab().map(|tab| tab.id.0))
-                            .map(|active_id| id.parse::<u64>().ok() == Some(active_id))
-                            .unwrap_or(false);
-                        let response = ipc::commands::handle_message(&chrome_state_wk, msg.clone());
-                        let _ = chrome_proxy_wk.send_event(UserEvent::SyncTabs);
-                        if !already_active {
-                            if let ipc::IpcResponse::Success { data } = response {
-                                if let Some(url) = data.get("url").and_then(|v| v.as_str()) {
-                                    let _ = chrome_proxy_wk.send_event(UserEvent::Navigate(url.to_string()));
-                                }
-                            }
-                            let _ = chrome_proxy_wk.send_event(UserEvent::SyncZoomLevel);
-                        }
-                    }
-                    IpcMessage::ExpandChrome => {
-                        let _ = chrome_proxy_wk.send_event(UserEvent::ExpandChrome);
-                    }
-                    IpcMessage::CollapseChrome => {
-                        let _ = chrome_proxy_wk.send_event(UserEvent::CollapseChrome);
-                    }
-                    IpcMessage::ExpandShelf => {
-                        let _ = chrome_proxy_wk.send_event(UserEvent::ExpandShelf);
-                    }
-                    IpcMessage::CollapseShelf => {
-                        let _ = chrome_proxy_wk.send_event(UserEvent::CollapseShelf);
-                    }
-                    IpcMessage::SetSidebarOpen { open } => {
-                        let _ = chrome_proxy_wk.send_event(UserEvent::SetSidebarOpen(*open));
-                    }
-                    IpcMessage::SetSidebarWidth { width } => {
-                        let _ = chrome_proxy_wk.send_event(UserEvent::SetSidebarWidth(*width));
-                    }
-                    IpcMessage::OpenSettings => {
-                        let _ = chrome_proxy_wk.send_event(UserEvent::OpenSettings);
-                    }
-                    IpcMessage::CloseSettings => {
-                        let _ = chrome_proxy_wk.send_event(UserEvent::CloseSettings);
-                    }
-                    // Forward other messages to the generic handler
-                    _ => {
-                        let _ = ipc::commands::handle_message(&chrome_state_wk, msg.clone());
-                    }
-                },
-                Err(e) => {
-                    error!("Failed to parse Chrome IPC (WinCairo): {}", e);
-                }
-            }
-        });
-
-        view
-    };
+    // Note: Chrome always uses WRY (WebView2) even with wincairo feature
+    // Only Content WebView uses WinCairo WebKit
 
     info!(
         "Chrome WebView created (full window, top bar height {}px)",
@@ -1642,46 +1574,54 @@ fn main() {
             wry::dpi::Size::Physical(size) => (size.width, size.height),
         };
         let bounds = WebKitViewBounds::new(x, y, width, height);
-        let mut view = create_webkit_view(hwnd, bounds)
-            .expect("Failed to create Content WebView (WinCairo)");
+        let mut view =
+            create_webkit_view(hwnd, bounds).expect("Failed to create Content WebView (WinCairo)");
 
-        // Load About HTML as default
+        // Load the about page as initial content
         let _ = view.page().load_html(ABOUT_HTML, None);
 
         // Set navigation handler via page callbacks
         let content_proxy_wk = content_proxy.clone();
         let content_state_wk = Arc::clone(&content_state);
-        view.page_mut().set_navigation_handler(move |url: &str, _nav_type, _user_initiated| {
-            info!("Content navigating to (WinCairo): {}", url);
+        view.page_mut()
+            .set_navigation_handler(move |url: &str, _nav_type, _user_initiated| {
+                info!("Content navigating to (WinCairo): {}", url);
 
-            if is_new_tab_url(url) {
-                let _ = content_proxy_wk.send_event(UserEvent::UpdateActiveTabUrl(NEW_TAB_URL.to_string()));
-                let _ = content_proxy_wk.send_event(UserEvent::UpdateUrl(String::new()));
-                return webkit_wincairo::NavigationDecision::Allow;
-            }
-            if is_about_url(url) {
-                let _ = content_proxy_wk.send_event(UserEvent::UpdateActiveTabUrl(ABOUT_URL.to_string()));
-                let _ = content_proxy_wk.send_event(UserEvent::UpdateUrl(ABOUT_URL.to_string()));
-                let _ = content_proxy_wk.send_event(UserEvent::LoadAboutPage);
-                return webkit_wincairo::NavigationDecision::Allow;
-            }
+                if is_new_tab_url(url) {
+                    let _ = content_proxy_wk
+                        .send_event(UserEvent::UpdateActiveTabUrl(NEW_TAB_URL.to_string()));
+                    let _ = content_proxy_wk.send_event(UserEvent::UpdateUrl(String::new()));
+                    return webkit_wincairo::NavigationDecision::Allow;
+                }
+                if is_about_url(url) {
+                    let _ = content_proxy_wk
+                        .send_event(UserEvent::UpdateActiveTabUrl(ABOUT_URL.to_string()));
+                    let _ =
+                        content_proxy_wk.send_event(UserEvent::UpdateUrl(ABOUT_URL.to_string()));
+                    let _ = content_proxy_wk.send_event(UserEvent::LoadAboutPage);
+                    return webkit_wincairo::NavigationDecision::Allow;
+                }
 
-            // Check Shield for blocking
-            if let Ok(s) = content_state_wk.lock() {
-                if s.shield.is_enabled() {
-                    if let Ok(parsed_url) = url::Url::parse(url) {
-                        if s.shield.should_block(&parsed_url, &parsed_url, ResourceType::Document) {
-                            return webkit_wincairo::NavigationDecision::Cancel;
+                // Check Shield for blocking
+                if let Ok(s) = content_state_wk.lock() {
+                    if s.shield.is_enabled() {
+                        if let Ok(parsed_url) = url::Url::parse(url) {
+                            if s.shield.should_block(
+                                &parsed_url,
+                                &parsed_url,
+                                ResourceType::Document,
+                            ) {
+                                return webkit_wincairo::NavigationDecision::Cancel;
+                            }
                         }
                     }
                 }
-            }
 
-            let _ = content_proxy_wk.send_event(UserEvent::SetLoading(true));
-            let _ = content_proxy_wk.send_event(UserEvent::UpdateUrl(url.to_string()));
-            let _ = content_proxy_wk.send_event(UserEvent::UpdateActiveTabUrl(url.to_string()));
-            webkit_wincairo::NavigationDecision::Allow
-        });
+                let _ = content_proxy_wk.send_event(UserEvent::SetLoading(true));
+                let _ = content_proxy_wk.send_event(UserEvent::UpdateUrl(url.to_string()));
+                let _ = content_proxy_wk.send_event(UserEvent::UpdateActiveTabUrl(url.to_string()));
+                webkit_wincairo::NavigationDecision::Allow
+            });
 
         // Set IPC handler
         let content_proxy_ipc_wk = content_proxy_ipc.clone();
@@ -1721,17 +1661,18 @@ fn main() {
             let _ = view.page().load_url(&initial_url);
         }
 
+        // Note: set_visible(true) is called later via ActivateWinCairoViews event
+        // to ensure the event loop is running before WebKit activation
+
         view
     };
-
     info!("Content WebView created (content area)");
 
     // === SHELF WEBVIEW (created third, at bottom) ===
     let shelf_proxy = proxy.clone();
     let shelf_state = Arc::clone(&state);
 
-    // WRY (WebView2) Shelf WebView creation
-    #[cfg(not(all(target_os = "windows", feature = "wincairo")))]
+    // WRY (WebView2) Shelf WebView creation - always uses WRY even with wincairo feature
     let shelf_webview = WebViewBuilder::new()
         .with_html(SHELF_HTML)
         .with_devtools(cfg!(debug_assertions))
@@ -1825,135 +1766,68 @@ fn main() {
         .build_as_child(&window)
         .expect("Failed to create Shelf WebView");
 
-    // WinCairo (WebKit) Shelf WebView creation
-    #[cfg(all(target_os = "windows", feature = "wincairo"))]
-    let shelf_webview = {
-        let hwnd = window.hwnd() as windows_sys::Win32::Foundation::HWND;
-        let (x, y) = match shelf_bounds.position {
-            wry::dpi::Position::Logical(pos) => (pos.x as i32, pos.y as i32),
-            wry::dpi::Position::Physical(pos) => (pos.x, pos.y),
-        };
-        let (width, height) = match shelf_bounds.size {
-            wry::dpi::Size::Logical(size) => (size.width as u32, size.height as u32),
-            wry::dpi::Size::Physical(size) => (size.width, size.height),
-        };
-        let bounds = WebKitViewBounds::new(x, y, width, height);
-        let mut view = create_webkit_view(hwnd, bounds)
-            .expect("Failed to create Shelf WebView (WinCairo)");
-
-        // Load Shelf HTML
-        let _ = view.page().load_html(SHELF_HTML, None);
-
-        // Add initialization script
-        let _ = view.page().add_user_script(JS_BRIDGE, true);
-
-        // Set IPC handler
-        let shelf_proxy_wk = shelf_proxy.clone();
-        let shelf_state_wk = Arc::clone(&shelf_state);
-        view.page_mut().set_ipc_handler(move |body: &str| {
-            info!("Shelf IPC (WinCairo): {}", body);
-
-            match serde_json::from_str::<IpcMessage>(body) {
-                Ok(msg) => {
-                    match &msg {
-                        IpcMessage::CollapseShelf => {
-                            let _ = shelf_proxy_wk.send_event(UserEvent::CollapseShelf);
-                        }
-                        IpcMessage::SearchCommands { ref query } => {
-                            let _ = query.clone();
-                            let response = ipc::commands::handle_message(&shelf_state_wk, msg.clone());
-                            if let ipc::IpcResponse::Success { data } = response {
-                                let json = serde_json::to_string(&data)
-                                    .unwrap_or_else(|_| "[]".to_string());
-                                let _ = shelf_proxy_wk.send_event(UserEvent::ShowCommands(json));
-                            }
-                        }
-                        IpcMessage::ExecuteCommand { ref id } => {
-                            let _ = id.clone();
-                            let response = ipc::commands::handle_message(&shelf_state_wk, msg.clone());
-                            let _ = shelf_proxy_wk.send_event(UserEvent::CollapseShelf);
-
-                            if let ipc::IpcResponse::Success { data } = response {
-                                if let Some(result) = data.get("result") {
-                                    if let Some(action) = result.get("action").and_then(|a| a.as_str()) {
-                                        match action {
-                                            "navigate" => {
-                                                if let Some(url) = result.get("url").and_then(|u| u.as_str()) {
-                                                    let _ = shelf_proxy_wk.send_event(UserEvent::Navigate(url.to_string()));
-                                                } else {
-                                                    let _ = shelf_proxy_wk.send_event(UserEvent::NewTab);
-                                                }
-                                            }
-                                            "reload" => {
-                                                let _ = shelf_proxy_wk.send_event(UserEvent::Reload);
-                                            }
-                                            "go_back" => {
-                                                let _ = shelf_proxy_wk.send_event(UserEvent::GoBack);
-                                            }
-                                            "go_forward" => {
-                                                let _ = shelf_proxy_wk.send_event(UserEvent::GoForward);
-                                            }
-                                            _ => {}
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        IpcMessage::Navigate { url } => {
-                            let _ = shelf_proxy_wk.send_event(UserEvent::Navigate(url.clone()));
-                            let _ = shelf_proxy_wk.send_event(UserEvent::CollapseShelf);
-                        }
-                        _ => {}
-                    }
-                }
-                Err(e) => {
-                    error!("Failed to parse Shelf IPC (WinCairo): {}", e);
-                }
-            }
-        });
-
-        view
-    };
+    // Note: Shelf always uses WRY (WebView2) even with wincairo feature
+    // Only Content WebView uses WinCairo WebKit
 
     info!("Shelf WebView created (bottom, starts hidden)");
     info!("Three-WebView architecture initialized");
 
     // Check for debug mode via environment variable
-    #[cfg(not(all(target_os = "windows", feature = "wincairo")))]
-    if std::env::var("HIWAVE_DEBUG").map(|v| v == "1").unwrap_or(false) {
+    if std::env::var("HIWAVE_DEBUG")
+        .map(|v| v == "1")
+        .unwrap_or(false)
+    {
         info!("Debug mode enabled via HIWAVE_DEBUG=1");
-        let _ = chrome_webview.evaluate_script("window.enableDebugMode && window.enableDebugMode();");
-    }
-    #[cfg(all(target_os = "windows", feature = "wincairo"))]
-    if std::env::var("HIWAVE_DEBUG").map(|v| v == "1").unwrap_or(false) {
-        info!("Debug mode enabled via HIWAVE_DEBUG=1");
-        let _ = chrome_webview.page().evaluate_script("window.enableDebugMode && window.enableDebugMode();", |_| {});
+        let _ =
+            chrome_webview.evaluate_script("window.enableDebugMode && window.enableDebugMode();");
     }
 
     // Store WebViews in Arcs for event loop access
-    let chrome_webview = Arc::new(chrome_webview);
-    let content_webview = Arc::new(content_webview);
-    let shelf_webview = Arc::new(shelf_webview);
+    // Chrome and Shelf always use WRY (WebView2)
+    // Content uses WinCairo WebKit when feature enabled, WRY otherwise
+    let chrome_webview: Arc<wry::WebView> = Arc::new(chrome_webview);
+    let shelf_webview: Arc<wry::WebView> = Arc::new(shelf_webview);
 
-    let chrome_for_events = Arc::clone(&chrome_webview);
-    let content_for_events = Arc::clone(&content_webview);
-    let shelf_for_events = Arc::clone(&shelf_webview);
+    #[cfg(all(target_os = "windows", feature = "wincairo"))]
+    let content_webview: Arc<webkit_wincairo::WebKitView> = Arc::new(content_webview);
+    #[cfg(not(all(target_os = "windows", feature = "wincairo")))]
+    let content_webview: Arc<wry::WebView> = Arc::new(content_webview);
+
+    let chrome_for_events: Arc<wry::WebView> = Arc::clone(&chrome_webview);
+    let shelf_for_events: Arc<wry::WebView> = Arc::clone(&shelf_webview);
+
+    #[cfg(all(target_os = "windows", feature = "wincairo"))]
+    let content_for_events: Arc<webkit_wincairo::WebKitView> = Arc::clone(&content_webview);
+    #[cfg(not(all(target_os = "windows", feature = "wincairo")))]
+    let content_for_events: Arc<wry::WebView> = Arc::clone(&content_webview);
     let state_for_events = Arc::clone(&state);
     let chrome_height_for_events = Arc::clone(&chrome_height);
     let shelf_height_for_events = Arc::clone(&shelf_height);
     let sidebar_width_for_events = Arc::clone(&sidebar_width_state);
     let right_sidebar_open_for_events = Arc::clone(&right_sidebar_open);
+    let chrome_ready_flag_for_events = Arc::clone(&chrome_ready_flag);
     let focus_state_for_events = Arc::clone(&state);
 
     // Trigger initial state sync
     let init_proxy = proxy.clone();
     std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_millis(500));
-        let _ = init_proxy.send_event(UserEvent::SyncTabs);
-        let _ = init_proxy.send_event(UserEvent::SyncWorkspaces);
-        let _ = init_proxy.send_event(UserEvent::SyncDownloads);
-        let _ = init_proxy.send_event(UserEvent::SyncShelf(ShelfScope::Workspace));
-        let _ = init_proxy.send_event(UserEvent::SyncHistory);
+        // Short delay to ensure event loop is running
+        std::thread::sleep(std::time::Duration::from_millis(100));
+
+        // WinCairo: Activate views first (requires event loop to be running)
+        #[cfg(all(target_os = "windows", feature = "wincairo"))]
+        let _ = init_proxy.send_event(UserEvent::ActivateWinCairoViews);
+
+        // Wait a bit for views to activate before syncing data (WRY only)
+        #[cfg(not(all(target_os = "windows", feature = "wincairo")))]
+        {
+            std::thread::sleep(std::time::Duration::from_millis(400));
+            let _ = init_proxy.send_event(UserEvent::SyncTabs);
+            let _ = init_proxy.send_event(UserEvent::SyncWorkspaces);
+            let _ = init_proxy.send_event(UserEvent::SyncDownloads);
+            let _ = init_proxy.send_event(UserEvent::SyncShelf(ShelfScope::Workspace));
+            let _ = init_proxy.send_event(UserEvent::SyncHistory);
+        }
     });
 
     // Track settings window (created on demand)
@@ -1964,11 +1838,9 @@ fn main() {
 
     // Spawn background decay ticker thread
     let decay_proxy = proxy.clone();
-    std::thread::spawn(move || {
-        loop {
-            std::thread::sleep(std::time::Duration::from_secs(60));
-            let _ = decay_proxy.send_event(UserEvent::DecayTick);
-        }
+    std::thread::spawn(move || loop {
+        std::thread::sleep(std::time::Duration::from_secs(60));
+        let _ = decay_proxy.send_event(UserEvent::DecayTick);
     });
     info!("Started background decay ticker");
 
@@ -2259,6 +2131,33 @@ fn main() {
                             payload.to_string()
                         );
                         let _ = content_for_events.evaluate_script(&script);
+                    }
+                    // WinCairo: Activate Content WebView after event loop is running
+                    #[cfg(all(target_os = "windows", feature = "wincairo"))]
+                    UserEvent::ActivateWinCairoViews => {
+                        info!("Activating WinCairo WebKit content view (event loop is running)");
+                        // Only content uses WinCairo - Chrome and Shelf use WRY (WebView2)
+                        content_for_events.set_visible(true);
+                        // Shelf stays hidden until expanded
+                        info!("WinCairo content view activated");
+                        {
+                            let proxy = proxy.clone();
+                            let chrome_ready_flag = Arc::clone(&chrome_ready_flag_for_events);
+                            std::thread::spawn(move || {
+                                std::thread::sleep(std::time::Duration::from_millis(800));
+                                if chrome_ready_flag.load(Ordering::SeqCst) {
+                                    return;
+                                }
+                                info!("Chrome ready handshake timed out, forcing state sync");
+                                let _ = proxy.send_event(UserEvent::SyncTabs);
+                                let _ = proxy.send_event(UserEvent::SyncWorkspaces);
+                                let _ = proxy.send_event(UserEvent::SyncDownloads);
+                                let _ =
+                                    proxy.send_event(UserEvent::SyncShelf(ShelfScope::Workspace));
+                                let _ = proxy.send_event(UserEvent::SyncHistory);
+                                let _ = proxy.send_event(UserEvent::SyncShieldStats);
+                            });
+                        }
                     }
                     UserEvent::SyncTabs => {
                         info!("Syncing tabs to Chrome UI");
@@ -3726,7 +3625,8 @@ fn main() {
                         }
                     }
                     UserEvent::EvaluateScript(script) => {
-                        let _ = chrome_for_events.evaluate_script(&script);
+                        info!("EvaluateScript on chrome: {}", &script[..script.len().min(100)]);
+                        chrome_for_events.evaluate_script(&script);
                     }
                     UserEvent::EvaluateContentScript(script) => {
                         let _ = content_for_events.evaluate_script(&script);

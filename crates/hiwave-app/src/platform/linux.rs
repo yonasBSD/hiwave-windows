@@ -53,7 +53,9 @@ impl LinuxPlatform {
 
         edit_menu
             .append(&PredefinedMenuItem::separator())
-            .map_err(|e| PlatformError::MenuInitFailed(format!("Failed to add separator: {}", e)))?;
+            .map_err(|e| {
+                PlatformError::MenuInitFailed(format!("Failed to add separator: {}", e))
+            })?;
 
         edit_menu
             .append(&PredefinedMenuItem::cut(None))
@@ -73,8 +75,9 @@ impl LinuxPlatform {
                 PlatformError::MenuInitFailed(format!("Failed to add Select All: {}", e))
             })?;
 
-        menu.append(&edit_menu)
-            .map_err(|e| PlatformError::MenuInitFailed(format!("Failed to append edit menu: {}", e)))?;
+        menu.append(&edit_menu).map_err(|e| {
+            PlatformError::MenuInitFailed(format!("Failed to append edit menu: {}", e))
+        })?;
 
         Ok(())
     }

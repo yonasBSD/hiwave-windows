@@ -21,31 +21,31 @@
 #![allow(dead_code)]
 
 #[cfg(target_os = "windows")]
-pub mod wk_types;
-#[cfg(target_os = "windows")]
-pub mod wk_string;
+pub mod wk_callbacks;
 #[cfg(target_os = "windows")]
 pub mod wk_context;
 #[cfg(target_os = "windows")]
 pub mod wk_page;
 #[cfg(target_os = "windows")]
-pub mod wk_view;
+pub mod wk_string;
 #[cfg(target_os = "windows")]
-pub mod wk_callbacks;
+pub mod wk_types;
+#[cfg(target_os = "windows")]
+pub mod wk_view;
 
 #[cfg(target_os = "windows")]
-pub use wk_types::*;
-#[cfg(target_os = "windows")]
-pub use wk_string::*;
+pub use wk_callbacks::*;
 #[cfg(target_os = "windows")]
 pub use wk_context::*;
 #[cfg(target_os = "windows")]
 pub use wk_page::*;
 #[cfg(target_os = "windows")]
-pub use wk_view::*;
+pub use wk_string::*;
 #[cfg(target_os = "windows")]
-pub use wk_callbacks::*;
+pub use wk_types::*;
+#[cfg(target_os = "windows")]
+pub use wk_view::*;
 
 // Re-export windows types for convenience
 #[cfg(target_os = "windows")]
-pub use windows_sys::Win32::Foundation::{HWND, RECT, BOOL, TRUE, FALSE};
+pub use windows_sys::Win32::Foundation::{BOOL, FALSE, HWND, RECT, TRUE};

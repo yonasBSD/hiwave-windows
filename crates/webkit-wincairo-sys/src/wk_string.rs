@@ -3,8 +3,8 @@
 //! WKString is WebKit's internal string type. These functions allow
 //! conversion between Rust strings and WKString.
 
-use std::ffi::c_char;
 use super::wk_types::*;
+use std::ffi::c_char;
 
 extern "C" {
     /// Create a WKString from a UTF-8 C string
@@ -88,10 +88,7 @@ pub unsafe fn wk_string_to_string(wk_str: WKStringRef) -> Option<String> {
     }
 
     // Convert buffer to string (exclude null terminator)
-    let bytes: Vec<u8> = buffer[..written - 1]
-        .iter()
-        .map(|&b| b as u8)
-        .collect();
+    let bytes: Vec<u8> = buffer[..written - 1].iter().map(|&b| b as u8).collect();
 
     String::from_utf8(bytes).ok()
 }

@@ -6,24 +6,22 @@ use super::{
     CommandItem, FocusModeStatus, IpcMessage, IpcResponse, ShieldStats, TabInfo, WorkspaceInfo,
     WorkspaceTabSummary,
 };
-use crate::import::{self, Browser, converter::ConversionConfig};
-use hiwave_core::types::TabInfo as CoreTabInfo;
+use crate::import::{self, converter::ConversionConfig, Browser};
 use crate::platform::{get_platform_manager, PlatformManager};
 use crate::state::AppState;
+use hiwave_core::types::TabInfo as CoreTabInfo;
+use hiwave_core::types::{TabId, WorkspaceId};
 use std::path::Path;
 use std::sync::{Arc, Mutex, OnceLock};
 use tracing::{debug, error, info, warn};
 use url::Url;
-use hiwave_core::types::{TabId, WorkspaceId};
 
 /// Global platform manager instance
 static PLATFORM: OnceLock<Box<dyn PlatformManager>> = OnceLock::new();
 
 /// Get the platform manager instance
 fn platform() -> &'static dyn PlatformManager {
-    PLATFORM
-        .get_or_init(|| get_platform_manager())
-        .as_ref()
+    PLATFORM.get_or_init(|| get_platform_manager()).as_ref()
 }
 
 /// Handle an IPC message and return a response
@@ -110,9 +108,7 @@ pub fn handle_message(state: &Arc<Mutex<AppState>>, message: IpcMessage) -> IpcR
         IpcMessage::FocusPageLoaded { url } => handle_focus_page_loaded(state, &url),
         IpcMessage::ShowFocusPeek => handle_show_focus_peek(state),
         IpcMessage::HideFocusPeek => handle_hide_focus_peek(state),
-        IpcMessage::AddToFocusBlocklist { domain } => {
-            handle_add_to_focus_blocklist(state, &domain)
-        }
+        IpcMessage::AddToFocusBlocklist { domain } => handle_add_to_focus_blocklist(state, &domain),
         IpcMessage::RemoveFromFocusBlocklist { domain } => {
             handle_remove_from_focus_blocklist(state, &domain)
         }
@@ -122,6 +118,7 @@ pub fn handle_message(state: &Arc<Mutex<AppState>>, message: IpcMessage) -> IpcR
 
         // Settings
         IpcMessage::OpenSettings => handle_open_settings(state),
+        IpcMessage::ChromeReady => IpcResponse::success(serde_json::json!({ "handled": true })),
         IpcMessage::CloseSettings => IpcResponse::success(serde_json::json!({ "closed": true })),
 
         // Misc commands
@@ -166,9 +163,10 @@ pub fn handle_message(state: &Arc<Mutex<AppState>>, message: IpcMessage) -> IpcR
 
         // Browser import
         IpcMessage::GetBrowserProfiles { browser } => handle_get_browser_profiles(&browser),
-        IpcMessage::ImportBookmarks { browser, profile_path } => {
-            handle_import_bookmarks(state, &browser, &profile_path)
-        }
+        IpcMessage::ImportBookmarks {
+            browser,
+            profile_path,
+        } => handle_import_bookmarks(state, &browser, &profile_path),
 
         // Settings management
         IpcMessage::GetSettings => handle_get_settings(state),
@@ -197,9 +195,10 @@ pub fn handle_message(state: &Arc<Mutex<AppState>>, message: IpcMessage) -> IpcR
         IpcMessage::GetTodayStats => handle_get_today_stats(state),
         IpcMessage::GetWeeklyReport => handle_get_weekly_report(state),
         IpcMessage::GetMonthlyReport => handle_get_monthly_report(state),
-        IpcMessage::GetCustomReport { start_date, end_date } => {
-            handle_get_custom_report(state, &start_date, &end_date)
-        }
+        IpcMessage::GetCustomReport {
+            start_date,
+            end_date,
+        } => handle_get_custom_report(state, &start_date, &end_date),
         IpcMessage::GetTopDomains { limit } => handle_get_top_domains(state, limit.unwrap_or(10)),
         IpcMessage::GetWorkspaceStats => handle_get_workspace_stats(state),
         IpcMessage::GetAnalyticsSettings => handle_get_analytics_settings(state),
@@ -208,7 +207,13 @@ pub fn handle_message(state: &Arc<Mutex<AppState>>, message: IpcMessage) -> IpcR
             retention_days,
             weekly_report,
             report_day,
-        } => handle_update_analytics_settings(state, enabled, retention_days, weekly_report, &report_day),
+        } => handle_update_analytics_settings(
+            state,
+            enabled,
+            retention_days,
+            weekly_report,
+            &report_day,
+        ),
         IpcMessage::ClearAnalyticsData => handle_clear_analytics_data(state),
         IpcMessage::ExportAnalyticsData { format } => handle_export_analytics_data(state, &format),
         IpcMessage::ResetAnalyticsData => handle_reset_analytics_data(state),
@@ -224,11 +229,17 @@ pub fn handle_message(state: &Arc<Mutex<AppState>>, message: IpcMessage) -> IpcR
         // Zoom controls (handled via main.rs - triggers zoom on content WebView)
         IpcMessage::ZoomIn => IpcResponse::success(serde_json::json!({ "action": "zoom_in" })),
         IpcMessage::ZoomOut => IpcResponse::success(serde_json::json!({ "action": "zoom_out" })),
-        IpcMessage::ResetZoom => IpcResponse::success(serde_json::json!({ "action": "reset_zoom" })),
+        IpcMessage::ResetZoom => {
+            IpcResponse::success(serde_json::json!({ "action": "reset_zoom" }))
+        }
 
         // Tab audio state (handled via main.rs)
-        IpcMessage::TabAudioStateChanged { .. } => IpcResponse::success(serde_json::json!({ "action": "audio_state_changed" })),
-        IpcMessage::ToggleTabMute { .. } => IpcResponse::success(serde_json::json!({ "action": "toggle_tab_mute" })),
+        IpcMessage::TabAudioStateChanged { .. } => {
+            IpcResponse::success(serde_json::json!({ "action": "audio_state_changed" }))
+        }
+        IpcMessage::ToggleTabMute { .. } => {
+            IpcResponse::success(serde_json::json!({ "action": "toggle_tab_mute" }))
+        }
 
         // Autofill (handled via main.rs - needs to interact with content webview)
         IpcMessage::TriggerAutofill => {
@@ -240,11 +251,17 @@ pub fn handle_message(state: &Arc<Mutex<AppState>>, message: IpcMessage) -> IpcR
         }
 
         // UI shortcuts (handled via main.rs UserEvents)
-        IpcMessage::FocusAddressBar => IpcResponse::success(serde_json::json!({ "action": "focus_address_bar" })),
+        IpcMessage::FocusAddressBar => {
+            IpcResponse::success(serde_json::json!({ "action": "focus_address_bar" }))
+        }
         IpcMessage::OpenFind => IpcResponse::success(serde_json::json!({ "action": "open_find" })),
-        IpcMessage::ToggleSidebar => IpcResponse::success(serde_json::json!({ "action": "toggle_sidebar" })),
+        IpcMessage::ToggleSidebar => {
+            IpcResponse::success(serde_json::json!({ "action": "toggle_sidebar" }))
+        }
         IpcMessage::Refresh => IpcResponse::success(serde_json::json!({ "action": "refresh" })),
-        IpcMessage::ActivateTabByIndex { .. } => IpcResponse::success(serde_json::json!({ "action": "activate_tab_by_index" })),
+        IpcMessage::ActivateTabByIndex { .. } => {
+            IpcResponse::success(serde_json::json!({ "action": "activate_tab_by_index" }))
+        }
     }
 }
 
@@ -263,23 +280,21 @@ fn handle_get_credentials_for_autofill(state: &Arc<Mutex<AppState>>, domain: &st
     };
 
     match Url::parse(&url_string) {
-        Ok(url) => {
-            match state.vault.get_credentials(&url) {
-                Ok(credentials) => {
-                    let autofill_creds: Vec<super::AutofillCredential> = credentials
-                        .iter()
-                        .map(|c| super::AutofillCredential {
-                            id: c.id,
-                            domain: c.url.clone(),
-                            username: c.username.clone(),
-                            password: c.password.clone(),
-                        })
-                        .collect();
-                    IpcResponse::success(autofill_creds)
-                }
-                Err(e) => IpcResponse::error(format!("Failed to get credentials: {}", e)),
+        Ok(url) => match state.vault.get_credentials(&url) {
+            Ok(credentials) => {
+                let autofill_creds: Vec<super::AutofillCredential> = credentials
+                    .iter()
+                    .map(|c| super::AutofillCredential {
+                        id: c.id,
+                        domain: c.url.clone(),
+                        username: c.username.clone(),
+                        password: c.password.clone(),
+                    })
+                    .collect();
+                IpcResponse::success(autofill_creds)
             }
-        }
+            Err(e) => IpcResponse::error(format!("Failed to get credentials: {}", e)),
+        },
         Err(e) => IpcResponse::error(format!("Invalid domain: {}", e)),
     }
 }
@@ -383,7 +398,9 @@ fn handle_close_tab(state: &Arc<Mutex<AppState>>, id: &str) -> IpcResponse {
     };
 
     // Get workspace before closing the tab
-    let workspace_id = state.shell.get_tab(tab_id)
+    let workspace_id = state
+        .shell
+        .get_tab(tab_id)
         .map(|tab| tab.workspace_id.0.to_string());
 
     match state.shell.close_tab(tab_id) {
@@ -605,7 +622,9 @@ fn handle_activate_workspace(state: &Arc<Mutex<AppState>>, id: &str) -> IpcRespo
     };
 
     // Get current workspace before switching
-    let from_workspace = state.shell.get_active_workspace()
+    let from_workspace = state
+        .shell
+        .get_active_workspace()
         .map(|ws| ws.id.0.to_string())
         .unwrap_or_else(|| "none".to_string());
 
@@ -616,7 +635,10 @@ fn handle_activate_workspace(state: &Arc<Mutex<AppState>>, id: &str) -> IpcRespo
             // Track workspace switch
             let to_workspace = workspace_id.0.to_string();
             if from_workspace != to_workspace {
-                if let Err(e) = state.analytics.track_workspace_switch(&from_workspace, &to_workspace) {
+                if let Err(e) = state
+                    .analytics
+                    .track_workspace_switch(&from_workspace, &to_workspace)
+                {
                     warn!("Failed to track workspace switch: {}", e);
                 }
             }
@@ -1161,9 +1183,14 @@ fn handle_enter_focus_mode(state: &Arc<Mutex<AppState>>) -> IpcResponse {
     if let Some(url_str) = &state.focus_mode.current_url {
         if let Ok(url) = url::Url::parse(url_str) {
             if let Some(domain) = url.host_str() {
-                let workspace_id = state.shell.get_active_workspace()
+                let workspace_id = state
+                    .shell
+                    .get_active_workspace()
                     .map(|w| w.id.0.to_string());
-                if let Err(e) = state.analytics.track_focus_start(domain, workspace_id.as_deref()) {
+                if let Err(e) = state
+                    .analytics
+                    .track_focus_start(domain, workspace_id.as_deref())
+                {
                     warn!("Failed to track focus mode start: {}", e);
                 }
             }
@@ -1191,12 +1218,14 @@ fn handle_exit_focus_mode(state: &Arc<Mutex<AppState>>) -> IpcResponse {
         if let Some(url_str) = &state.focus_mode.current_url {
             if let Ok(url) = url::Url::parse(url_str) {
                 if let Some(domain) = url.host_str() {
-                    let workspace_id = state.shell.get_active_workspace()
+                    let workspace_id = state
+                        .shell
+                        .get_active_workspace()
                         .map(|w| w.id.0.to_string());
                     if let Err(e) = state.analytics.track_focus_end(
                         domain,
                         duration_secs,
-                        workspace_id.as_deref()
+                        workspace_id.as_deref(),
                     ) {
                         warn!("Failed to track focus mode end: {}", e);
                     }
@@ -1613,8 +1642,8 @@ fn handle_import_bookmarks(
         // Add tabs to the workspace
         for tab in &import_ws.tabs {
             // Parse the URL
-            let parsed_url = Url::parse(&tab.url)
-                .unwrap_or_else(|_| Url::parse("about:blank").unwrap());
+            let parsed_url =
+                Url::parse(&tab.url).unwrap_or_else(|_| Url::parse("about:blank").unwrap());
 
             // Create the tab
             let tab_info = CoreTabInfo {
@@ -1749,28 +1778,26 @@ fn handle_get_today_stats(state: &Arc<Mutex<AppState>>) -> IpcResponse {
 fn handle_get_weekly_report(state: &Arc<Mutex<AppState>>) -> IpcResponse {
     let state = state.lock().unwrap();
     match state.analytics.generate_weekly_report() {
-        Ok(report) => {
-            IpcResponse::success(serde_json::json!({
-                "start_date": report.start_date,
-                "end_date": report.end_date,
-                "total_stats": {
-                    "trackers_blocked": report.total_stats.trackers_blocked,
-                    "ads_blocked": report.total_stats.ads_blocked,
-                    "popups_blocked": report.total_stats.popups_blocked,
-                    "pages_visited": report.total_stats.pages_visited,
-                    "tabs_opened": report.total_stats.tabs_opened,
-                    "tabs_closed": report.total_stats.tabs_closed,
-                    "browsing_time": report.total_stats.browsing_time,
-                    "focus_time": report.total_stats.focus_time,
-                    "workspace_switches": report.total_stats.workspace_switches,
-                    "time_saved": report.total_stats.time_saved,
-                    "bandwidth_saved": report.total_stats.bandwidth_saved,
-                },
-                "daily_breakdown": report.daily_breakdown,
-                "top_domains": report.top_domains,
-                "workspace_breakdown": report.workspace_breakdown,
-            }))
-        }
+        Ok(report) => IpcResponse::success(serde_json::json!({
+            "start_date": report.start_date,
+            "end_date": report.end_date,
+            "total_stats": {
+                "trackers_blocked": report.total_stats.trackers_blocked,
+                "ads_blocked": report.total_stats.ads_blocked,
+                "popups_blocked": report.total_stats.popups_blocked,
+                "pages_visited": report.total_stats.pages_visited,
+                "tabs_opened": report.total_stats.tabs_opened,
+                "tabs_closed": report.total_stats.tabs_closed,
+                "browsing_time": report.total_stats.browsing_time,
+                "focus_time": report.total_stats.focus_time,
+                "workspace_switches": report.total_stats.workspace_switches,
+                "time_saved": report.total_stats.time_saved,
+                "bandwidth_saved": report.total_stats.bandwidth_saved,
+            },
+            "daily_breakdown": report.daily_breakdown,
+            "top_domains": report.top_domains,
+            "workspace_breakdown": report.workspace_breakdown,
+        })),
         Err(e) => IpcResponse::error(format!("Failed to generate weekly report: {}", e)),
     }
 }
@@ -1778,28 +1805,26 @@ fn handle_get_weekly_report(state: &Arc<Mutex<AppState>>) -> IpcResponse {
 fn handle_get_monthly_report(state: &Arc<Mutex<AppState>>) -> IpcResponse {
     let state = state.lock().unwrap();
     match state.analytics.generate_monthly_report() {
-        Ok(report) => {
-            IpcResponse::success(serde_json::json!({
-                "start_date": report.start_date,
-                "end_date": report.end_date,
-                "total_stats": {
-                    "trackers_blocked": report.total_stats.trackers_blocked,
-                    "ads_blocked": report.total_stats.ads_blocked,
-                    "popups_blocked": report.total_stats.popups_blocked,
-                    "pages_visited": report.total_stats.pages_visited,
-                    "tabs_opened": report.total_stats.tabs_opened,
-                    "tabs_closed": report.total_stats.tabs_closed,
-                    "browsing_time": report.total_stats.browsing_time,
-                    "focus_time": report.total_stats.focus_time,
-                    "workspace_switches": report.total_stats.workspace_switches,
-                    "time_saved": report.total_stats.time_saved,
-                    "bandwidth_saved": report.total_stats.bandwidth_saved,
-                },
-                "daily_breakdown": report.daily_breakdown,
-                "top_domains": report.top_domains,
-                "workspace_breakdown": report.workspace_breakdown,
-            }))
-        }
+        Ok(report) => IpcResponse::success(serde_json::json!({
+            "start_date": report.start_date,
+            "end_date": report.end_date,
+            "total_stats": {
+                "trackers_blocked": report.total_stats.trackers_blocked,
+                "ads_blocked": report.total_stats.ads_blocked,
+                "popups_blocked": report.total_stats.popups_blocked,
+                "pages_visited": report.total_stats.pages_visited,
+                "tabs_opened": report.total_stats.tabs_opened,
+                "tabs_closed": report.total_stats.tabs_closed,
+                "browsing_time": report.total_stats.browsing_time,
+                "focus_time": report.total_stats.focus_time,
+                "workspace_switches": report.total_stats.workspace_switches,
+                "time_saved": report.total_stats.time_saved,
+                "bandwidth_saved": report.total_stats.bandwidth_saved,
+            },
+            "daily_breakdown": report.daily_breakdown,
+            "top_domains": report.top_domains,
+            "workspace_breakdown": report.workspace_breakdown,
+        })),
         Err(e) => IpcResponse::error(format!("Failed to generate monthly report: {}", e)),
     }
 }
@@ -1811,26 +1836,24 @@ fn handle_get_custom_report(
 ) -> IpcResponse {
     let state = state.lock().unwrap();
     match state.analytics.generate_report(start_date, end_date) {
-        Ok(report) => {
-            IpcResponse::success(serde_json::json!({
-                "start_date": report.start_date,
-                "end_date": report.end_date,
-                "total_stats": {
-                    "trackers_blocked": report.total_stats.trackers_blocked,
-                    "ads_blocked": report.total_stats.ads_blocked,
-                    "popups_blocked": report.total_stats.popups_blocked,
-                    "pages_visited": report.total_stats.pages_visited,
-                    "tabs_opened": report.total_stats.tabs_opened,
-                    "tabs_closed": report.total_stats.tabs_closed,
-                    "browsing_time": report.total_stats.browsing_time,
-                    "focus_time": report.total_stats.focus_time,
-                    "workspace_switches": report.total_stats.workspace_switches,
-                },
-                "daily_breakdown": report.daily_breakdown,
-                "top_domains": report.top_domains,
-                "workspace_breakdown": report.workspace_breakdown,
-            }))
-        }
+        Ok(report) => IpcResponse::success(serde_json::json!({
+            "start_date": report.start_date,
+            "end_date": report.end_date,
+            "total_stats": {
+                "trackers_blocked": report.total_stats.trackers_blocked,
+                "ads_blocked": report.total_stats.ads_blocked,
+                "popups_blocked": report.total_stats.popups_blocked,
+                "pages_visited": report.total_stats.pages_visited,
+                "tabs_opened": report.total_stats.tabs_opened,
+                "tabs_closed": report.total_stats.tabs_closed,
+                "browsing_time": report.total_stats.browsing_time,
+                "focus_time": report.total_stats.focus_time,
+                "workspace_switches": report.total_stats.workspace_switches,
+            },
+            "daily_breakdown": report.daily_breakdown,
+            "top_domains": report.top_domains,
+            "workspace_breakdown": report.workspace_breakdown,
+        })),
         Err(e) => IpcResponse::error(format!("Failed to generate report: {}", e)),
     }
 }
@@ -1838,12 +1861,10 @@ fn handle_get_custom_report(
 fn handle_get_top_domains(state: &Arc<Mutex<AppState>>, limit: usize) -> IpcResponse {
     let state = state.lock().unwrap();
     match state.analytics.get_top_domains(limit) {
-        Ok(domains) => {
-            IpcResponse::success(serde_json::json!({
-                "domains": domains,
-                "count": domains.len(),
-            }))
-        }
+        Ok(domains) => IpcResponse::success(serde_json::json!({
+            "domains": domains,
+            "count": domains.len(),
+        })),
         Err(e) => IpcResponse::error(format!("Failed to get top domains: {}", e)),
     }
 }
@@ -1851,12 +1872,10 @@ fn handle_get_top_domains(state: &Arc<Mutex<AppState>>, limit: usize) -> IpcResp
 fn handle_get_workspace_stats(state: &Arc<Mutex<AppState>>) -> IpcResponse {
     let state = state.lock().unwrap();
     match state.analytics.get_workspace_stats() {
-        Ok(stats) => {
-            IpcResponse::success(serde_json::json!({
-                "workspaces": stats,
-                "count": stats.len(),
-            }))
-        }
+        Ok(stats) => IpcResponse::success(serde_json::json!({
+            "workspaces": stats,
+            "count": stats.len(),
+        })),
         Err(e) => IpcResponse::error(format!("Failed to get workspace stats: {}", e)),
     }
 }
@@ -1917,17 +1936,13 @@ fn handle_export_analytics_data(state: &Arc<Mutex<AppState>>, format: &str) -> I
         "json" => {
             // Generate a comprehensive export
             match state.analytics.generate_monthly_report() {
-                Ok(report) => {
-                    match serde_json::to_string_pretty(&report) {
-                        Ok(json) => {
-                            IpcResponse::success(serde_json::json!({
-                                "format": "json",
-                                "data": json,
-                            }))
-                        }
-                        Err(e) => IpcResponse::error(format!("Failed to serialize JSON: {}", e)),
-                    }
-                }
+                Ok(report) => match serde_json::to_string_pretty(&report) {
+                    Ok(json) => IpcResponse::success(serde_json::json!({
+                        "format": "json",
+                        "data": json,
+                    })),
+                    Err(e) => IpcResponse::error(format!("Failed to serialize JSON: {}", e)),
+                },
                 Err(e) => IpcResponse::error(format!("Failed to generate report: {}", e)),
             }
         }

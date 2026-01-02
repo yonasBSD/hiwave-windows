@@ -3,19 +3,19 @@
 //! This module contains the central state for the HiWave application,
 //! including the browser shell, ad blocker, password vault, and configuration.
 
+use crate::import::ImportResult;
+use hiwave_analytics::Analytics;
+use hiwave_core::types::{TabId, WorkspaceId};
+use hiwave_core::HiWaveResult;
+use hiwave_shell::{BrowserShell, ShellSnapshot};
+use hiwave_shield::AdBlocker;
+use hiwave_vault::Vault;
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use url::Url;
-use hiwave_core::types::{TabId, WorkspaceId};
-use hiwave_core::HiWaveResult;
-use hiwave_shell::{BrowserShell, ShellSnapshot};
-use hiwave_shield::AdBlocker;
-use hiwave_vault::Vault;
-use hiwave_analytics::Analytics;
-use crate::import::ImportResult;
 
 /// Cross-platform path wrapper that serializes with forward slashes
 ///
@@ -186,25 +186,25 @@ impl UserBlocklist {
 pub struct FocusModeConfig {
     /// Whether auto-focus is enabled
     pub auto_enabled: bool,
-    
+
     /// Seconds before auto-entering focus mode (default: 60)
     pub activation_delay_secs: u32,
-    
+
     /// Show progress bar at top of screen
     pub show_progress_bar: bool,
-    
+
     /// Hide cursor after inactivity
     pub hide_cursor: bool,
-    
+
     /// Seconds before cursor hides (default: 3)
     pub cursor_hide_delay_secs: u32,
-    
+
     /// Exit focus mode after inactivity (0 = disabled)
     pub inactivity_exit_mins: u32,
-    
+
     /// Keyboard shortcut identifier (default: "F11")
     pub shortcut: String,
-    
+
     /// Domains that never auto-focus
     pub blocklist: Vec<String>,
 }
@@ -247,7 +247,7 @@ impl FocusModeConfig {
         }
         false
     }
-    
+
     /// Add a domain to the blocklist
     pub fn add_to_blocklist(&mut self, domain: String) -> bool {
         let domain = domain.trim().to_lowercase();
@@ -257,7 +257,7 @@ impl FocusModeConfig {
         self.blocklist.push(domain);
         true
     }
-    
+
     /// Remove a domain from the blocklist
     pub fn remove_from_blocklist(&mut self, domain: &str) -> bool {
         let domain = domain.trim().to_lowercase();
@@ -273,28 +273,28 @@ impl FocusModeConfig {
 pub struct FocusModeState {
     /// Currently in focus mode
     pub active: bool,
-    
+
     /// When focus mode was entered (for session duration tracking)
     pub entered_at: Option<Instant>,
-    
+
     /// When current page was loaded (for auto-trigger timing)
     pub page_loaded_at: Option<Instant>,
-    
+
     /// Last significant scroll timestamp (resets auto-trigger timer)
     pub last_scroll_at: Option<Instant>,
-    
+
     /// Last user interaction timestamp (for inactivity exit)
     pub last_interaction_at: Option<Instant>,
-    
+
     /// Whether peek UI is currently visible (mouse at top)
     pub peek_visible: bool,
-    
+
     /// Current scroll progress (0.0 - 1.0)
     pub scroll_progress: f32,
-    
+
     /// Whether media is currently playing in the content
     pub media_playing: bool,
-    
+
     /// Current page URL (for blocklist checking)
     pub current_url: Option<String>,
 
@@ -318,7 +318,7 @@ impl FocusModeState {
             auto_triggered_for_page: false,
         }
     }
-    
+
     /// Enter focus mode
     pub fn enter(&mut self) {
         if self.active {
@@ -330,7 +330,7 @@ impl FocusModeState {
         self.peek_visible = false;
         tracing::info!("Entered focus mode");
     }
-    
+
     /// Exit focus mode
     pub fn exit(&mut self) {
         if !self.active {
@@ -343,7 +343,7 @@ impl FocusModeState {
         self.auto_triggered_for_page = true;
         tracing::info!("Exited focus mode");
     }
-    
+
     /// Toggle focus mode
     pub fn toggle(&mut self) {
         if self.active {
@@ -352,7 +352,7 @@ impl FocusModeState {
             self.enter();
         }
     }
-    
+
     /// Show peek UI (mouse at top)
     pub fn show_peek(&mut self) {
         if self.active && !self.peek_visible {
@@ -360,23 +360,23 @@ impl FocusModeState {
             self.record_interaction();
         }
     }
-    
+
     /// Hide peek UI
     pub fn hide_peek(&mut self) {
         self.peek_visible = false;
     }
-    
+
     /// Record user interaction (for inactivity tracking)
     pub fn record_interaction(&mut self) {
         self.last_interaction_at = Some(Instant::now());
     }
-    
+
     /// Record a significant scroll (resets auto-trigger timer)
     pub fn record_scroll(&mut self) {
         self.last_scroll_at = Some(Instant::now());
         self.record_interaction();
     }
-    
+
     /// Record page navigation
     pub fn record_navigation(&mut self, url: &str) {
         // Exit focus mode on navigation
@@ -391,17 +391,17 @@ impl FocusModeState {
         // Reset auto-trigger flag for new page
         self.auto_triggered_for_page = false;
     }
-    
+
     /// Update scroll progress
     pub fn update_scroll_progress(&mut self, progress: f32) {
         self.scroll_progress = progress.clamp(0.0, 1.0);
     }
-    
+
     /// Update media playing state
     pub fn set_media_playing(&mut self, playing: bool) {
         self.media_playing = playing;
     }
-    
+
     /// Check if auto-focus should trigger based on config and current state
     pub fn should_auto_enter(&self, config: &FocusModeConfig) -> bool {
         // Already active
@@ -418,29 +418,29 @@ impl FocusModeState {
         if !config.auto_enabled {
             return false;
         }
-        
+
         // Media is playing
         if self.media_playing {
             return false;
         }
-        
+
         // Check if URL is blocklisted
         if let Some(ref url) = self.current_url {
             if config.is_blocklisted(url) {
                 return false;
             }
         }
-        
+
         // Check if enough time has passed since page load
         let Some(page_loaded) = self.page_loaded_at else {
             return false;
         };
-        
+
         let elapsed = page_loaded.elapsed().as_secs() as u32;
         if elapsed < config.activation_delay_secs {
             return false;
         }
-        
+
         // Check if there was recent scroll activity (user still exploring)
         if let Some(last_scroll) = self.last_scroll_at {
             // If scrolled within last 10 seconds, don't auto-enter
@@ -448,10 +448,10 @@ impl FocusModeState {
                 return false;
             }
         }
-        
+
         true
     }
-    
+
     /// Check if should exit due to inactivity
     #[allow(dead_code)]
     pub fn should_inactivity_exit(&self, config: &FocusModeConfig) -> bool {
@@ -467,7 +467,7 @@ impl FocusModeState {
 
         false
     }
-    
+
     /// Get duration in focus mode (seconds)
     pub fn focus_duration_secs(&self) -> Option<u64> {
         self.entered_at.map(|t| t.elapsed().as_secs())
@@ -725,8 +725,9 @@ impl AppState {
     /// Save focus mode config to disk
     pub fn save_focus_config(&self) -> HiWaveResult<()> {
         let path = self.focus_config_path();
-        let json = serde_json::to_string_pretty(&self.focus_mode_config)
-            .map_err(|e| hiwave_core::HiWaveError::Config(format!("Failed to serialize focus config: {}", e)))?;
+        let json = serde_json::to_string_pretty(&self.focus_mode_config).map_err(|e| {
+            hiwave_core::HiWaveError::Config(format!("Failed to serialize focus config: {}", e))
+        })?;
         std::fs::write(&path, json)?;
         Ok(())
     }
@@ -773,7 +774,11 @@ impl AppState {
     }
 
     /// Import data from an export, merging or replacing workspaces
-    pub fn import_data(&mut self, data: &HiWaveExport, replace: bool) -> HiWaveResult<ImportResult> {
+    pub fn import_data(
+        &mut self,
+        data: &HiWaveExport,
+        replace: bool,
+    ) -> HiWaveResult<ImportResult> {
         let mut workspaces_created = 0;
         let mut tabs_created = 0;
         let mut errors = Vec::new();
@@ -799,7 +804,12 @@ impl AppState {
             let workspace_id = if let Some(id) = existing {
                 if replace {
                     // Close all existing tabs in this workspace
-                    let tabs: Vec<_> = self.shell.list_tabs(Some(id)).iter().map(|t| t.id).collect();
+                    let tabs: Vec<_> = self
+                        .shell
+                        .list_tabs(Some(id))
+                        .iter()
+                        .map(|t| t.id)
+                        .collect();
                     for tab_id in tabs {
                         let _ = self.shell.close_tab(tab_id);
                     }
@@ -1247,11 +1257,7 @@ impl AppState {
         let normalized_title = Self::sanitize_optional_text(title);
         let normalized_workspace = Self::sanitize_optional_text(workspace);
 
-        if let Some(record) = self
-            .visit_history
-            .iter_mut()
-            .find(|entry| entry.url == url)
-        {
+        if let Some(record) = self.visit_history.iter_mut().find(|entry| entry.url == url) {
             record.count = record.count.saturating_add(1);
             record.timestamp = timestamp;
             if let Some(title) = normalized_title.clone() {
@@ -1384,7 +1390,9 @@ impl AppState {
         if let Ok(parsed_url) = url::Url::parse(&item.url) {
             if let Some(domain) = parsed_url.host_str() {
                 let workspace_id = tab.workspace_id.0.to_string();
-                let _ = self.analytics.track_tab_to_shelf(domain, Some(&workspace_id));
+                let _ = self
+                    .analytics
+                    .track_tab_to_shelf(domain, Some(&workspace_id));
             }
         }
 
@@ -1449,7 +1457,9 @@ impl AppState {
         // Track shelf restoration
         if let Some(domain) = url.host_str() {
             let workspace_id_str = workspace_id.0.to_string();
-            let _ = self.analytics.track_tab_from_shelf(domain, Some(&workspace_id_str));
+            let _ = self
+                .analytics
+                .track_tab_from_shelf(domain, Some(&workspace_id_str));
         }
 
         Ok(Some(RestoredShelfItem {

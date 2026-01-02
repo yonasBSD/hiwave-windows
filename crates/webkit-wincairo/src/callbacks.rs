@@ -15,19 +15,16 @@ pub enum NavigationDecision {
     Cancel,
 }
 
-impl From<NavigationDecision> for WKNavigationActionPolicy {
-    fn from(decision: NavigationDecision) -> Self {
-        match decision {
-            NavigationDecision::Allow => WKNavigationActionPolicy::Allow,
-            NavigationDecision::Cancel => WKNavigationActionPolicy::Cancel,
-        }
-    }
-}
-
 /// Trait for navigation handlers
 /// Note: Send is not required because WebKit callbacks are called on the main UI thread
-pub trait NavigationHandler: Fn(&str, WKNavigationType, bool) -> NavigationDecision + 'static {}
-impl<F> NavigationHandler for F where F: Fn(&str, WKNavigationType, bool) -> NavigationDecision + 'static {}
+pub trait NavigationHandler:
+    Fn(&str, WKNavigationType, bool) -> NavigationDecision + 'static
+{
+}
+impl<F> NavigationHandler for F where
+    F: Fn(&str, WKNavigationType, bool) -> NavigationDecision + 'static
+{
+}
 
 /// Trait for title change handlers
 pub trait TitleChangeHandler: Fn(&str) + 'static {}
@@ -59,10 +56,10 @@ pub(crate) struct CallbackState {
     load_finish_handler: Option<Box<dyn LoadFinishHandler>>,
     progress_handler: Option<Box<dyn ProgressHandler>>,
 
-    // Client structs that we keep alive
+    // Client structs that we keep alive (must be kept in heap memory)
     navigation_client: Option<Box<WKPageNavigationClientV0>>,
     loader_client: Option<Box<WKPageLoaderClientV0>>,
-    ui_client: Option<Box<WKPageUIClientV0>>,
+    injected_bundle_client: Option<Box<WKPageInjectedBundleClientV0>>,
 }
 
 impl CallbackState {
@@ -76,7 +73,7 @@ impl CallbackState {
             progress_handler: None,
             navigation_client: None,
             loader_client: None,
-            ui_client: None,
+            injected_bundle_client: None,
         }
     }
 
@@ -86,15 +83,21 @@ impl CallbackState {
     {
         self.navigation_handler = Some(Box::new(handler));
 
+        // Only register once
+        if self.navigation_client.is_some() {
+            return;
+        }
+
         let mut client = Box::new(WKPageNavigationClientV0::default());
-        client.base.client_info = self as *mut CallbackState as *mut c_void;
+        client.base.client_info = self as *const CallbackState as *const c_void;
         client.decide_policy_for_navigation_action = Some(navigation_trampoline);
 
         unsafe {
-            WKPageSetPageNavigationClient(page, client.as_ref());
+            WKPageSetPageNavigationClient(page, &client.base as *const WKClientBase);
         }
 
         self.navigation_client = Some(client);
+        log::info!("Navigation client registered with correct struct layout");
     }
 
     pub fn set_title_change_handler<F>(&mut self, page: WKPageRef, handler: F)
@@ -110,7 +113,7 @@ impl CallbackState {
         F: IpcHandler,
     {
         self.ipc_handler = Some(Box::new(handler));
-        self.ensure_ui_client(page);
+        self.ensure_injected_bundle_client(page);
     }
 
     pub fn set_load_start_handler<F>(&mut self, page: WKPageRef, handler: F)
@@ -143,75 +146,101 @@ impl CallbackState {
         }
 
         let mut client = Box::new(WKPageLoaderClientV0::default());
-        client.base.client_info = self as *mut CallbackState as *mut c_void;
+        client.base.client_info = self as *const CallbackState as *const c_void;
         client.did_receive_title_for_frame = Some(title_change_trampoline);
         client.did_start_provisional_load_for_frame = Some(load_start_trampoline);
         client.did_finish_load_for_frame = Some(load_finish_trampoline);
         client.did_change_progress = Some(progress_trampoline);
 
         unsafe {
-            WKPageSetPageLoaderClient(page, client.as_ref());
+            WKPageSetPageLoaderClient(page, &client.base as *const WKClientBase);
         }
 
         self.loader_client = Some(client);
+        log::info!("Loader client registered with correct struct layout (24 callbacks)");
     }
 
-    fn ensure_ui_client(&mut self, page: WKPageRef) {
-        if self.ui_client.is_some() {
+    fn ensure_injected_bundle_client(&mut self, page: WKPageRef) {
+        if self.injected_bundle_client.is_some() {
             return;
         }
 
-        let mut client = Box::new(WKPageUIClientV0::default());
-        client.base.client_info = self as *mut CallbackState as *mut c_void;
+        let mut client = Box::new(WKPageInjectedBundleClientV0::default());
+        client.base.client_info = self as *const CallbackState as *const c_void;
         client.did_receive_message_from_injected_bundle = Some(ipc_trampoline);
 
         unsafe {
-            WKPageSetPageUIClient(page, client.as_ref());
+            WKPageSetPageInjectedBundleClient(page, &client.base as *const WKClientBase);
         }
 
-        self.ui_client = Some(client);
+        self.injected_bundle_client = Some(client);
+        log::info!("Injected bundle client registered for IPC messages");
     }
 }
 
 // ============================================================================
-// Trampoline Functions
+// Trampoline Functions - These MUST match the callback signatures exactly
 // ============================================================================
 
+/// Navigation policy decision callback
+/// Signature from WKPageNavigationClient.h:
+/// void (*)(WKPageRef, WKNavigationActionRef, WKFramePolicyListenerRef, WKTypeRef, const void*)
 unsafe extern "C" fn navigation_trampoline(
     _page: WKPageRef,
     navigation_action: WKNavigationActionRef,
-    client_info: *mut c_void,
-) -> WKNavigationActionPolicy {
-    if client_info.is_null() || navigation_action.is_null() {
-        return WKNavigationActionPolicy::Allow;
+    listener: WKFramePolicyListenerRef,
+    _user_data: WKTypeRef,
+    client_info: *const c_void,
+) {
+    if client_info.is_null() || navigation_action.is_null() || listener.is_null() {
+        // Default: allow navigation
+        if !listener.is_null() {
+            WKFramePolicyListenerUse(listener);
+        }
+        return;
     }
 
     let state = &*(client_info as *const CallbackState);
 
-    if let Some(ref handler) = state.navigation_handler {
-        // Get URL from navigation action
-        let wk_url = WKNavigationActionCopyURL(navigation_action);
-        let url = wk_url_to_string(wk_url).unwrap_or_default();
-        if !wk_url.is_null() {
-            WKRelease(wk_url);
-        }
+    let decision = if let Some(ref handler) = state.navigation_handler {
+        // Get URL from navigation action via request
+        let request = WKNavigationActionCopyRequest(navigation_action);
+        let url = if !request.is_null() {
+            let wk_url = WKURLRequestCopyURL(request);
+            let url_str = wk_url_to_string(wk_url).unwrap_or_default();
+            if !wk_url.is_null() {
+                WKRelease(wk_url);
+            }
+            WKRelease(request);
+            url_str
+        } else {
+            String::new()
+        };
 
         let nav_type = WKNavigationActionGetNavigationType(navigation_action);
-        let user_initiated = WKNavigationActionGetWasUserInitiated(navigation_action);
+        let user_gesture = WKNavigationActionHasUnconsumedUserGesture(navigation_action);
 
-        let decision = handler(&url, nav_type, user_initiated);
-        return decision.into();
+        handler(&url, nav_type, user_gesture)
+    } else {
+        NavigationDecision::Allow
+    };
+
+    // Use the frame policy listener to communicate the decision
+    match decision {
+        NavigationDecision::Allow => WKFramePolicyListenerUse(listener),
+        NavigationDecision::Cancel => WKFramePolicyListenerIgnore(listener),
     }
-
-    WKNavigationActionPolicy::Allow
 }
 
+/// Title change callback
+/// Signature from WKPageLoaderClient.h:
+/// void (*)(WKPageRef, WKStringRef, WKFrameRef, WKTypeRef, const void*)
 unsafe extern "C" fn title_change_trampoline(
     _page: WKPageRef,
     title: WKStringRef,
     frame: WKFrameRef,
     _user_data: WKTypeRef,
-    client_info: *mut c_void,
+    client_info: *const c_void,
 ) {
     if client_info.is_null() || title.is_null() {
         return;
@@ -231,11 +260,14 @@ unsafe extern "C" fn title_change_trampoline(
     }
 }
 
+/// Load start callback
+/// Signature from WKPageLoaderClient.h:
+/// void (*)(WKPageRef, WKFrameRef, WKTypeRef, const void*)
 unsafe extern "C" fn load_start_trampoline(
     _page: WKPageRef,
     frame: WKFrameRef,
     _user_data: WKTypeRef,
-    client_info: *mut c_void,
+    client_info: *const c_void,
 ) {
     if client_info.is_null() {
         return;
@@ -253,11 +285,14 @@ unsafe extern "C" fn load_start_trampoline(
     }
 }
 
+/// Load finish callback
+/// Signature from WKPageLoaderClient.h:
+/// void (*)(WKPageRef, WKFrameRef, WKTypeRef, const void*)
 unsafe extern "C" fn load_finish_trampoline(
     _page: WKPageRef,
     frame: WKFrameRef,
     _user_data: WKTypeRef,
-    client_info: *mut c_void,
+    client_info: *const c_void,
 ) {
     if client_info.is_null() {
         return;
@@ -275,10 +310,10 @@ unsafe extern "C" fn load_finish_trampoline(
     }
 }
 
-unsafe extern "C" fn progress_trampoline(
-    page: WKPageRef,
-    client_info: *mut c_void,
-) {
+/// Progress change callback
+/// Signature from WKPageLoaderClient.h:
+/// void (*)(WKPageRef, const void*)
+unsafe extern "C" fn progress_trampoline(page: WKPageRef, client_info: *const c_void) {
     if client_info.is_null() {
         return;
     }
@@ -291,11 +326,14 @@ unsafe extern "C" fn progress_trampoline(
     }
 }
 
+/// IPC message callback (from injected bundle)
+/// Signature from WKPageInjectedBundleClient.h:
+/// void (*)(WKPageRef, WKStringRef, WKTypeRef, const void*)
 unsafe extern "C" fn ipc_trampoline(
     _page: WKPageRef,
     message_name: WKStringRef,
     message_body: WKTypeRef,
-    client_info: *mut c_void,
+    client_info: *const c_void,
 ) {
     if client_info.is_null() || message_name.is_null() {
         return;
