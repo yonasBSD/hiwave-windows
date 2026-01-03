@@ -4,7 +4,7 @@
 
 RustKit is a Rust-native browser engine designed to replace WebKit's WinCairo port for the HiWave browser. This roadmap outlines the development phases beyond the initial MVP implementation.
 
-**Current Status:** Phase 27 Complete (Service Workers) - Ready for Phase 28 (IndexedDB)
+**Current Status:** Phase 28 Complete (IndexedDB) - Ready for Phase 29 (Web Workers)
 **Branch:** `master`
 
 ---
@@ -42,6 +42,7 @@ RustKit is a Rust-native browser engine designed to replace WebKit's WinCairo po
 | 25.5 | GPU Renderer | ✅ Complete | Display list execution, text, images |
 | 26 | Audio/Video | ✅ Complete | HTMLMediaElement, audio/video players |
 | 27 | Service Workers | ✅ Complete | Registration, lifecycle, Cache API |
+| 28 | IndexedDB | ✅ Complete | IDBFactory, object stores, transactions |
 
 ---
 
@@ -253,14 +254,15 @@ Media elements:
 
 ---
 
-### Phase 28: IndexedDB
-**Priority:** Medium | **Est. Duration:** 2-3 weeks
+### Phase 28: IndexedDB ✅
+**Status:** Complete
 
-- [ ] **Database creation** - `indexedDB.open()`
-- [ ] **Object stores** - createObjectStore, add, get, put, delete
-- [ ] **Transactions** - readonly, readwrite
-- [ ] **Indexes** - createIndex, getAll
-- [ ] **Cursors** - openCursor, continue
+- [x] **Database creation** - `indexedDB.open()`
+- [x] **Object stores** - createObjectStore, add, get, put, delete
+- [x] **Transactions** - readonly, readwrite, versionchange
+- [x] **Indexes** - createIndex, unique, multi-entry
+- [x] **Cursors** - openCursor, continue, advance
+- [x] **Key paths** - single, compound, auto-increment
 
 ---
 
@@ -336,6 +338,7 @@ rustkit-webgl      # WebGL API
 rustkit-renderer   # GPU display list renderer
 rustkit-media      # Audio/video playback
 rustkit-sw         # Service workers
+rustkit-idb        # IndexedDB
 rustkit-engine     # Orchestration, multi-view
 rustkit-test       # WPT harness
 rustkit-bench      # Benchmarks
