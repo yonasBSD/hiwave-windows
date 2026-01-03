@@ -4,7 +4,7 @@
 
 RustKit is a Rust-native browser engine designed to replace WebKit's WinCairo port for the HiWave browser. This roadmap outlines the development phases beyond the initial MVP implementation.
 
-**Current Status:** Phase 26 Complete (Audio/Video) - Ready for Phase 27 (Service Workers)
+**Current Status:** Phase 27 Complete (Service Workers) - Ready for Phase 28 (IndexedDB)
 **Branch:** `master`
 
 ---
@@ -41,6 +41,7 @@ RustKit is a Rust-native browser engine designed to replace WebKit's WinCairo po
 | 25 | WebGL | ✅ Complete | WebGL 1.0 context, shaders, textures |
 | 25.5 | GPU Renderer | ✅ Complete | Display list execution, text, images |
 | 26 | Audio/Video | ✅ Complete | HTMLMediaElement, audio/video players |
+| 27 | Service Workers | ✅ Complete | Registration, lifecycle, Cache API |
 
 ---
 
@@ -240,14 +241,15 @@ Media elements:
 
 ---
 
-### Phase 27: Service Workers
-**Priority:** High | **Est. Duration:** 3-4 weeks
+### Phase 27: Service Workers ✅
+**Status:** Complete
 
-- [ ] **Registration** - `navigator.serviceWorker.register()`
-- [ ] **Lifecycle** - install, activate, fetch events
-- [ ] **Fetch interception** - Offline support
-- [ ] **Cache API** - `caches.open()`, `cache.add()`, `cache.match()`
-- [ ] **Push notifications** - Push API (basic)
+- [x] **Registration** - `navigator.serviceWorker.register()`
+- [x] **Lifecycle** - install, activate, fetch events
+- [x] **Fetch interception** - Cache-first offline support
+- [x] **Cache API** - `caches.open()`, `cache.add()`, `cache.match()`
+- [x] **Clients API** - `clients.matchAll()`, `clients.openWindow()`, `clients.claim()`
+- [ ] **Push notifications** - Push API (TODO)
 
 ---
 
@@ -333,6 +335,7 @@ rustkit-canvas     # Canvas 2D API
 rustkit-webgl      # WebGL API
 rustkit-renderer   # GPU display list renderer
 rustkit-media      # Audio/video playback
+rustkit-sw         # Service workers
 rustkit-engine     # Orchestration, multi-view
 rustkit-test       # WPT harness
 rustkit-bench      # Benchmarks
