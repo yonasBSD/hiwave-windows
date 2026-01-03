@@ -21,7 +21,7 @@ use std::sync::{Arc, RwLock};
 use thiserror::Error;
 
 #[cfg(windows)]
-use dwrote::{FontStretch as DwFontStretch, FontStyle as DwFontStyle, FontWeight as DwFontWeight};
+use rustkit_text::{FontCollection as RkFontCollection, FontStretch as RkFontStretch, FontStyle as RkFontStyle, FontWeight as RkFontWeight};
 
 /// Errors that can occur in text operations.
 #[derive(Error, Debug)]
@@ -408,7 +408,7 @@ struct FontKey {
 #[cfg(windows)]
 struct FontCacheEntry {
     #[allow(dead_code)]
-    font_face: dwrote::FontFace,
+    font_face: rustkit_text::FontFace,
     metrics: TextMetrics,
 }
 
@@ -473,35 +473,43 @@ impl FontCache {
         stretch: FontStretch,
         size: f32,
     ) -> Result<TextMetrics, TextError> {
-        let collection = dwrote::FontCollection::system();
+        let collection = RkFontCollection::system().map_err(|e| TextError::DirectWriteError(e.to_string()))?;
 
         // Try to find the font family
         let dw_family = collection
             .font_family_by_name(family)
-            .ok()
-            .flatten()
-            .or_else(|| collection.font_family_by_name("Segoe UI").ok().flatten());
+            .map_err(|e| TextError::DirectWriteError(e.to_string()))?
+            .or_else(|| {
+                collection
+                    .font_family_by_name("Segoe UI")
+                    .ok()
+                    .flatten()
+            });
 
         if let Some(family) = dw_family {
-            let dw_weight = DwFontWeight::from_u32(weight.0 as u32);
+            let dw_weight = RkFontWeight::from_u32(weight.0 as u32);
             let dw_style = match style {
-                FontStyle::Normal => DwFontStyle::Normal,
-                FontStyle::Italic => DwFontStyle::Italic,
-                FontStyle::Oblique => DwFontStyle::Oblique,
+                FontStyle::Normal => RkFontStyle::Normal,
+                FontStyle::Italic => RkFontStyle::Italic,
+                FontStyle::Oblique => RkFontStyle::Oblique,
             };
-            let dw_stretch = DwFontStretch::from_u32(stretch.to_dwrite_value());
+            let dw_stretch = RkFontStretch::from_u32(stretch.to_dwrite_value());
 
             if let Ok(font) = family.first_matching_font(dw_weight, dw_stretch, dw_style) {
-                let face = font.create_font_face();
-                let design_metrics = face.metrics().metrics0();
+                let face = font
+                    .create_font_face()
+                    .map_err(|e| TextError::DirectWriteError(e.to_string()))?;
+                let design_metrics = face
+                    .metrics()
+                    .map_err(|e| TextError::DirectWriteError(e.to_string()))?;
 
                 // Convert design units to pixels (DWRITE uses camelCase)
-                let units_per_em = design_metrics.designUnitsPerEm as f32;
+                let units_per_em = design_metrics.design_units_per_em as f32;
                 let scale = size / units_per_em;
 
                 let ascent = design_metrics.ascent as f32 * scale;
                 let descent = design_metrics.descent as f32 * scale;
-                let leading = design_metrics.lineGap as f32 * scale;
+                let leading = design_metrics.line_gap as f32 * scale;
 
                 return Ok(TextMetrics {
                     width: 0.0,
@@ -509,10 +517,10 @@ impl FontCache {
                     ascent,
                     descent,
                     leading,
-                    underline_offset: design_metrics.underlinePosition as f32 * scale,
-                    underline_thickness: design_metrics.underlineThickness as f32 * scale,
-                    strikethrough_offset: design_metrics.strikethroughPosition as f32 * scale,
-                    strikethrough_thickness: design_metrics.strikethroughThickness as f32 * scale,
+                    underline_offset: design_metrics.underline_position as f32 * scale,
+                    underline_thickness: design_metrics.underline_thickness as f32 * scale,
+                    strikethrough_offset: design_metrics.strikethrough_position as f32 * scale,
+                    strikethrough_thickness: design_metrics.strikethrough_thickness as f32 * scale,
                     overline_offset: -ascent,
                 });
             }
@@ -574,7 +582,7 @@ impl TextShaper {
             });
         }
 
-        let collection = dwrote::FontCollection::system();
+        let collection = RkFontCollection::system().map_err(|e| TextError::DirectWriteError(e.to_string()))?;
 
         // Find first available font in chain
         let mut font_family_name = font_chain.primary.clone();
@@ -582,13 +590,13 @@ impl TextShaper {
 
         for family_name in font_chain.all_families() {
             if let Ok(Some(family)) = collection.font_family_by_name(family_name) {
-                let dw_weight = DwFontWeight::from_u32(weight.0 as u32);
+                let dw_weight = RkFontWeight::from_u32(weight.0 as u32);
                 let dw_style = match style {
-                    FontStyle::Normal => DwFontStyle::Normal,
-                    FontStyle::Italic => DwFontStyle::Italic,
-                    FontStyle::Oblique => DwFontStyle::Oblique,
+                    FontStyle::Normal => RkFontStyle::Normal,
+                    FontStyle::Italic => RkFontStyle::Italic,
+                    FontStyle::Oblique => RkFontStyle::Oblique,
                 };
-                let dw_stretch = DwFontStretch::from_u32(stretch.to_dwrite_value());
+                let dw_stretch = RkFontStretch::from_u32(stretch.to_dwrite_value());
 
                 if let Ok(font) = family.first_matching_font(dw_weight, dw_stretch, dw_style) {
                     font_family_name = family_name.to_string();
@@ -600,10 +608,14 @@ impl TextShaper {
 
         // If we found a font, use DirectWrite for accurate shaping
         if let Some(font) = found_font {
-            let face = font.create_font_face();
-            let design_metrics = face.metrics().metrics0();
+            let face = font
+                .create_font_face()
+                .map_err(|e| TextError::DirectWriteError(e.to_string()))?;
+            let design_metrics = face
+                .metrics()
+                .map_err(|e| TextError::DirectWriteError(e.to_string()))?;
 
-            let units_per_em = design_metrics.designUnitsPerEm as f32;
+            let units_per_em = design_metrics.design_units_per_em as f32;
             let scale = size / units_per_em;
 
             // Get glyph indices - handle Result
@@ -621,7 +633,7 @@ impl TextShaper {
                         glyph_indices.iter().zip(text_chars.iter()).enumerate()
                     {
                         let advance = if i < glyph_metrics.len() {
-                            glyph_metrics[i].advanceWidth as f32 * scale
+                            glyph_metrics[i].advance_width as f32 * scale
                         } else {
                             size * 0.5
                         };
@@ -640,7 +652,7 @@ impl TextShaper {
 
                     let ascent = design_metrics.ascent as f32 * scale;
                     let descent = design_metrics.descent as f32 * scale;
-                    let leading = design_metrics.lineGap as f32 * scale;
+                    let leading = design_metrics.line_gap as f32 * scale;
 
                     let metrics = TextMetrics {
                         width: x_offset,
@@ -648,10 +660,10 @@ impl TextShaper {
                         ascent,
                         descent,
                         leading,
-                        underline_offset: design_metrics.underlinePosition as f32 * scale,
-                        underline_thickness: design_metrics.underlineThickness as f32 * scale,
-                        strikethrough_offset: design_metrics.strikethroughPosition as f32 * scale,
-                        strikethrough_thickness: design_metrics.strikethroughThickness as f32
+                        underline_offset: design_metrics.underline_position as f32 * scale,
+                        underline_thickness: design_metrics.underline_thickness as f32 * scale,
+                        strikethrough_offset: design_metrics.strikethrough_position as f32 * scale,
+                        strikethrough_thickness: design_metrics.strikethrough_thickness as f32
                             * scale,
                         overline_offset: -ascent,
                     };

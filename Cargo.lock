@@ -1459,20 +1459,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
 
 [[package]]
-name = "dwrote"
-version = "0.11.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9e1b35532432acc8b19ceed096e35dfa088d3ea037fe4f3c085f1f97f33b4d02"
-dependencies = [
- "lazy_static",
- "libc",
- "serde",
- "serde_derive",
- "winapi",
- "wio",
-]
-
-[[package]]
 name = "either"
 version = "1.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5314,9 +5300,9 @@ dependencies = [
 name = "rustkit-layout"
 version = "0.1.0"
 dependencies = [
- "dwrote",
  "rustkit-css",
  "rustkit-dom",
+ "rustkit-text",
  "thiserror 1.0.69",
  "tracing",
  "tracing-subscriber",
@@ -5366,6 +5352,7 @@ dependencies = [
  "rustkit-common",
  "rustkit-css",
  "rustkit-layout",
+ "rustkit-text",
  "thiserror 1.0.69",
  "tracing",
  "tracing-subscriber",
@@ -5418,6 +5405,15 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "walkdir",
+]
+
+[[package]]
+name = "rustkit-text"
+version = "0.1.0"
+dependencies = [
+ "thiserror 1.0.69",
+ "tracing-subscriber",
+ "windows 0.61.3",
 ]
 
 [[package]]
@@ -7772,15 +7768,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5a5364e9d77fcdeeaa6062ced926ee3381faa2ee02d3eb83a5c27a8825540829"
 dependencies = [
  "memchr",
-]
-
-[[package]]
-name = "wio"
-version = "0.2.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d129932f4644ac2396cb456385cbf9e63b5b30c6e8dc4820bdca4eb082037a5"
-dependencies = [
- "winapi",
 ]
 
 [[package]]

@@ -10,6 +10,7 @@ license = "MIT"
 # DOM and CSS (used by integration code)
 rustkit-dom = { path = "../rustkit-dom" }
 rustkit-css = { path = "../rustkit-css" }
+rustkit-text = { path = "../rustkit-text" }
 
 # Error handling
 thiserror = "1.0"
@@ -17,9 +18,7 @@ thiserror = "1.0"
 # Tracing
 tracing = "0.1"
 
-# Text shaping on Windows via DirectWrite
-[target.'cfg(windows)'.dependencies]
-dwrote = "0.11"
+# Text shaping on Windows via DirectWrite (through rustkit-text)
 
 [dev-dependencies]
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

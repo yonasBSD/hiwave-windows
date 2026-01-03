@@ -1,0 +1,22 @@
+[package]
+name = "rustkit-text"
+version = "0.1.0"
+edition = "2021"
+description = "Text shaping and font access for RustKit (DirectWrite on Windows)"
+authors = ["HiWave Team"]
+license = "MIT"
+
+[dependencies]
+thiserror = "1.0"
+
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.61", features = [
+    "Win32_Foundation",
+    "Win32_System_Com",
+    "Win32_Graphics_DirectWrite",
+] }
+
+[dev-dependencies]
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+

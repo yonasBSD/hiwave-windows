@@ -17,8 +17,8 @@ rustkit-common = { path = "../rustkit-common" }
 wgpu = "24"
 bytemuck = { version = "1", features = ["derive"] }
 
-# Text rendering (TODO: dwrote for Windows)
-# dwrote = "0.11"
+# Text rendering
+rustkit-text = { path = "../rustkit-text" }
 
 # Core
 thiserror = "1.0"

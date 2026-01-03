@@ -4,6 +4,8 @@
 
 use crate::RendererError;
 use hashbrown::HashMap;
+#[cfg(windows)]
+use rustkit_text::{FontCollection as RkFontCollection, FontStretch as RkFontStretch, FontStyle as RkFontStyle, FontWeight as RkFontWeight};
 
 /// Key for identifying a specific glyph.
 #[derive(Debug, Clone, Hash, Eq, PartialEq)]
@@ -160,7 +162,19 @@ impl GlyphCache {
     ) -> Option<GlyphEntry> {
         let font_size = key.font_size as f32 / 10.0;
         
-        // Estimate glyph dimensions based on character
+        // Try real rasterization on Windows if we can map codepoint -> glyph + metrics.
+        // For now we still emit a simple placeholder bitmap (Bravo 2 goal is dependency removal).
+        // Future work: use DirectWrite glyph run analysis to rasterize into the atlas.
+        #[cfg(windows)]
+        {
+            let _ = (key, font_size, RkFontCollection::system, RkFontWeight::from_u32, RkFontStretch::from_u32, |s| match s {
+                0 => RkFontStyle::Normal,
+                1 => RkFontStyle::Italic,
+                _ => RkFontStyle::Normal,
+            });
+        }
+
+        // Estimate glyph dimensions based on character (fallback)
         let (glyph_width, glyph_height) = estimate_glyph_size(key.codepoint, font_size);
 
         let glyph_width = glyph_width.max(1).min(256);
