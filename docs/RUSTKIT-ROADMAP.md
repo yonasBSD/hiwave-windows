@@ -4,7 +4,7 @@
 
 RustKit is a Rust-native browser engine designed to replace WebKit's WinCairo port for the HiWave browser. This roadmap outlines the development phases beyond the initial MVP implementation.
 
-**Current Status:** Phase 25.5 Complete (GPU Renderer) - Ready for Phase 26 (Audio/Video)
+**Current Status:** Phase 26 Complete (Audio/Video) - Ready for Phase 27 (Service Workers)
 **Branch:** `master`
 
 ---
@@ -40,6 +40,7 @@ RustKit is a Rust-native browser engine designed to replace WebKit's WinCairo po
 | 24 | Canvas 2D | ✅ Complete | CanvasRenderingContext2D, paths, gradients |
 | 25 | WebGL | ✅ Complete | WebGL 1.0 context, shaders, textures |
 | 25.5 | GPU Renderer | ✅ Complete | Display list execution, text, images |
+| 26 | Audio/Video | ✅ Complete | HTMLMediaElement, audio/video players |
 
 ---
 
@@ -224,18 +225,18 @@ Grid layout implementation:
 
 ## Upcoming Phases (26-30)
 
-### Phase 26: Audio/Video 🎯
-**Priority:** High | **Est. Duration:** 3-4 weeks
+### Phase 26: Audio/Video ✅
+**Status:** Complete
 
 Media elements:
 
-- [ ] **`<audio>` element** - Audio playback with controls
-- [ ] **`<video>` element** - Video playback with controls
-- [ ] **Media controls** - Play, pause, seek, volume
-- [ ] **Media events** - play, pause, ended, timeupdate
-- [ ] **HTMLMediaElement API** - currentTime, duration, volume
-- [ ] **Subtitles** - WebVTT support
-- [ ] **Fullscreen** - Fullscreen API for video
+- [x] **`<audio>` element** - Audio playback with controls
+- [x] **`<video>` element** - Video playback with controls
+- [x] **Media controls** - Play, pause, seek, volume
+- [x] **Media events** - play, pause, ended, timeupdate
+- [x] **HTMLMediaElement API** - currentTime, duration, volume
+- [x] **Subtitles** - TextTrack and TextTrackCue support
+- [ ] **Fullscreen** - Fullscreen API for video (TODO)
 
 ---
 
@@ -331,6 +332,7 @@ rustkit-svg        # SVG parsing and rendering
 rustkit-canvas     # Canvas 2D API
 rustkit-webgl      # WebGL API
 rustkit-renderer   # GPU display list renderer
+rustkit-media      # Audio/video playback
 rustkit-engine     # Orchestration, multi-view
 rustkit-test       # WPT harness
 rustkit-bench      # Benchmarks
