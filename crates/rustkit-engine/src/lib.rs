@@ -16,6 +16,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use rustkit_bindings::DomBindings;
+// Re-export IpcMessage for external use
+pub use rustkit_bindings::IpcMessage;
 use rustkit_compositor::Compositor;
 use rustkit_core::{LoadEvent, NavigationRequest, NavigationStateMachine};
 use rustkit_css::ComputedStyle;
@@ -1002,6 +1004,37 @@ impl Engine {
     /// Clear the image cache.
     pub fn clear_image_cache(&self) {
         self.image_manager.clear_cache();
+    }
+
+    /// Drain IPC messages from all views.
+    ///
+    /// Returns a Vec of (EngineViewId, IpcMessage) tuples for messages received
+    /// via `window.ipc.postMessage()` from JavaScript in any view.
+    ///
+    /// This should be called periodically (e.g., during the message loop) to
+    /// process IPC messages from the Chrome UI, Shelf, and Content views.
+    pub fn drain_ipc_messages(&self) -> Vec<(EngineViewId, IpcMessage)> {
+        let mut messages = Vec::new();
+
+        for (&view_id, view_state) in &self.views {
+            if let Some(ref bindings) = view_state.bindings {
+                for ipc_msg in bindings.drain_ipc_queue() {
+                    messages.push((view_id, ipc_msg));
+                }
+            }
+        }
+
+        messages
+    }
+
+    /// Check if any view has pending IPC messages.
+    pub fn has_pending_ipc(&self) -> bool {
+        self.views.values().any(|v| {
+            v.bindings
+                .as_ref()
+                .map(|b| b.has_pending_ipc())
+                .unwrap_or(false)
+        })
     }
 }
 

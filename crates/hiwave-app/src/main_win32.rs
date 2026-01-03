@@ -25,12 +25,12 @@
 //! cargo build --features native-win32
 //! ```
 
-use rustkit_engine::{Engine, EngineBuilder, EngineViewId};
-use rustkit_viewhost::{Bounds, MainWindowConfig, ViewEvent, ViewHost, ViewId};
+use rustkit_engine::{Engine, EngineBuilder, EngineViewId, IpcMessage};
+use rustkit_viewhost::{Bounds, MainWindowConfig, ViewEvent, ViewHost};
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::Arc;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, error, info, trace, warn};
 use windows::Win32::Foundation::HWND;
 
 use crate::state::AppState;
@@ -63,9 +63,10 @@ pub struct NativeBrowser {
     engine: RefCell<Engine>,
     /// Map of view types to engine view IDs
     views: HashMap<ViewType, EngineViewId>,
-    /// Map of viewhost ViewIds to view types (for event routing)
-    view_ids: HashMap<ViewId, ViewType>,
+    /// Reverse map: engine view ID to view type (for IPC routing)
+    engine_view_types: HashMap<EngineViewId, ViewType>,
     /// Application state
+    #[allow(dead_code)]
     app_state: Arc<AppState>,
     /// Current window dimensions
     window_width: u32,
@@ -100,7 +101,7 @@ impl NativeBrowser {
             viewhost: ViewHost::new(),
             engine: RefCell::new(engine),
             views: HashMap::new(),
-            view_ids: HashMap::new(),
+            engine_view_types: HashMap::new(),
             app_state,
             window_width: 1280,
             window_height: 800,
@@ -150,6 +151,7 @@ impl NativeBrowser {
             .create_view(parent, chrome_bounds)
             .map_err(|e| format!("Failed to create Chrome view: {}", e))?;
         self.views.insert(ViewType::Chrome, chrome_id);
+        self.engine_view_types.insert(chrome_id, ViewType::Chrome);
         info!(?chrome_id, "Chrome view created");
 
         // Create Content view (web page rendering)
@@ -157,6 +159,7 @@ impl NativeBrowser {
             .create_view(parent, content_bounds)
             .map_err(|e| format!("Failed to create Content view: {}", e))?;
         self.views.insert(ViewType::Content, content_id);
+        self.engine_view_types.insert(content_id, ViewType::Content);
         info!(?content_id, "Content view created");
 
         // Create Shelf view (command palette, hidden by default)
@@ -164,6 +167,7 @@ impl NativeBrowser {
             .create_view(parent, shelf_bounds)
             .map_err(|e| format!("Failed to create Shelf view: {}", e))?;
         self.views.insert(ViewType::Shelf, shelf_id);
+        self.engine_view_types.insert(shelf_id, ViewType::Shelf);
         info!(?shelf_id, "Shelf view created");
 
         Ok(())
@@ -345,11 +349,113 @@ impl NativeBrowser {
         }
     }
 
-    /// Run the browser's main message loop.
-    pub fn run(&self) {
+    /// Run the browser's main message loop with IPC processing.
+    pub fn run(&mut self) {
         info!("Starting native browser message loop");
-        self.viewhost.run_message_loop();
+
+        loop {
+            // Process Win32 messages (non-blocking)
+            if !self.viewhost.pump_messages() {
+                // WM_QUIT received, exit the loop
+                break;
+            }
+
+            // Process any IPC messages from views
+            self.process_ipc_messages();
+
+            // Small sleep to prevent busy-waiting
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+
         info!("Browser message loop ended");
+    }
+
+    /// Process IPC messages from all views.
+    fn process_ipc_messages(&mut self) {
+        let messages = self.engine.borrow().drain_ipc_messages();
+
+        for (view_id, ipc_msg) in messages {
+            let view_type = self.engine_view_types.get(&view_id).copied();
+            self.handle_ipc_message(view_type, ipc_msg);
+        }
+    }
+
+    /// Handle a single IPC message.
+    fn handle_ipc_message(&mut self, view_type: Option<ViewType>, msg: IpcMessage) {
+        trace!(?view_type, payload = %msg.payload, "IPC message received");
+
+        // Parse the JSON payload
+        let parsed: Result<serde_json::Value, _> = serde_json::from_str(&msg.payload);
+        let json = match parsed {
+            Ok(v) => v,
+            Err(e) => {
+                warn!(error = %e, "Failed to parse IPC message JSON");
+                return;
+            }
+        };
+
+        // Extract the command
+        let cmd = match json.get("cmd").and_then(|v| v.as_str()) {
+            Some(c) => c,
+            None => {
+                warn!("IPC message missing 'cmd' field");
+                return;
+            }
+        };
+
+        // Handle the command
+        match cmd {
+            "navigate" => {
+                if let Some(url) = json.get("url").and_then(|v| v.as_str()) {
+                    info!(url, "Navigate requested");
+                    self.navigate(url);
+                }
+            }
+            "go_back" => {
+                debug!("Go back requested");
+                // TODO: Implement navigation history
+            }
+            "go_forward" => {
+                debug!("Go forward requested");
+                // TODO: Implement navigation history
+            }
+            "reload" => {
+                debug!("Reload requested");
+                // TODO: Implement reload
+            }
+            "expand_chrome" => {
+                self.expand_chrome();
+            }
+            "collapse_chrome" => {
+                self.collapse_chrome();
+            }
+            "expand_shelf" | "open_command_palette" => {
+                self.expand_shelf();
+            }
+            "collapse_shelf" | "close_command_palette" => {
+                self.collapse_shelf();
+            }
+            "toggle_sidebar" => {
+                self.toggle_sidebar();
+            }
+            "chrome_ready" => {
+                info!("Chrome UI ready");
+                // TODO: Send initial state to Chrome UI
+            }
+            "log" => {
+                let level = json.get("level").and_then(|v| v.as_str()).unwrap_or("info");
+                let message = json.get("message").and_then(|v| v.as_str()).unwrap_or("");
+                match level {
+                    "error" => error!(source = "js", "{}", message),
+                    "warn" => warn!(source = "js", "{}", message),
+                    "debug" => debug!(source = "js", "{}", message),
+                    _ => info!(source = "js", "{}", message),
+                }
+            }
+            _ => {
+                debug!(cmd, "Unhandled IPC command");
+            }
+        }
     }
 }
 
@@ -395,7 +501,7 @@ mod tests {
                     .expect("Failed to create test engine"),
             ),
             views: HashMap::new(),
-            view_ids: HashMap::new(),
+            engine_view_types: HashMap::new(),
             app_state: Arc::new(AppState::new()),
             window_width: 1280,
             window_height: 800,
