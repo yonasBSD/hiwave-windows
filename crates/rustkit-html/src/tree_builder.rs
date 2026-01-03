@@ -40,13 +40,16 @@ impl FragmentContext {
 
 /// Insertion mode for tree construction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
 enum InsertionMode {
     Initial,
     BeforeHtml,
     BeforeHead,
     InHead,
+    InHeadNoscript,
     AfterHead,
     InBody,
+    Text,
     // Table modes
     InTable,
     InTableText,
@@ -55,9 +58,17 @@ enum InsertionMode {
     InTableBody,
     InRow,
     InCell,
+    // Select modes
+    InSelect,
+    InSelectInTable,
+    // Template mode
+    InTemplate,
     // After modes
     AfterBody,
+    InFrameset,
+    AfterFrameset,
     AfterAfterBody,
+    AfterAfterFrameset,
 }
 
 /// Void elements that cannot have children.
@@ -126,11 +137,13 @@ enum FormattingEntry<NodeId: Clone> {
 pub struct TreeBuilder<S: TreeSink> {
     sink: S,
     mode: InsertionMode,
-    /// Original insertion mode (used when switching to InTableText)
+    /// Original insertion mode (used when switching to InTableText or Text mode)
     original_mode: Option<InsertionMode>,
     open_elements: Vec<(String, S::NodeId)>,
     /// Active formatting elements list for AAA
     active_formatting_elements: Vec<FormattingEntry<S::NodeId>>,
+    /// Template insertion modes stack
+    template_insertion_modes: Vec<InsertionMode>,
     foster_parenting: bool,
     #[allow(dead_code)]
     scripting: bool,
@@ -142,6 +155,11 @@ pub struct TreeBuilder<S: TreeSink> {
     quirks_mode: QuirksMode,
     /// Fragment parsing context (None for full document parsing)
     fragment_context: Option<FragmentContext>,
+    /// Head element pointer (for implicit head handling)
+    head_element: Option<S::NodeId>,
+    /// Form element pointer (for form owner tracking)
+    #[allow(dead_code)]
+    form_element: Option<S::NodeId>,
 }
 
 impl<S: TreeSink> TreeBuilder<S> {
@@ -153,34 +171,46 @@ impl<S: TreeSink> TreeBuilder<S> {
             original_mode: None,
             open_elements: Vec::new(),
             active_formatting_elements: Vec::new(),
+            template_insertion_modes: Vec::new(),
             foster_parenting: false,
             scripting: false,
             text_buffer: String::new(),
             pending_table_chars: Vec::new(),
             quirks_mode: QuirksMode::NoQuirks,
             fragment_context: None,
+            head_element: None,
+            form_element: None,
         }
     }
 
     /// Create a new tree builder for fragment parsing (innerHTML, insertAdjacentHTML).
     ///
     /// The context_element determines the initial parsing state:
-    /// - "template": starts in InBody with template contents
+    /// - "template": starts in InTemplate with template contents
     /// - "title", "textarea": RCDATA parsing
     /// - "style", "xmp", "iframe", "noembed", "noframes": RAWTEXT parsing
     /// - "script": script data parsing
     /// - "plaintext": PLAINTEXT parsing
+    /// - "select": InSelect mode
+    /// - "table": InTable mode
     /// - others: normal InBody parsing
     pub fn new_fragment(sink: S, context: FragmentContext) -> Self {
         // Determine initial insertion mode based on context element
-        let mode = match context.context_element.as_str() {
-            "title" | "textarea" => InsertionMode::InBody, // RCDATA handled by tokenizer
-            "style" | "xmp" | "iframe" | "noembed" | "noframes" => InsertionMode::InBody,
-            "script" => InsertionMode::InBody, // Script data handled by tokenizer
-            "plaintext" => InsertionMode::InBody,
-            "html" => InsertionMode::BeforeHead,
-            "head" => InsertionMode::InHead,
-            "body" | "div" | "span" | "p" | "template" | _ => InsertionMode::InBody,
+        let (mode, template_modes) = match context.context_element.as_str() {
+            "title" | "textarea" => (InsertionMode::InBody, vec![]), // RCDATA handled by tokenizer
+            "style" | "xmp" | "iframe" | "noembed" | "noframes" => (InsertionMode::InBody, vec![]),
+            "script" => (InsertionMode::InBody, vec![]), // Script data handled by tokenizer
+            "plaintext" => (InsertionMode::InBody, vec![]),
+            "html" => (InsertionMode::BeforeHead, vec![]),
+            "head" => (InsertionMode::InHead, vec![]),
+            "template" => (InsertionMode::InTemplate, vec![InsertionMode::InTemplate]),
+            "select" => (InsertionMode::InSelect, vec![]),
+            "table" => (InsertionMode::InTable, vec![]),
+            "tbody" | "thead" | "tfoot" => (InsertionMode::InTableBody, vec![]),
+            "tr" => (InsertionMode::InRow, vec![]),
+            "td" | "th" => (InsertionMode::InCell, vec![]),
+            "frameset" => (InsertionMode::InFrameset, vec![]),
+            "body" | "div" | "span" | "p" | _ => (InsertionMode::InBody, vec![]),
         };
 
         Self {
@@ -189,12 +219,15 @@ impl<S: TreeSink> TreeBuilder<S> {
             original_mode: None,
             open_elements: Vec::new(),
             active_formatting_elements: Vec::new(),
+            template_insertion_modes: template_modes,
             foster_parenting: false,
             scripting: false,
             text_buffer: String::new(),
             pending_table_chars: Vec::new(),
             quirks_mode: QuirksMode::NoQuirks,
             fragment_context: Some(context),
+            head_element: None,
+            form_element: None,
         }
     }
 
@@ -653,8 +686,10 @@ impl<S: TreeSink> TreeBuilder<S> {
             InsertionMode::BeforeHtml => self.handle_before_html(token)?,
             InsertionMode::BeforeHead => self.handle_before_head(token)?,
             InsertionMode::InHead => self.handle_in_head(token)?,
+            InsertionMode::InHeadNoscript => self.handle_in_head_noscript(token)?,
             InsertionMode::AfterHead => self.handle_after_head(token)?,
             InsertionMode::InBody => self.handle_in_body(token)?,
+            InsertionMode::Text => self.handle_text(token)?,
             // Table modes
             InsertionMode::InTable => self.handle_in_table(token)?,
             InsertionMode::InTableText => self.handle_in_table_text(token)?,
@@ -663,9 +698,17 @@ impl<S: TreeSink> TreeBuilder<S> {
             InsertionMode::InTableBody => self.handle_in_table_body(token)?,
             InsertionMode::InRow => self.handle_in_row(token)?,
             InsertionMode::InCell => self.handle_in_cell(token)?,
+            // Select modes
+            InsertionMode::InSelect => self.handle_in_select(token)?,
+            InsertionMode::InSelectInTable => self.handle_in_select_in_table(token)?,
+            // Template mode
+            InsertionMode::InTemplate => self.handle_in_template(token)?,
             // After modes
             InsertionMode::AfterBody => self.handle_after_body(token)?,
+            InsertionMode::InFrameset => self.handle_in_frameset(token)?,
+            InsertionMode::AfterFrameset => self.handle_after_frameset(token)?,
             InsertionMode::AfterAfterBody => self.handle_after_after_body(token)?,
+            InsertionMode::AfterAfterFrameset => self.handle_after_after_frameset(token)?,
         }
 
         Ok(())
@@ -1490,8 +1533,19 @@ impl<S: TreeSink> TreeBuilder<S> {
 
             match name.as_str() {
                 "select" => {
-                    // Would be InSelect, but we haven't implemented that yet
-                    self.mode = InsertionMode::InBody;
+                    // Check if we're in table context
+                    for j in (0..i).rev() {
+                        match self.open_elements[j].0.as_str() {
+                            "template" => break,
+                            "table" => {
+                                self.mode = InsertionMode::InSelectInTable;
+                                return;
+                            }
+                            _ => {}
+                        }
+                    }
+                    self.mode = InsertionMode::InSelect;
+                    return;
                 }
                 "td" | "th" if !last => {
                     self.mode = InsertionMode::InCell;
@@ -1517,12 +1571,29 @@ impl<S: TreeSink> TreeBuilder<S> {
                     self.mode = InsertionMode::InTable;
                     return;
                 }
+                "template" => {
+                    self.mode = *self.template_insertion_modes.last()
+                        .unwrap_or(&InsertionMode::InTemplate);
+                    return;
+                }
+                "head" if !last => {
+                    self.mode = InsertionMode::InHead;
+                    return;
+                }
                 "body" => {
                     self.mode = InsertionMode::InBody;
                     return;
                 }
+                "frameset" => {
+                    self.mode = InsertionMode::InFrameset;
+                    return;
+                }
                 "html" => {
-                    self.mode = InsertionMode::BeforeHead;
+                    if self.head_element.is_none() {
+                        self.mode = InsertionMode::BeforeHead;
+                    } else {
+                        self.mode = InsertionMode::AfterHead;
+                    }
                     return;
                 }
                 _ => {}
@@ -1532,6 +1603,489 @@ impl<S: TreeSink> TreeBuilder<S> {
     }
 
     // ==================== END TABLE MODE HANDLERS ====================
+
+    // ==================== SELECT MODE HANDLERS ====================
+
+    fn handle_in_select(&mut self, token: Token) -> ParseResult<()> {
+        match &token {
+            Token::Character('\0') => {
+                // Ignore null character
+            }
+            Token::Character(ch) => {
+                self.text_buffer.push(*ch);
+            }
+            Token::Comment(data) => {
+                self.flush_text();
+                self.sink.comment(data.clone());
+            }
+            Token::StartTag { name, attrs, self_closing } => {
+                self.flush_text();
+                match name.as_str() {
+                    "html" => {
+                        // Process using InBody rules
+                        self.handle_in_body(token)?;
+                    }
+                    "option" => {
+                        // Close current option if open
+                        if self.current_node_name() == Some("option") {
+                            let (tag, _) = self.open_elements.pop().unwrap();
+                            self.sink.end_element(tag);
+                        }
+                        let node_id = self.sink.start_element(
+                            name.clone(),
+                            attrs.clone().into_iter().collect(),
+                            *self_closing,
+                        );
+                        self.open_elements.push((name.clone(), node_id));
+                    }
+                    "optgroup" => {
+                        // Close current option if open
+                        if self.current_node_name() == Some("option") {
+                            let (tag, _) = self.open_elements.pop().unwrap();
+                            self.sink.end_element(tag);
+                        }
+                        // Close current optgroup if open
+                        if self.current_node_name() == Some("optgroup") {
+                            let (tag, _) = self.open_elements.pop().unwrap();
+                            self.sink.end_element(tag);
+                        }
+                        let node_id = self.sink.start_element(
+                            name.clone(),
+                            attrs.clone().into_iter().collect(),
+                            *self_closing,
+                        );
+                        self.open_elements.push((name.clone(), node_id));
+                    }
+                    "select" => {
+                        // Parse error - close select
+                        if self.has_element_in_select_scope("select") {
+                            self.pop_until("select");
+                            self.sink.end_element("select".to_string());
+                            self.reset_insertion_mode();
+                        }
+                    }
+                    "input" | "keygen" | "textarea" => {
+                        // Parse error - close select and reprocess
+                        if self.has_element_in_select_scope("select") {
+                            self.pop_until("select");
+                            self.sink.end_element("select".to_string());
+                            self.reset_insertion_mode();
+                            self.process_token(token)?;
+                        }
+                    }
+                    "script" | "template" => {
+                        self.handle_in_head(token)?;
+                    }
+                    _ => {
+                        // Parse error - ignore
+                    }
+                }
+            }
+            Token::EndTag { name } => {
+                self.flush_text();
+                match name.as_str() {
+                    "optgroup" => {
+                        // If current is option and previous is optgroup, close option first
+                        if self.current_node_name() == Some("option") {
+                            let len = self.open_elements.len();
+                            if len >= 2 && self.open_elements[len - 2].0 == "optgroup" {
+                                let (tag, _) = self.open_elements.pop().unwrap();
+                                self.sink.end_element(tag);
+                            }
+                        }
+                        if self.current_node_name() == Some("optgroup") {
+                            let (tag, _) = self.open_elements.pop().unwrap();
+                            self.sink.end_element(tag);
+                        }
+                    }
+                    "option" => {
+                        if self.current_node_name() == Some("option") {
+                            let (tag, _) = self.open_elements.pop().unwrap();
+                            self.sink.end_element(tag);
+                        }
+                    }
+                    "select" => {
+                        if self.has_element_in_select_scope("select") {
+                            self.pop_until("select");
+                            self.sink.end_element("select".to_string());
+                            self.reset_insertion_mode();
+                        }
+                    }
+                    "template" => {
+                        self.handle_in_head(token)?;
+                    }
+                    _ => {
+                        // Parse error - ignore
+                    }
+                }
+            }
+            Token::Eof => {
+                self.handle_in_body(token)?;
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    fn handle_in_select_in_table(&mut self, token: Token) -> ParseResult<()> {
+        match &token {
+            Token::StartTag { name, .. }
+                if matches!(
+                    name.as_str(),
+                    "caption" | "table" | "tbody" | "tfoot" | "thead" | "tr" | "td" | "th"
+                ) =>
+            {
+                // Parse error - close select and reprocess
+                self.flush_text();
+                self.pop_until("select");
+                self.sink.end_element("select".to_string());
+                self.reset_insertion_mode();
+                self.process_token(token)?;
+            }
+            Token::EndTag { name }
+                if matches!(
+                    name.as_str(),
+                    "caption" | "table" | "tbody" | "tfoot" | "thead" | "tr" | "td" | "th"
+                ) =>
+            {
+                // Parse error - close select if element is in scope
+                if self.has_element_in_table_scope(name) {
+                    self.flush_text();
+                    self.pop_until("select");
+                    self.sink.end_element("select".to_string());
+                    self.reset_insertion_mode();
+                    self.process_token(token)?;
+                }
+            }
+            _ => {
+                self.handle_in_select(token)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Check if an element is in select scope.
+    fn has_element_in_select_scope(&self, tag_name: &str) -> bool {
+        for (name, _) in self.open_elements.iter().rev() {
+            if name == tag_name {
+                return true;
+            }
+            // Select scope limiters are only optgroup and option
+            if name != "optgroup" && name != "option" {
+                return false;
+            }
+        }
+        false
+    }
+
+    // ==================== TEMPLATE MODE HANDLERS ====================
+
+    fn handle_in_template(&mut self, token: Token) -> ParseResult<()> {
+        match &token {
+            Token::Character(_) | Token::Comment(_) => {
+                self.handle_in_body(token)?;
+            }
+            Token::StartTag { name, .. } => {
+                match name.as_str() {
+                    "base" | "basefont" | "bgsound" | "link" | "meta" | "noframes"
+                    | "script" | "style" | "template" | "title" => {
+                        self.handle_in_head(token)?;
+                    }
+                    "caption" | "colgroup" | "tbody" | "tfoot" | "thead" => {
+                        self.template_insertion_modes.pop();
+                        self.template_insertion_modes.push(InsertionMode::InTable);
+                        self.mode = InsertionMode::InTable;
+                        self.process_token(token)?;
+                    }
+                    "col" => {
+                        self.template_insertion_modes.pop();
+                        self.template_insertion_modes.push(InsertionMode::InColumnGroup);
+                        self.mode = InsertionMode::InColumnGroup;
+                        self.process_token(token)?;
+                    }
+                    "tr" => {
+                        self.template_insertion_modes.pop();
+                        self.template_insertion_modes.push(InsertionMode::InTableBody);
+                        self.mode = InsertionMode::InTableBody;
+                        self.process_token(token)?;
+                    }
+                    "td" | "th" => {
+                        self.template_insertion_modes.pop();
+                        self.template_insertion_modes.push(InsertionMode::InRow);
+                        self.mode = InsertionMode::InRow;
+                        self.process_token(token)?;
+                    }
+                    _ => {
+                        self.template_insertion_modes.pop();
+                        self.template_insertion_modes.push(InsertionMode::InBody);
+                        self.mode = InsertionMode::InBody;
+                        self.process_token(token)?;
+                    }
+                }
+            }
+            Token::EndTag { name } => {
+                match name.as_str() {
+                    "template" => {
+                        self.handle_in_head(token)?;
+                    }
+                    _ => {
+                        // Parse error - ignore
+                    }
+                }
+            }
+            Token::Eof => {
+                // Check if template is on the stack
+                if !self.open_elements.iter().any(|(n, _)| n == "template") {
+                    // Stop parsing
+                } else {
+                    // Parse error - pop until template
+                    while let Some((name, _)) = self.open_elements.pop() {
+                        self.sink.end_element(name.clone());
+                        if name == "template" {
+                            break;
+                        }
+                    }
+                    self.template_insertion_modes.pop();
+                    self.reset_insertion_mode();
+                    self.process_token(token)?;
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    // ==================== FRAMESET MODE HANDLERS ====================
+
+    fn handle_in_frameset(&mut self, token: Token) -> ParseResult<()> {
+        match &token {
+            Token::Character(ch) if ch.is_whitespace() => {
+                self.text_buffer.push(*ch);
+            }
+            Token::Comment(data) => {
+                self.flush_text();
+                self.sink.comment(data.clone());
+            }
+            Token::StartTag { name, attrs, .. } => {
+                self.flush_text();
+                match name.as_str() {
+                    "html" => {
+                        self.handle_in_body(token)?;
+                    }
+                    "frameset" => {
+                        let node_id = self.sink.start_element(
+                            name.clone(),
+                            attrs.clone().into_iter().collect(),
+                            false,
+                        );
+                        self.open_elements.push((name.clone(), node_id));
+                    }
+                    "frame" => {
+                        let _node_id = self.sink.start_element(
+                            name.clone(),
+                            attrs.clone().into_iter().collect(),
+                            true, // frame is void
+                        );
+                    }
+                    "noframes" => {
+                        self.handle_in_head(token)?;
+                    }
+                    _ => {
+                        // Parse error - ignore
+                    }
+                }
+            }
+            Token::EndTag { name } => {
+                self.flush_text();
+                match name.as_str() {
+                    "frameset" => {
+                        if self.current_node_name() == Some("html") {
+                            // Parse error - ignore
+                        } else {
+                            if let Some((tag, _)) = self.open_elements.pop() {
+                                self.sink.end_element(tag);
+                            }
+                            // If not fragment parsing and current is not frameset
+                            if self.fragment_context.is_none()
+                                && self.current_node_name() != Some("frameset")
+                            {
+                                self.mode = InsertionMode::AfterFrameset;
+                            }
+                        }
+                    }
+                    _ => {
+                        // Parse error - ignore
+                    }
+                }
+            }
+            Token::Eof => {
+                if self.current_node_name() != Some("html") {
+                    // Parse error
+                }
+                // Stop parsing
+            }
+            _ => {
+                // Parse error - ignore
+            }
+        }
+        Ok(())
+    }
+
+    fn handle_after_frameset(&mut self, token: Token) -> ParseResult<()> {
+        match &token {
+            Token::Character(ch) if ch.is_whitespace() => {
+                self.text_buffer.push(*ch);
+            }
+            Token::Comment(data) => {
+                self.flush_text();
+                self.sink.comment(data.clone());
+            }
+            Token::StartTag { name, .. } => {
+                self.flush_text();
+                match name.as_str() {
+                    "html" => {
+                        self.handle_in_body(token)?;
+                    }
+                    "noframes" => {
+                        self.handle_in_head(token)?;
+                    }
+                    _ => {
+                        // Parse error - ignore
+                    }
+                }
+            }
+            Token::EndTag { name } => {
+                self.flush_text();
+                if name == "html" {
+                    self.mode = InsertionMode::AfterAfterFrameset;
+                }
+                // Other end tags - parse error, ignore
+            }
+            Token::Eof => {
+                // Stop parsing
+            }
+            _ => {
+                // Parse error - ignore
+            }
+        }
+        Ok(())
+    }
+
+    fn handle_after_after_frameset(&mut self, token: Token) -> ParseResult<()> {
+        match &token {
+            Token::Comment(data) => {
+                self.sink.comment(data.clone());
+            }
+            Token::Character(ch) if ch.is_whitespace() => {
+                self.handle_in_body(token)?;
+            }
+            Token::StartTag { name, .. } => {
+                match name.as_str() {
+                    "html" => {
+                        self.handle_in_body(token)?;
+                    }
+                    "noframes" => {
+                        self.handle_in_head(token)?;
+                    }
+                    _ => {
+                        // Parse error - ignore
+                    }
+                }
+            }
+            Token::Eof => {
+                // Stop parsing
+            }
+            _ => {
+                // Parse error - ignore
+            }
+        }
+        Ok(())
+    }
+
+    // ==================== TEXT MODE HANDLER ====================
+
+    fn handle_text(&mut self, token: Token) -> ParseResult<()> {
+        match token {
+            Token::Character(ch) => {
+                self.text_buffer.push(ch);
+            }
+            Token::EndTag { name } => {
+                self.flush_text();
+                if let Some((tag_name, _)) = self.open_elements.pop() {
+                    self.sink.end_element(tag_name);
+                }
+                let _ = name; // Verify tag matches, but be lenient
+                if let Some(mode) = self.original_mode.take() {
+                    self.mode = mode;
+                } else {
+                    self.mode = InsertionMode::InBody;
+                }
+            }
+            Token::Eof => {
+                // Parse error - close element
+                self.flush_text();
+                if let Some((tag_name, _)) = self.open_elements.pop() {
+                    self.sink.end_element(tag_name);
+                }
+                if let Some(mode) = self.original_mode.take() {
+                    self.mode = mode;
+                } else {
+                    self.mode = InsertionMode::InBody;
+                }
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
+    // ==================== IN HEAD NOSCRIPT HANDLER ====================
+
+    fn handle_in_head_noscript(&mut self, token: Token) -> ParseResult<()> {
+        match &token {
+            Token::Comment(data) => {
+                self.sink.comment(data.clone());
+            }
+            Token::StartTag { name, .. }
+                if matches!(
+                    name.as_str(),
+                    "basefont" | "bgsound" | "link" | "meta" | "noframes" | "style"
+                ) =>
+            {
+                self.handle_in_head(token)?;
+            }
+            Token::EndTag { name } if name == "noscript" => {
+                if let Some((tag, _)) = self.open_elements.pop() {
+                    self.sink.end_element(tag);
+                }
+                self.mode = InsertionMode::InHead;
+            }
+            Token::Character(ch) if ch.is_whitespace() => {
+                self.handle_in_head(token)?;
+            }
+            Token::EndTag { name } if name == "br" => {
+                // Act as if </noscript> seen
+                if let Some((tag, _)) = self.open_elements.pop() {
+                    self.sink.end_element(tag);
+                }
+                self.mode = InsertionMode::InHead;
+                self.process_token(token)?;
+            }
+            Token::StartTag { name, .. } if matches!(name.as_str(), "head" | "noscript") => {
+                // Parse error - ignore
+            }
+            _ => {
+                // Parse error - close noscript and reprocess
+                if let Some((tag, _)) = self.open_elements.pop() {
+                    self.sink.end_element(tag);
+                }
+                self.mode = InsertionMode::InHead;
+                self.process_token(token)?;
+            }
+        }
+        Ok(())
+    }
+
+    // ==================== AFTER MODE HANDLERS ====================
 
     fn handle_after_body(&mut self, token: Token) -> ParseResult<()> {
         match token {
