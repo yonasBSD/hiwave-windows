@@ -360,11 +360,14 @@ impl NativeBrowser {
                 break;
             }
 
+            // Render all views
+            self.engine.borrow_mut().render_all_views();
+
             // Process any IPC messages from views
             self.process_ipc_messages();
 
-            // Small sleep to prevent busy-waiting
-            std::thread::sleep(std::time::Duration::from_millis(1));
+            // Small sleep to prevent busy-waiting (target ~60fps)
+            std::thread::sleep(std::time::Duration::from_millis(16));
         }
 
         info!("Browser message loop ended");

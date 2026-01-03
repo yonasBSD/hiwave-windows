@@ -637,7 +637,22 @@ impl Engine {
         Ok(())
     }
 
-    /// Render a view.
+    /// Render a view (public API for continuous rendering).
+    pub fn render_view(&mut self, id: EngineViewId) -> Result<(), EngineError> {
+        self.render(id)
+    }
+
+    /// Render all views.
+    pub fn render_all_views(&mut self) {
+        let view_ids: Vec<_> = self.views.keys().copied().collect();
+        for id in view_ids {
+            if let Err(e) = self.render(id) {
+                trace!(?id, error = %e, "Failed to render view");
+            }
+        }
+    }
+
+    /// Render a view (internal).
     fn render(&mut self, id: EngineViewId) -> Result<(), EngineError> {
         let view = self.views.get(&id).ok_or(EngineError::ViewNotFound(id))?;
         let viewhost_id = view.viewhost_id;
