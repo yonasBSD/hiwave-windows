@@ -32,7 +32,8 @@ use windows::{
     Win32::{
         Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM},
         Graphics::Gdi::{
-            BeginPaint, EndPaint, InvalidateRect, ScreenToClient, HBRUSH, PAINTSTRUCT,
+            BeginPaint, EndPaint, InvalidateRect, ScreenToClient, UpdateWindow, HBRUSH,
+            PAINTSTRUCT,
         },
         System::LibraryLoader::GetModuleHandleW,
         UI::{
@@ -216,9 +217,56 @@ impl ViewRegistry {
     }
 }
 
+/// Configuration for creating a main window.
+#[derive(Debug, Clone)]
+pub struct MainWindowConfig {
+    /// Window title.
+    pub title: String,
+    /// Initial width.
+    pub width: u32,
+    /// Initial height.
+    pub height: u32,
+    /// Whether the window is resizable.
+    pub resizable: bool,
+    /// Whether to center the window on screen.
+    pub centered: bool,
+}
+
+impl Default for MainWindowConfig {
+    fn default() -> Self {
+        Self {
+            title: "RustKit Window".to_string(),
+            width: 1280,
+            height: 800,
+            resizable: true,
+            centered: true,
+        }
+    }
+}
+
+impl MainWindowConfig {
+    /// Create a new config with the given title.
+    pub fn new(title: impl Into<String>) -> Self {
+        Self {
+            title: title.into(),
+            ..Default::default()
+        }
+    }
+
+    /// Set the window dimensions.
+    pub fn with_size(mut self, width: u32, height: u32) -> Self {
+        self.width = width;
+        self.height = height;
+        self
+    }
+}
+
 /// The main ViewHost that manages all views.
 pub struct ViewHost {
     views: RwLock<HashMap<ViewId, Arc<Mutex<ViewState>>>>,
+    /// Main window HWND (if created via create_main_window).
+    #[cfg(windows)]
+    main_hwnd: RwLock<Option<isize>>,
 }
 
 impl ViewHost {
@@ -234,6 +282,242 @@ impl ViewHost {
 
         Self {
             views: RwLock::new(HashMap::new()),
+            #[cfg(windows)]
+            main_hwnd: RwLock::new(None),
+        }
+    }
+
+    /// Create a top-level main window.
+    ///
+    /// Returns the HWND of the created window. This can be used as a parent
+    /// for child views created with `create_view`.
+    #[cfg(windows)]
+    pub fn create_main_window(&self, config: MainWindowConfig) -> Result<HWND, ViewHostError> {
+        use std::ffi::OsStr;
+        use std::os::windows::ffi::OsStrExt;
+
+        info!(?config, "Creating main window");
+
+        // Register the main window class
+        let class_name = Self::register_main_class()?;
+
+        // Convert title to wide string
+        let title_wide: Vec<u16> = OsStr::new(&config.title)
+            .encode_wide()
+            .chain(std::iter::once(0))
+            .collect();
+
+        // Calculate window position
+        let (x, y) = if config.centered {
+            let screen_width = unsafe { GetSystemMetrics(SM_CXSCREEN) };
+            let screen_height = unsafe { GetSystemMetrics(SM_CYSCREEN) };
+            (
+                (screen_width - config.width as i32) / 2,
+                (screen_height - config.height as i32) / 2,
+            )
+        } else {
+            (CW_USEDEFAULT, CW_USEDEFAULT)
+        };
+
+        // Window style
+        let mut style = WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN;
+        if !config.resizable {
+            style = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX | WS_CLIPCHILDREN;
+        }
+
+        let hwnd = unsafe {
+            CreateWindowExW(
+                WINDOW_EX_STYLE(0),
+                class_name,
+                PCWSTR::from_raw(title_wide.as_ptr()),
+                style,
+                x,
+                y,
+                config.width as i32,
+                config.height as i32,
+                None,
+                None,
+                GetModuleHandleW(None).unwrap_or_default(),
+                None,
+            )
+        };
+
+        let hwnd = hwnd.map_err(|e| ViewHostError::WindowCreation(e.to_string()))?;
+
+        if hwnd.0.is_null() {
+            let err = std::io::Error::last_os_error();
+            error!(?err, "Failed to create main window");
+            return Err(ViewHostError::WindowCreation(err.to_string()));
+        }
+
+        // Store the main HWND
+        *self.main_hwnd.write().unwrap() = Some(hwnd.0 as isize);
+
+        // Show the window
+        unsafe {
+            let _ = ShowWindow(hwnd, SW_SHOW);
+            let _ = UpdateWindow(hwnd);
+        }
+
+        info!(?hwnd, "Main window created");
+        Ok(hwnd)
+    }
+
+    /// Get the main window HWND if one was created.
+    #[cfg(windows)]
+    pub fn get_main_hwnd(&self) -> Option<HWND> {
+        self.main_hwnd
+            .read()
+            .unwrap()
+            .map(|raw| HWND(raw as *mut _))
+    }
+
+    /// Register the main window class (Windows only).
+    #[cfg(windows)]
+    fn register_main_class() -> Result<PCWSTR, ViewHostError> {
+        use std::sync::Once;
+
+        static REGISTER: Once = Once::new();
+        static MAIN_CLASS_NAME: &[u16] = &[
+            b'H' as u16,
+            b'i' as u16,
+            b'W' as u16,
+            b'a' as u16,
+            b'v' as u16,
+            b'e' as u16,
+            b'M' as u16,
+            b'a' as u16,
+            b'i' as u16,
+            b'n' as u16,
+            b'W' as u16,
+            b'i' as u16,
+            b'n' as u16,
+            b'd' as u16,
+            b'o' as u16,
+            b'w' as u16,
+            0,
+        ];
+
+        REGISTER.call_once(|| unsafe {
+            let wc = WNDCLASSEXW {
+                cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
+                style: CS_HREDRAW | CS_VREDRAW,
+                lpfnWndProc: Some(Self::main_wnd_proc),
+                cbClsExtra: 0,
+                cbWndExtra: 0,
+                hInstance: GetModuleHandleW(None).unwrap_or_default().into(),
+                hIcon: HICON::default(),
+                hCursor: LoadCursorW(None, IDC_ARROW).unwrap_or_default(),
+                hbrBackground: HBRUSH::default(),
+                lpszMenuName: PCWSTR::null(),
+                lpszClassName: PCWSTR::from_raw(MAIN_CLASS_NAME.as_ptr()),
+                hIconSm: HICON::default(),
+            };
+
+            let _ = RegisterClassExW(&wc);
+        });
+
+        Ok(PCWSTR::from_raw(MAIN_CLASS_NAME.as_ptr()))
+    }
+
+    /// Main window procedure.
+    #[cfg(windows)]
+    unsafe extern "system" fn main_wnd_proc(
+        hwnd: HWND,
+        msg: u32,
+        wparam: WPARAM,
+        lparam: LPARAM,
+    ) -> LRESULT {
+        match msg {
+            WM_SIZE => {
+                // Emit resize event for the main window
+                let width = (lparam.0 & 0xFFFF) as u32;
+                let height = ((lparam.0 >> 16) & 0xFFFF) as u32;
+                trace!(?hwnd, width, height, "Main window WM_SIZE");
+
+                // Broadcast resize to all child views
+                if let Ok(registry) = VIEW_REGISTRY.read() {
+                    registry.emit(ViewEvent::Resized {
+                        view_id: ViewId(0), // Special ID for main window
+                        bounds: Bounds::new(0, 0, width, height),
+                        dpi: GetDpiForWindow(hwnd),
+                    });
+                }
+            }
+
+            WM_CLOSE => {
+                let _ = DestroyWindow(hwnd);
+                return LRESULT(0);
+            }
+
+            WM_DESTROY => {
+                PostQuitMessage(0);
+                return LRESULT(0);
+            }
+
+            WM_PAINT => {
+                let mut ps = PAINTSTRUCT::default();
+                let _hdc = BeginPaint(hwnd, &mut ps);
+                let _ = EndPaint(hwnd, &ps);
+                return LRESULT(0);
+            }
+
+            WM_ERASEBKGND => {
+                // Prevent flicker - views handle their own backgrounds
+                return LRESULT(1);
+            }
+
+            _ => {}
+        }
+
+        DefWindowProcW(hwnd, msg, wparam, lparam)
+    }
+
+    /// Run the Win32 message loop until WM_QUIT is received.
+    ///
+    /// This is a blocking call that processes all Windows messages.
+    /// Returns when the window is closed.
+    #[cfg(windows)]
+    pub fn run_message_loop(&self) {
+        info!("Starting Win32 message loop");
+
+        unsafe {
+            let mut msg = std::mem::zeroed::<MSG>();
+
+            loop {
+                let result = GetMessageW(&mut msg, None, 0, 0);
+                if result.0 <= 0 {
+                    // 0 = WM_QUIT, -1 = error
+                    break;
+                }
+
+                let _ = TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+            }
+        }
+
+        info!("Message loop ended");
+    }
+
+    /// Process pending Win32 messages without blocking.
+    ///
+    /// Returns true if there are more messages to process, false if the message
+    /// loop should exit (WM_QUIT received).
+    #[cfg(windows)]
+    pub fn pump_messages(&self) -> bool {
+        unsafe {
+            let mut msg = std::mem::zeroed::<MSG>();
+
+            while PeekMessageW(&mut msg, None, 0, 0, PM_REMOVE).as_bool() {
+                if msg.message == WM_QUIT {
+                    return false;
+                }
+
+                let _ = TranslateMessage(&msg);
+                DispatchMessageW(&msg);
+            }
+
+            true
         }
     }
 

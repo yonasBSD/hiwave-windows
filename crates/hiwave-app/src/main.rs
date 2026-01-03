@@ -47,6 +47,9 @@ mod webview;
 #[cfg(all(target_os = "windows", feature = "rustkit"))]
 mod webview_rustkit;
 
+#[cfg(all(target_os = "windows", feature = "native-win32"))]
+mod main_win32;
+
 use hiwave_shield::ResourceType;
 use ipc::{IpcMessage, JS_BRIDGE};
 use state::AppState;
@@ -556,6 +559,18 @@ fn main() {
     tracing::subscriber::set_global_default(subscriber).expect("Failed to set subscriber");
 
     info!("Starting HiWave...");
+
+    // Native Win32 mode: Use RustKit for everything (no wry/tao)
+    #[cfg(all(target_os = "windows", feature = "native-win32"))]
+    {
+        info!("WebView engine: RustKit (native-win32)");
+        if let Err(e) = main_win32::run_native() {
+            error!("Native Win32 browser failed: {}", e);
+            std::process::exit(1);
+        }
+        return;
+    }
+
     info!("WebView engine: {}", engine_name());
 
     // Initialize application state

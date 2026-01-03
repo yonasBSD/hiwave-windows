@@ -464,6 +464,102 @@ impl Engine {
         Ok(())
     }
 
+    /// Load HTML content directly into a view.
+    ///
+    /// This is used for loading inline HTML content like the Chrome UI,
+    /// without making an HTTP request.
+    pub fn load_html(&mut self, id: EngineViewId, html: &str) -> Result<(), EngineError> {
+        let view = self
+            .views
+            .get_mut(&id)
+            .ok_or(EngineError::ViewNotFound(id))?;
+
+        info!(?id, len = html.len(), "Loading HTML content");
+
+        // Use a synthetic about:blank URL for inline content
+        let url = Url::parse("about:blank").unwrap();
+
+        // Start navigation
+        let request = NavigationRequest::new(url.clone());
+        view.navigation
+            .start_navigation(request)
+            .map_err(|e| EngineError::NavigationError(e.to_string()))?;
+
+        // Emit event
+        let _ = self.event_tx.send(EngineEvent::NavigationStarted {
+            view_id: id,
+            url: url.clone(),
+        });
+
+        // Commit navigation
+        view.navigation
+            .commit_navigation()
+            .map_err(|e| EngineError::NavigationError(e.to_string()))?;
+
+        let _ = self.event_tx.send(EngineEvent::NavigationCommitted {
+            view_id: id,
+            url: url.clone(),
+        });
+
+        // Parse HTML
+        let document =
+            Document::parse_html(html).map_err(|e| EngineError::RenderError(e.to_string()))?;
+        let document = Rc::new(document);
+
+        // Get title
+        let title = document.title();
+
+        // Store in view
+        let view = self.views.get_mut(&id).unwrap();
+        view.url = Some(url.clone());
+        view.document = Some(document.clone());
+        view.title = title.clone();
+
+        // Initialize JavaScript if enabled
+        if self.config.javascript_enabled {
+            let js_runtime = JsRuntime::new().map_err(|e| EngineError::JsError(e.to_string()))?;
+
+            let bindings =
+                DomBindings::new(js_runtime).map_err(|e| EngineError::JsError(e.to_string()))?;
+
+            bindings
+                .set_document(document.clone())
+                .map_err(|e| EngineError::JsError(e.to_string()))?;
+
+            bindings
+                .set_location(&url)
+                .map_err(|e| EngineError::JsError(e.to_string()))?;
+
+            let view = self.views.get_mut(&id).unwrap();
+            view.bindings = Some(bindings);
+        }
+
+        // Layout and render
+        self.relayout(id)?;
+
+        // Finish navigation
+        let view = self.views.get_mut(&id).unwrap();
+        view.navigation
+            .finish_navigation()
+            .map_err(|e| EngineError::NavigationError(e.to_string()))?;
+
+        // Emit events
+        if let Some(ref title) = title {
+            let _ = self.event_tx.send(EngineEvent::TitleChanged {
+                view_id: id,
+                title: title.clone(),
+            });
+        }
+
+        let _ = self.event_tx.send(EngineEvent::PageLoaded {
+            view_id: id,
+            url,
+            title: view.title.clone(),
+        });
+
+        Ok(())
+    }
+
     /// Re-layout a view.
     fn relayout(&mut self, id: EngineViewId) -> Result<(), EngineError> {
         let view = self.views.get(&id).ok_or(EngineError::ViewNotFound(id))?;

@@ -14,6 +14,9 @@ path = "src/main.rs"
 default = []
 # RustKit: Pure Rust browser engine for content rendering
 rustkit = ["rustkit-engine", "rustkit-viewhost", "windows", "tokio"]
+# Native Win32: Full native Windows app without wry/tao
+# This uses RustKit for ALL rendering (Chrome UI, Content, Shelf)
+native-win32 = ["rustkit-engine", "rustkit-viewhost", "rustkit-bindings", "windows", "tokio"]
 
 [dependencies]
 # WebView (for Chrome UI, Shelf, and secondary windows)
@@ -52,5 +55,6 @@ hiwave-analytics = { workspace = true }
 [target.'cfg(target_os = "windows")'.dependencies]
 rustkit-engine = { workspace = true, optional = true }
 rustkit-viewhost = { workspace = true, optional = true }
+rustkit-bindings = { workspace = true, optional = true }
 windows = { version = "0.58", features = ["Win32_Foundation"], optional = true }
 tokio = { version = "1.42", features = ["rt", "time"], optional = true }

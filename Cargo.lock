@@ -2323,6 +2323,7 @@ dependencies = [
  "log",
  "muda",
  "rfd",
+ "rustkit-bindings",
  "rustkit-engine",
  "rustkit-viewhost",
  "serde",
