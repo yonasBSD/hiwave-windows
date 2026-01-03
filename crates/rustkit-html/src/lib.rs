@@ -4,10 +4,31 @@
 //!
 //! This crate provides a tokenizer and tree builder that work together
 //! to parse HTML into a DOM tree via a sink interface.
+//!
+//! ## Features
+//!
+//! - Full document parsing via [`parse`]
+//! - Fragment parsing via [`parse_fragment`] (for innerHTML, insertAdjacentHTML)
+//! - Quirks mode detection based on doctype
+//! - Table parsing with implicit element insertion
+//! - Adoption Agency Algorithm for misnested formatting elements
+//!
+//! ## Example
+//!
+//! ```ignore
+//! use rustkit_html::{parse, TreeSink};
+//!
+//! let html = "<html><body><p>Hello</p></body></html>";
+//! let sink = MySink::new();
+//! let result = parse(html, sink).unwrap();
+//! ```
 
 pub mod entities;
 pub mod tokenizer;
 pub mod tree_builder;
+
+// Re-export commonly used types from tree_builder
+pub use tree_builder::{FragmentContext, QuirksMode};
 
 use thiserror::Error;
 
@@ -112,6 +133,34 @@ pub fn parse_bytes<S: TreeSink>(html: &[u8], sink: S) -> ParseResult<S> {
     let html_str = std::str::from_utf8(html)
         .map_err(|e| ParseError::TokenizerError(format!("Invalid UTF-8: {}", e)))?;
     parse(html_str, sink)
+}
+
+/// Parse an HTML fragment in the context of a given element.
+///
+/// This is used for innerHTML, insertAdjacentHTML, and similar APIs where
+/// HTML is parsed as if it were the contents of a specific element.
+///
+/// # Arguments
+///
+/// * `html` - The HTML fragment to parse
+/// * `sink` - The tree sink to build the DOM
+/// * `context_element` - The tag name of the context element (e.g., "div", "body")
+///
+/// # Example
+///
+/// ```ignore
+/// // Parse as if the content were inside a <div>
+/// let sink = MySink::new();
+/// let result = parse_fragment("<p>Hello</p>", sink, "div").unwrap();
+/// ```
+pub fn parse_fragment<S: TreeSink>(
+    html: &str,
+    sink: S,
+    context_element: &str,
+) -> ParseResult<S> {
+    let tokens = tokenizer::tokenize(html)?;
+    let context = FragmentContext::new(context_element);
+    tree_builder::build_tree_fragment(tokens, sink, context)
 }
 
 #[cfg(test)]

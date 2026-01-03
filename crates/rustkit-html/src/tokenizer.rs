@@ -56,6 +56,18 @@ enum State {
     Doctype,
     DoctypeName,
     AfterDoctypeName,
+    AfterDoctypePublicKeyword,
+    BeforeDoctypePublicId,
+    DoctypePublicIdDoubleQuoted,
+    DoctypePublicIdSingleQuoted,
+    AfterDoctypePublicId,
+    BetweenDoctypePublicAndSystemIds,
+    AfterDoctypeSystemKeyword,
+    BeforeDoctypeSystemId,
+    DoctypeSystemIdDoubleQuoted,
+    DoctypeSystemIdSingleQuoted,
+    AfterDoctypeSystemId,
+    BogusDoctype,
     BogusComment,
     RawText,
     RcData,
@@ -130,10 +142,12 @@ impl Tokenizer {
 
     fn emit_current_doctype(&mut self) {
         let name = std::mem::take(&mut self.doctype_name);
+        let public_id = std::mem::take(&mut self.doctype_public_id);
+        let system_id = std::mem::take(&mut self.doctype_system_id);
         self.emit(Token::Doctype {
             name,
-            public_id: String::new(),
-            system_id: String::new(),
+            public_id,
+            system_id,
         });
     }
 
@@ -194,6 +208,18 @@ impl Tokenizer {
                 State::Doctype => self.state_doctype(),
                 State::DoctypeName => self.state_doctype_name(),
                 State::AfterDoctypeName => self.state_after_doctype_name(),
+                State::AfterDoctypePublicKeyword => self.state_after_doctype_public_keyword(),
+                State::BeforeDoctypePublicId => self.state_before_doctype_public_id(),
+                State::DoctypePublicIdDoubleQuoted => self.state_doctype_public_id_double_quoted(),
+                State::DoctypePublicIdSingleQuoted => self.state_doctype_public_id_single_quoted(),
+                State::AfterDoctypePublicId => self.state_after_doctype_public_id(),
+                State::BetweenDoctypePublicAndSystemIds => self.state_between_doctype_public_and_system_ids(),
+                State::AfterDoctypeSystemKeyword => self.state_after_doctype_system_keyword(),
+                State::BeforeDoctypeSystemId => self.state_before_doctype_system_id(),
+                State::DoctypeSystemIdDoubleQuoted => self.state_doctype_system_id_double_quoted(),
+                State::DoctypeSystemIdSingleQuoted => self.state_doctype_system_id_single_quoted(),
+                State::AfterDoctypeSystemId => self.state_after_doctype_system_id(),
+                State::BogusDoctype => self.state_bogus_doctype(),
                 State::BogusComment => self.state_bogus_comment(),
                 State::RawText => self.state_rawtext(),
                 State::RcData => self.state_rcdata(),
@@ -684,6 +710,243 @@ impl Tokenizer {
     }
 
     fn state_after_doctype_name(&mut self) {
+        match self.current_char() {
+            Some(ch) if ch.is_ascii_whitespace() => {
+                self.consume();
+            }
+            Some('>') => {
+                self.consume();
+                self.emit_current_doctype();
+                self.state = State::Data;
+            }
+            None => {
+                self.emit_current_doctype();
+                self.state = State::Data;
+            }
+            _ => {
+                // Check for PUBLIC or SYSTEM
+                if self.matches_case_insensitive("PUBLIC") {
+                    for _ in 0..6 { self.consume(); }
+                    self.state = State::AfterDoctypePublicKeyword;
+                } else if self.matches_case_insensitive("SYSTEM") {
+                    for _ in 0..6 { self.consume(); }
+                    self.state = State::AfterDoctypeSystemKeyword;
+                } else {
+                    self.state = State::BogusDoctype;
+                }
+            }
+        }
+    }
+
+    fn state_after_doctype_public_keyword(&mut self) {
+        match self.consume() {
+            Some(ch) if ch.is_ascii_whitespace() => {
+                self.state = State::BeforeDoctypePublicId;
+            }
+            Some('"') => {
+                self.doctype_public_id.clear();
+                self.state = State::DoctypePublicIdDoubleQuoted;
+            }
+            Some('\'') => {
+                self.doctype_public_id.clear();
+                self.state = State::DoctypePublicIdSingleQuoted;
+            }
+            Some('>') => {
+                self.emit_current_doctype();
+                self.state = State::Data;
+            }
+            _ => {
+                self.state = State::BogusDoctype;
+            }
+        }
+    }
+
+    fn state_before_doctype_public_id(&mut self) {
+        match self.consume() {
+            Some(ch) if ch.is_ascii_whitespace() => {}
+            Some('"') => {
+                self.doctype_public_id.clear();
+                self.state = State::DoctypePublicIdDoubleQuoted;
+            }
+            Some('\'') => {
+                self.doctype_public_id.clear();
+                self.state = State::DoctypePublicIdSingleQuoted;
+            }
+            Some('>') => {
+                self.emit_current_doctype();
+                self.state = State::Data;
+            }
+            _ => {
+                self.state = State::BogusDoctype;
+            }
+        }
+    }
+
+    fn state_doctype_public_id_double_quoted(&mut self) {
+        match self.consume() {
+            Some('"') => {
+                self.state = State::AfterDoctypePublicId;
+            }
+            Some('>') => {
+                self.emit_current_doctype();
+                self.state = State::Data;
+            }
+            Some(ch) => {
+                self.doctype_public_id.push(ch);
+            }
+            None => {
+                self.emit_current_doctype();
+                self.state = State::Data;
+            }
+        }
+    }
+
+    fn state_doctype_public_id_single_quoted(&mut self) {
+        match self.consume() {
+            Some('\'') => {
+                self.state = State::AfterDoctypePublicId;
+            }
+            Some('>') => {
+                self.emit_current_doctype();
+                self.state = State::Data;
+            }
+            Some(ch) => {
+                self.doctype_public_id.push(ch);
+            }
+            None => {
+                self.emit_current_doctype();
+                self.state = State::Data;
+            }
+        }
+    }
+
+    fn state_after_doctype_public_id(&mut self) {
+        match self.consume() {
+            Some(ch) if ch.is_ascii_whitespace() => {
+                self.state = State::BetweenDoctypePublicAndSystemIds;
+            }
+            Some('>') => {
+                self.emit_current_doctype();
+                self.state = State::Data;
+            }
+            Some('"') => {
+                self.doctype_system_id.clear();
+                self.state = State::DoctypeSystemIdDoubleQuoted;
+            }
+            Some('\'') => {
+                self.doctype_system_id.clear();
+                self.state = State::DoctypeSystemIdSingleQuoted;
+            }
+            _ => {
+                self.state = State::BogusDoctype;
+            }
+        }
+    }
+
+    fn state_between_doctype_public_and_system_ids(&mut self) {
+        match self.consume() {
+            Some(ch) if ch.is_ascii_whitespace() => {}
+            Some('>') => {
+                self.emit_current_doctype();
+                self.state = State::Data;
+            }
+            Some('"') => {
+                self.doctype_system_id.clear();
+                self.state = State::DoctypeSystemIdDoubleQuoted;
+            }
+            Some('\'') => {
+                self.doctype_system_id.clear();
+                self.state = State::DoctypeSystemIdSingleQuoted;
+            }
+            _ => {
+                self.state = State::BogusDoctype;
+            }
+        }
+    }
+
+    fn state_after_doctype_system_keyword(&mut self) {
+        match self.consume() {
+            Some(ch) if ch.is_ascii_whitespace() => {
+                self.state = State::BeforeDoctypeSystemId;
+            }
+            Some('"') => {
+                self.doctype_system_id.clear();
+                self.state = State::DoctypeSystemIdDoubleQuoted;
+            }
+            Some('\'') => {
+                self.doctype_system_id.clear();
+                self.state = State::DoctypeSystemIdSingleQuoted;
+            }
+            Some('>') => {
+                self.emit_current_doctype();
+                self.state = State::Data;
+            }
+            _ => {
+                self.state = State::BogusDoctype;
+            }
+        }
+    }
+
+    fn state_before_doctype_system_id(&mut self) {
+        match self.consume() {
+            Some(ch) if ch.is_ascii_whitespace() => {}
+            Some('"') => {
+                self.doctype_system_id.clear();
+                self.state = State::DoctypeSystemIdDoubleQuoted;
+            }
+            Some('\'') => {
+                self.doctype_system_id.clear();
+                self.state = State::DoctypeSystemIdSingleQuoted;
+            }
+            Some('>') => {
+                self.emit_current_doctype();
+                self.state = State::Data;
+            }
+            _ => {
+                self.state = State::BogusDoctype;
+            }
+        }
+    }
+
+    fn state_doctype_system_id_double_quoted(&mut self) {
+        match self.consume() {
+            Some('"') => {
+                self.state = State::AfterDoctypeSystemId;
+            }
+            Some('>') => {
+                self.emit_current_doctype();
+                self.state = State::Data;
+            }
+            Some(ch) => {
+                self.doctype_system_id.push(ch);
+            }
+            None => {
+                self.emit_current_doctype();
+                self.state = State::Data;
+            }
+        }
+    }
+
+    fn state_doctype_system_id_single_quoted(&mut self) {
+        match self.consume() {
+            Some('\'') => {
+                self.state = State::AfterDoctypeSystemId;
+            }
+            Some('>') => {
+                self.emit_current_doctype();
+                self.state = State::Data;
+            }
+            Some(ch) => {
+                self.doctype_system_id.push(ch);
+            }
+            None => {
+                self.emit_current_doctype();
+                self.state = State::Data;
+            }
+        }
+    }
+
+    fn state_after_doctype_system_id(&mut self) {
         match self.consume() {
             Some(ch) if ch.is_ascii_whitespace() => {}
             Some('>') => {
@@ -691,8 +954,24 @@ impl Tokenizer {
                 self.state = State::Data;
             }
             _ => {
-                // Simplified: skip PUBLIC/SYSTEM parsing
-                self.state = State::BogusComment;
+                self.state = State::BogusDoctype;
+            }
+        }
+    }
+
+    fn state_bogus_doctype(&mut self) {
+        // Consume until '>' then emit the doctype
+        match self.consume() {
+            Some('>') => {
+                self.emit_current_doctype();
+                self.state = State::Data;
+            }
+            None => {
+                self.emit_current_doctype();
+                self.state = State::Data;
+            }
+            _ => {
+                // Stay in bogus doctype state
             }
         }
     }

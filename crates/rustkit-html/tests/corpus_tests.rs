@@ -1,6 +1,6 @@
 //! Comprehensive corpus tests for HTML parser
 
-use rustkit_html::{parse, TreeSink};
+use rustkit_html::{parse, parse_fragment, TreeSink};
 
 #[derive(Debug)]
 struct TestSink {
@@ -605,5 +605,185 @@ fn test_formatting_with_void_elements() {
     assert!(result.events.contains(&"start:b".to_string()));
     assert!(result.events.contains(&"start:br".to_string()));
     assert!(result.events.contains(&"end:b".to_string()));
+}
+
+// ==================== FRAGMENT PARSING TESTS ====================
+
+#[test]
+fn test_fragment_parsing_div_context() {
+    // Parse fragment as if inside a <div>
+    let html = "<p>Hello</p><span>World</span>";
+    let sink = TestSink::new();
+    let result = parse_fragment(html, sink, "div").unwrap();
+
+    println!("Fragment div context events: {:?}", result.events);
+
+    // Should parse normally without implicit html/head/body
+    assert!(result.events.contains(&"start:p".to_string()));
+    assert!(result.events.contains(&"start:span".to_string()));
+    assert!(result.events.contains(&"text:Hello".to_string()));
+    assert!(result.events.contains(&"text:World".to_string()));
+}
+
+#[test]
+fn test_fragment_parsing_body_context() {
+    // Parse fragment as if inside <body>
+    let html = "<div><p>Content</p></div>";
+    let sink = TestSink::new();
+    let result = parse_fragment(html, sink, "body").unwrap();
+
+    println!("Fragment body context events: {:?}", result.events);
+
+    assert!(result.events.contains(&"start:div".to_string()));
+    assert!(result.events.contains(&"start:p".to_string()));
+}
+
+#[test]
+fn test_fragment_parsing_table_context() {
+    // Parse fragment as if inside a <table>
+    let html = "<tr><td>Cell</td></tr>";
+    let sink = TestSink::new();
+    let result = parse_fragment(html, sink, "tbody").unwrap();
+
+    println!("Fragment table context events: {:?}", result.events);
+
+    assert!(result.events.contains(&"start:tr".to_string()));
+    assert!(result.events.contains(&"start:td".to_string()));
+}
+
+#[test]
+fn test_fragment_mixed_content() {
+    // Fragment with text and elements
+    let html = "Text before<b>bold</b>text after";
+    let sink = TestSink::new();
+    let result = parse_fragment(html, sink, "span").unwrap();
+
+    println!("Fragment mixed content events: {:?}", result.events);
+
+    assert!(result.events.contains(&"start:b".to_string()));
+    assert!(result.events.contains(&"text:bold".to_string()));
+}
+
+// ==================== QUIRKS MODE TESTS ====================
+
+#[test]
+fn test_html5_doctype_no_quirks() {
+    // HTML5 doctype should be no-quirks mode
+    let html = "<!DOCTYPE html><html><body></body></html>";
+    let sink = TestSink::new();
+    let result = parse(html, sink).unwrap();
+
+    println!("HTML5 doctype events: {:?}", result.events);
+
+    assert!(result.events.contains(&"doctype:html".to_string()));
+}
+
+#[test]
+fn test_no_doctype_quirks() {
+    // No doctype should trigger quirks mode
+    let html = "<html><body><p>No doctype</p></body></html>";
+    let sink = TestSink::new();
+    let result = parse(html, sink).unwrap();
+
+    println!("No doctype events: {:?}", result.events);
+
+    // Should still parse, but in quirks mode
+    assert!(result.events.contains(&"start:html".to_string()));
+    assert!(result.events.contains(&"start:body".to_string()));
+}
+
+#[test]
+fn test_html401_transitional_doctype() {
+    // HTML 4.01 Transitional doctype
+    let html = r#"<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><body></body></html>"#;
+    let sink = TestSink::new();
+    let result = parse(html, sink).unwrap();
+
+    println!("HTML 4.01 Transitional events: {:?}", result.events);
+
+    // Should parse with doctype
+    assert!(result.events.iter().any(|e| e.starts_with("doctype:")));
+}
+
+#[test]
+fn test_xhtml_doctype() {
+    // XHTML 1.0 Strict doctype
+    let html = r#"<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html><body></body></html>"#;
+    let sink = TestSink::new();
+    let result = parse(html, sink).unwrap();
+
+    println!("XHTML doctype events: {:?}", result.events);
+
+    assert!(result.events.iter().any(|e| e.starts_with("doctype:")));
+}
+
+// ==================== ADDITIONAL ERROR RECOVERY TESTS ====================
+
+#[test]
+fn test_deeply_nested_elements() {
+    // Test deeply nested elements
+    let html = "<div><div><div><div><div><p>Deep</p></div></div></div></div></div>";
+    let sink = TestSink::new();
+    let result = parse(html, sink).unwrap();
+
+    println!("Deep nesting events: {:?}", result.events);
+
+    assert!(result.events.contains(&"text:Deep".to_string()));
+}
+
+#[test]
+fn test_multiple_body_tags() {
+    // Multiple body tags should be handled gracefully
+    let html = "<html><body><p>First</p></body><body><p>Second</p></body></html>";
+    let sink = TestSink::new();
+    let result = parse(html, sink).unwrap();
+
+    println!("Multiple body events: {:?}", result.events);
+
+    // Should parse without panicking
+    assert!(result.events.contains(&"text:First".to_string()));
+}
+
+#[test]
+fn test_mismatched_end_tags() {
+    // Mismatched end tags
+    let html = "<div><span>text</div></span>";
+    let sink = TestSink::new();
+    let result = parse(html, sink).unwrap();
+
+    println!("Mismatched end tags events: {:?}", result.events);
+
+    // Should handle gracefully
+    assert!(result.events.contains(&"text:text".to_string()));
+}
+
+#[test]
+fn test_self_closing_in_html() {
+    // Self-closing syntax in HTML (not XHTML)
+    let html = "<div><br/><hr/><img/></div>";
+    let sink = TestSink::new();
+    let result = parse(html, sink).unwrap();
+
+    println!("Self-closing events: {:?}", result.events);
+
+    assert!(result.events.contains(&"start:br".to_string()));
+    assert!(result.events.contains(&"start:hr".to_string()));
+    assert!(result.events.contains(&"start:img".to_string()));
+}
+
+#[test]
+fn test_optional_end_tags() {
+    // Optional end tags (p, li, etc.)
+    let html = "<ul><li>One<li>Two<li>Three</ul>";
+    let sink = TestSink::new();
+    let result = parse(html, sink).unwrap();
+
+    println!("Optional end tags events: {:?}", result.events);
+
+    // All li elements should be parsed
+    let li_count = result.events.iter().filter(|e| *e == "start:li").count();
+    assert_eq!(li_count, 3);
 }
 

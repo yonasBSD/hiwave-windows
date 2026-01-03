@@ -149,6 +149,15 @@ We have strong opinions about how browsing should work, but we offer three modes
   - ✅ Text rendering with DirectWrite
   - ✅ JavaScript (Boa engine)
   - ✅ Networking & downloads
+- ✅ **Independence Project - Bravo Phases**
+  - ✅ Bravo 3: `rustkit-codecs` (replaced `image` crate)
+  - ✅ Bravo 4: `rustkit-http` (replaced `reqwest`)
+  - ✅ Bravo 6: `rustkit-html` (replaced `html5ever`)
+    - Full HTML5 tokenizer with all parsing modes
+    - Tree builder with table parsing & error recovery
+    - Adoption Agency Algorithm for misnested formatting
+    - Fragment parsing for innerHTML support
+    - Quirks mode detection
 - 🔄 Event handling (Phase 14)
 - 🔄 Forms & input (Phase 15)
 
@@ -240,6 +249,11 @@ Built with:
 - **Brave's adblock-rust** — Ad blocking engine
 - **Vanilla JS** — No framework bloat in the UI
 
+**RustKit-owned subsystems** (no external dependencies):
+- `rustkit-html` — HTML5 parser (replaced html5ever)
+- `rustkit-http` — HTTP client (replaced reqwest)
+- `rustkit-codecs` — Image decoders (replaced image crate)
+
 ### RustKit Engine
 
 RustKit is a from-scratch browser engine written in Rust:
@@ -249,12 +263,15 @@ RustKit is a from-scratch browser engine written in Rust:
 | ViewHost | `rustkit-viewhost` | Win32 window management |
 | Compositor | `rustkit-compositor` | GPU rendering |
 | Core | `rustkit-core` | Task scheduling, navigation |
-| DOM | `rustkit-dom` | HTML parsing, DOM tree |
+| DOM | `rustkit-dom` | DOM tree and manipulation |
+| HTML | `rustkit-html` | HTML5 tokenizer & tree builder |
 | CSS | `rustkit-css` | Style parsing and cascade |
 | Layout | `rustkit-layout` | Block/inline layout, text shaping |
 | JavaScript | `rustkit-js` | JS execution (Boa engine) |
 | Bindings | `rustkit-bindings` | JS ↔ DOM bridge |
-| Networking | `rustkit-net` | HTTP client, fetch API |
+| HTTP | `rustkit-http` | HTTP/1.1 + TLS client |
+| Networking | `rustkit-net` | Fetch API, downloads |
+| Codecs | `rustkit-codecs` | PNG/JPEG/GIF/WebP decoding |
 | Engine | `rustkit-engine` | Multi-view orchestration |
 
 See [docs/RUSTKIT-ROADMAP.md](docs/RUSTKIT-ROADMAP.md) for the complete development roadmap.

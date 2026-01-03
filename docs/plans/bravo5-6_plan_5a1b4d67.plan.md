@@ -39,30 +39,31 @@ todos:
       - b5-migrate-renderer
   - id: b6-sink
     content: Create rustkit-html crate and define DOM sink trait + rustkit-dom sink implementation
-    status: pending
+    status: done
   - id: b6-tokenizer
     content: Implement HTML tokenizer with required modes + entity decoding + unit tests
-    status: pending
+    status: done
     dependencies:
       - b6-sink
   - id: b6-treebuilder
     content: Implement tree builder rules + error recovery for common pages
-    status: pending
+    status: done
     dependencies:
       - b6-tokenizer
   - id: b6-integrate
     content: Replace Document::parse_html to use rustkit-html; remove RcDom conversion code
-    status: pending
+    status: done
     dependencies:
       - b6-treebuilder
   - id: b6-remove-html5ever
     content: Remove html5ever/markup5ever_rcdom deps; ensure cargo tree has no html5ever
-    status: pending
+    status: done
     dependencies:
       - b6-integrate
   - id: b56-tests
     content: Run full workspace tests; add regression corpora for renderer + parser
-    status: pending
+    status: in_progress
+    note: Parser tests complete (36 corpus tests). Renderer tests blocked on Bravo 5.
     dependencies:
       - b5-remove-wgpu
       - b6-remove-html5ever

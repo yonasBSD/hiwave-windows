@@ -7,6 +7,37 @@ use crate::tokenizer::Token;
 use crate::{ParseResult, TreeSink};
 use tracing::trace;
 
+/// Quirks mode for the document.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum QuirksMode {
+    /// No quirks mode (standards mode)
+    #[default]
+    NoQuirks,
+    /// Limited quirks mode (almost standards mode)
+    LimitedQuirks,
+    /// Full quirks mode
+    Quirks,
+}
+
+/// Context for fragment parsing (innerHTML, insertAdjacentHTML, etc.)
+#[derive(Debug, Clone)]
+pub struct FragmentContext {
+    /// The context element's tag name (e.g., "div", "body", "template")
+    pub context_element: String,
+    /// Whether the context element is in the HTML namespace
+    pub html_namespace: bool,
+}
+
+impl FragmentContext {
+    /// Create a new fragment context for a given element.
+    pub fn new(context_element: &str) -> Self {
+        Self {
+            context_element: context_element.to_lowercase(),
+            html_namespace: true,
+        }
+    }
+}
+
 /// Insertion mode for tree construction.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum InsertionMode {
@@ -107,9 +138,14 @@ pub struct TreeBuilder<S: TreeSink> {
     text_buffer: String,
     /// Pending table character tokens (for InTableText mode)
     pending_table_chars: Vec<char>,
+    /// Document quirks mode
+    quirks_mode: QuirksMode,
+    /// Fragment parsing context (None for full document parsing)
+    fragment_context: Option<FragmentContext>,
 }
 
 impl<S: TreeSink> TreeBuilder<S> {
+    /// Create a new tree builder for full document parsing.
     pub fn new(sink: S) -> Self {
         Self {
             sink,
@@ -121,7 +157,55 @@ impl<S: TreeSink> TreeBuilder<S> {
             scripting: false,
             text_buffer: String::new(),
             pending_table_chars: Vec::new(),
+            quirks_mode: QuirksMode::NoQuirks,
+            fragment_context: None,
         }
+    }
+
+    /// Create a new tree builder for fragment parsing (innerHTML, insertAdjacentHTML).
+    ///
+    /// The context_element determines the initial parsing state:
+    /// - "template": starts in InBody with template contents
+    /// - "title", "textarea": RCDATA parsing
+    /// - "style", "xmp", "iframe", "noembed", "noframes": RAWTEXT parsing
+    /// - "script": script data parsing
+    /// - "plaintext": PLAINTEXT parsing
+    /// - others: normal InBody parsing
+    pub fn new_fragment(sink: S, context: FragmentContext) -> Self {
+        // Determine initial insertion mode based on context element
+        let mode = match context.context_element.as_str() {
+            "title" | "textarea" => InsertionMode::InBody, // RCDATA handled by tokenizer
+            "style" | "xmp" | "iframe" | "noembed" | "noframes" => InsertionMode::InBody,
+            "script" => InsertionMode::InBody, // Script data handled by tokenizer
+            "plaintext" => InsertionMode::InBody,
+            "html" => InsertionMode::BeforeHead,
+            "head" => InsertionMode::InHead,
+            "body" | "div" | "span" | "p" | "template" | _ => InsertionMode::InBody,
+        };
+
+        Self {
+            sink,
+            mode,
+            original_mode: None,
+            open_elements: Vec::new(),
+            active_formatting_elements: Vec::new(),
+            foster_parenting: false,
+            scripting: false,
+            text_buffer: String::new(),
+            pending_table_chars: Vec::new(),
+            quirks_mode: QuirksMode::NoQuirks,
+            fragment_context: Some(context),
+        }
+    }
+
+    /// Get the current quirks mode.
+    pub fn quirks_mode(&self) -> QuirksMode {
+        self.quirks_mode
+    }
+
+    /// Check if we're in fragment parsing mode.
+    pub fn is_fragment_parsing(&self) -> bool {
+        self.fragment_context.is_some()
     }
     
     fn flush_text(&mut self) {
@@ -594,6 +678,8 @@ impl<S: TreeSink> TreeBuilder<S> {
                 public_id,
                 system_id,
             } => {
+                // Determine quirks mode based on doctype
+                self.quirks_mode = self.determine_quirks_mode(&name, &public_id, &system_id);
                 self.sink.doctype(name, public_id, system_id);
                 self.mode = InsertionMode::BeforeHtml;
             }
@@ -605,11 +691,60 @@ impl<S: TreeSink> TreeBuilder<S> {
             }
             _ => {
                 // No doctype, switch to quirks mode
+                self.quirks_mode = QuirksMode::Quirks;
                 self.mode = InsertionMode::BeforeHtml;
                 self.process_token(token)?;
             }
         }
         Ok(())
+    }
+
+    /// Determine quirks mode based on doctype.
+    fn determine_quirks_mode(&self, name: &str, public_id: &str, system_id: &str) -> QuirksMode {
+        // HTML5 doctype: <!DOCTYPE html>
+        if name.eq_ignore_ascii_case("html") && public_id.is_empty() && system_id.is_empty() {
+            return QuirksMode::NoQuirks;
+        }
+
+        // Check for known quirks-triggering public identifiers
+        let public_lower = public_id.to_lowercase();
+
+        // Full quirks mode triggers
+        let quirks_public_ids = [
+            "-//w3o//dtd w3 html strict 3.0//en//",
+            "-/w3c/dtd html 4.0 transitional/en",
+            "html",
+        ];
+
+        for quirks_id in &quirks_public_ids {
+            if public_lower.starts_with(quirks_id) {
+                return QuirksMode::Quirks;
+            }
+        }
+
+        // HTML 4.01 Transitional/Frameset without system identifier = quirks
+        if public_lower.contains("html 4.01") && system_id.is_empty() {
+            if public_lower.contains("transitional") || public_lower.contains("frameset") {
+                return QuirksMode::Quirks;
+            }
+        }
+
+        // XHTML 1.0 Transitional/Frameset = limited quirks
+        if public_lower.contains("xhtml 1.0") {
+            if public_lower.contains("transitional") || public_lower.contains("frameset") {
+                return QuirksMode::LimitedQuirks;
+            }
+        }
+
+        // HTML 4.01 Transitional/Frameset with system identifier = limited quirks
+        if public_lower.contains("html 4.01") && !system_id.is_empty() {
+            if public_lower.contains("transitional") || public_lower.contains("frameset") {
+                return QuirksMode::LimitedQuirks;
+            }
+        }
+
+        // Default to no quirks for valid doctypes
+        QuirksMode::NoQuirks
     }
 
     fn handle_before_html(&mut self, token: Token) -> ParseResult<()> {
@@ -1447,9 +1582,22 @@ impl<S: TreeSink> TreeBuilder<S> {
     }
 }
 
-/// Build a tree from tokens using the provided sink.
+/// Build a DOM tree from tokens (full document parsing).
 pub fn build_tree<S: TreeSink>(tokens: Vec<Token>, sink: S) -> ParseResult<S> {
     let builder = TreeBuilder::new(sink);
+    builder.build(tokens)
+}
+
+/// Build a DOM tree from tokens in fragment parsing mode.
+///
+/// This is used for innerHTML, insertAdjacentHTML, and similar APIs.
+/// The context element determines how the fragment is parsed.
+pub fn build_tree_fragment<S: TreeSink>(
+    tokens: Vec<Token>,
+    sink: S,
+    context: FragmentContext,
+) -> ParseResult<S> {
+    let builder = TreeBuilder::new_fragment(sink, context);
     builder.build(tokens)
 }
 
