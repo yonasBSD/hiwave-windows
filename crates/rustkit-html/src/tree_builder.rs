@@ -365,13 +365,40 @@ impl<S: TreeSink> TreeBuilder<S> {
     /// Insert element, respecting foster parenting if active.
     #[allow(dead_code)]
     fn insert_element(&mut self, name: String, attrs: Vec<(String, String)>, self_closing: bool) -> S::NodeId {
-        // For now, we always insert normally
-        // Foster parenting will be enhanced in P1.8
+        if self.foster_parenting {
+            if let Some(table_idx) = self.find_last_table_index() {
+                let (_table_name, table_id) = self.open_elements[table_idx].clone();
+                // Create the element without appending it to current node
+                let node_id = self.sink.create_element(name.clone(), attrs);
+                // Foster parent it to just before the table
+                self.sink.foster_parent(table_id, node_id.clone());
+                // Still add to open elements if not self-closing
+                if !self_closing && !VOID_ELEMENTS.contains(&name.as_str()) {
+                    self.open_elements.push((name, node_id.clone()));
+                }
+                return node_id;
+            }
+        }
+
+        // Normal insertion
         let node_id = self.sink.start_element(name.clone(), attrs, self_closing);
         if !self_closing && !VOID_ELEMENTS.contains(&name.as_str()) {
             self.open_elements.push((name, node_id.clone()));
         }
         node_id
+    }
+
+    /// Insert text, respecting foster parenting if active.
+    #[allow(dead_code)]
+    fn insert_text(&mut self, text: String) {
+        if self.foster_parenting {
+            // For foster parented text, we call the sink's text method
+            // which should handle it appropriately
+            // Note: Real foster parenting for text would need more complex handling
+            self.sink.text(text);
+        } else {
+            self.sink.text(text);
+        }
     }
 
     /// Close cell and switch to InRow mode.

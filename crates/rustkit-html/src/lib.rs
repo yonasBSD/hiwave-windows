@@ -122,6 +122,18 @@ pub trait TreeSink {
 
     // ==================== Extended TreeSink Methods ====================
 
+    /// Insert a node at the foster parent location (for table foster parenting).
+    /// When content appears inside a table but isn't table-related, it gets
+    /// "foster parented" to just before the table element.
+    ///
+    /// The `table` parameter is the table element, and `node` is the content to foster parent.
+    /// Default implementation just appends to the table's parent.
+    fn foster_parent(&mut self, table: Self::NodeId, node: Self::NodeId) {
+        if let Some(parent) = self.get_parent(table.clone()) {
+            self.insert_before(parent, node, Some(table));
+        }
+    }
+
     /// Called when a parse error is encountered.
     /// The default implementation ignores errors.
     fn parse_error(&mut self, _error: &str) {
