@@ -68,6 +68,8 @@ pub struct Tokenizer {
     pos: usize,
     state: State,
     return_state: Option<State>,
+    /// The name of the last emitted start tag (for RAWTEXT/RCDATA/ScriptData end tag matching)
+    last_start_tag_name: String,
     current_tag_name: String,
     current_attrs: HashMap<String, String>,
     current_attr_name: String,
@@ -87,6 +89,7 @@ impl Tokenizer {
             pos: 0,
             state: State::Data,
             return_state: None,
+            last_start_tag_name: String::new(),
             current_tag_name: String::new(),
             current_attrs: HashMap::new(),
             current_attr_name: String::new(),
@@ -135,14 +138,16 @@ impl Tokenizer {
     }
 
     fn emit_current_tag(&mut self) {
-        let tag = if self.current_tag_name.is_empty() {
+        if self.current_tag_name.is_empty() {
             return;
-        } else {
-            Token::StartTag {
-                name: std::mem::take(&mut self.current_tag_name),
-                attrs: std::mem::take(&mut self.current_attrs),
-                self_closing: self.self_closing,
-            }
+        }
+        // Save the tag name for RAWTEXT/RCDATA/ScriptData end tag matching
+        self.last_start_tag_name = self.current_tag_name.clone();
+
+        let tag = Token::StartTag {
+            name: std::mem::take(&mut self.current_tag_name),
+            attrs: std::mem::take(&mut self.current_attrs),
+            self_closing: self.self_closing,
         };
         self.self_closing = false;
         self.emit(tag);
@@ -210,6 +215,13 @@ impl Tokenizer {
     fn state_data(&mut self) {
         match self.consume() {
             Some('<') => self.state = State::TagOpen,
+            Some('&') => {
+                // Decode entity in text content
+                let entity = self.consume_entity();
+                for ch in entity.chars() {
+                    self.emit(Token::Character(ch));
+                }
+            }
             Some(ch) => self.emit(Token::Character(ch)),
             None => {}
         }
@@ -251,10 +263,14 @@ impl Tokenizer {
             }
             Some('>') => {
                 self.emit_current_tag();
-                self.state = State::Data;
-
                 // Check if we need to switch to special parsing mode
                 self.check_special_mode();
+                // Use the special mode if set, otherwise Data
+                if let Some(special_state) = self.return_state.take() {
+                    self.state = special_state;
+                } else {
+                    self.state = State::Data;
+                }
             }
             Some(ch) => {
                 self.current_tag_name.push(ch.to_ascii_lowercase());
@@ -268,13 +284,14 @@ impl Tokenizer {
 
     fn check_special_mode(&mut self) {
         // After emitting certain tags, switch parsing mode
-        match self.current_tag_name.as_str() {
+        // Use last_start_tag_name since current_tag_name was cleared by emit_current_tag
+        match self.last_start_tag_name.as_str() {
             "script" => self.return_state = Some(State::ScriptData),
             "style" | "xmp" | "iframe" | "noembed" | "noframes" => {
                 self.return_state = Some(State::RawText)
             }
             "textarea" | "title" => self.return_state = Some(State::RcData),
-            _ => {}
+            _ => self.return_state = None,
         }
     }
 
@@ -701,14 +718,31 @@ impl Tokenizer {
     }
 
     fn state_rawtext(&mut self) {
-        // RAWTEXT mode (for style, script-like elements)
+        // RAWTEXT mode (for style, xmp, iframe, noembed, noframes)
         match self.consume() {
             Some('<') if self.current_char() == Some('/') => {
                 self.consume(); // '/'
                 // Try to match end tag
                 if self.matches_end_tag() {
-                    self.state = State::EndTagOpen;
-                    self.pos -= 1; // Back up to reprocess
+                    // Consume the tag name
+                    self.current_tag_name = self.last_start_tag_name.clone();
+                    for _ in 0..self.last_start_tag_name.len() {
+                        self.consume();
+                    }
+                    // Skip any whitespace
+                    while let Some(ch) = self.current_char() {
+                        if ch.is_ascii_whitespace() {
+                            self.consume();
+                        } else {
+                            break;
+                        }
+                    }
+                    // Consume the '>' if present
+                    if self.current_char() == Some('>') {
+                        self.consume();
+                    }
+                    self.emit_current_end_tag();
+                    self.state = State::Data;
                 } else {
                     self.emit(Token::Character('<'));
                     self.emit(Token::Character('/'));
@@ -733,10 +767,27 @@ impl Tokenizer {
                 }
             }
             Some('<') if self.current_char() == Some('/') => {
-                self.consume();
+                self.consume(); // '/'
                 if self.matches_end_tag() {
-                    self.state = State::EndTagOpen;
-                    self.pos -= 1;
+                    // Consume the tag name
+                    self.current_tag_name = self.last_start_tag_name.clone();
+                    for _ in 0..self.last_start_tag_name.len() {
+                        self.consume();
+                    }
+                    // Skip any whitespace
+                    while let Some(ch) = self.current_char() {
+                        if ch.is_ascii_whitespace() {
+                            self.consume();
+                        } else {
+                            break;
+                        }
+                    }
+                    // Consume the '>' if present
+                    if self.current_char() == Some('>') {
+                        self.consume();
+                    }
+                    self.emit_current_end_tag();
+                    self.state = State::Data;
                 } else {
                     self.emit(Token::Character('<'));
                     self.emit(Token::Character('/'));
@@ -755,10 +806,23 @@ impl Tokenizer {
         // Script data mode
         match self.consume() {
             Some('<') if self.current_char() == Some('/') => {
-                self.consume();
-                if self.matches_case_insensitive("script>") {
-                    self.current_tag_name = "script".to_string();
-                    for _ in 0..6 {
+                self.consume(); // '/'
+                if self.matches_end_tag() {
+                    // Consume the tag name
+                    self.current_tag_name = self.last_start_tag_name.clone();
+                    for _ in 0..self.last_start_tag_name.len() {
+                        self.consume();
+                    }
+                    // Skip any whitespace
+                    while let Some(ch) = self.current_char() {
+                        if ch.is_ascii_whitespace() {
+                            self.consume();
+                        } else {
+                            break;
+                        }
+                    }
+                    // Consume the '>' if present
+                    if self.current_char() == Some('>') {
                         self.consume();
                     }
                     self.emit_current_end_tag();
@@ -778,8 +842,25 @@ impl Tokenizer {
     }
 
     fn matches_end_tag(&self) -> bool {
-        // Simple end tag matching - just check if we see '</' followed by tag name
-        false // Simplified for now
+        // Check if the upcoming characters match the last start tag name
+        // followed by a valid end tag terminator (whitespace, /, or >)
+        if self.last_start_tag_name.is_empty() {
+            return false;
+        }
+
+        let tag_name = &self.last_start_tag_name;
+        for (i, expected_ch) in tag_name.chars().enumerate() {
+            match self.peek_char(i) {
+                Some(ch) if ch.to_ascii_lowercase() == expected_ch => continue,
+                _ => return false,
+            }
+        }
+
+        // After the tag name, must be whitespace, /, or >
+        match self.peek_char(tag_name.len()) {
+            Some(ch) if ch.is_ascii_whitespace() || ch == '/' || ch == '>' => true,
+            _ => false,
+        }
     }
 }
 

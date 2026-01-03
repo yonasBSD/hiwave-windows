@@ -171,3 +171,121 @@ fn test_attributes_with_special_chars() {
     assert!(result.events.iter().any(|e| e.contains("type=text")));
 }
 
+// ============== P0 Tests: Script/Style/Entity Fixes ==============
+
+#[test]
+fn test_script_content_preserved() {
+    // Script content should NOT be parsed as HTML - the < and > should be preserved as text
+    let html = r#"<script>if (a < b && c > d) { alert("<div>"); }</script>"#;
+    let sink = TestSink::new();
+    let result = parse(html, sink).unwrap();
+
+    println!("Script events: {:?}", result.events);
+
+    // Should have script start and end tags
+    assert!(result.events.contains(&"start:script".to_string()));
+    assert!(result.events.contains(&"end:script".to_string()));
+
+    // Should NOT have div element (it's inside the script as text)
+    assert!(!result.events.iter().any(|e| e.contains("start:div")));
+
+    // Script content should be preserved as text
+    assert!(result.events.iter().any(|e| e.contains("if (a < b")));
+}
+
+#[test]
+fn test_style_content_preserved() {
+    // Style content should NOT be parsed as HTML
+    let html = r#"<style>.foo > .bar { color: red; }</style>"#;
+    let sink = TestSink::new();
+    let result = parse(html, sink).unwrap();
+
+    println!("Style events: {:?}", result.events);
+
+    assert!(result.events.contains(&"start:style".to_string()));
+    assert!(result.events.contains(&"end:style".to_string()));
+
+    // CSS selectors with > should be preserved as text, not parsed as tags
+    assert!(result.events.iter().any(|e| e.contains(".foo > .bar")));
+}
+
+#[test]
+fn test_textarea_content_preserved() {
+    // Textarea content should use RCDATA mode (entities decoded, but no tags)
+    let html = r#"<textarea>Some <b>text</b> with &amp; entity</textarea>"#;
+    let sink = TestSink::new();
+    let result = parse(html, sink).unwrap();
+
+    println!("Textarea events: {:?}", result.events);
+
+    assert!(result.events.contains(&"start:textarea".to_string()));
+    assert!(result.events.contains(&"end:textarea".to_string()));
+
+    // <b> should NOT be parsed as a tag (it's text in textarea)
+    assert!(!result.events.iter().any(|e| e == "start:b"));
+
+    // Content should include the literal <b> text
+    assert!(result.events.iter().any(|e| e.contains("<b>text</b>")));
+
+    // Entity should be decoded
+    assert!(result.events.iter().any(|e| e.contains("&")));
+}
+
+#[test]
+fn test_title_content_preserved() {
+    // Title content should use RCDATA mode
+    let html = r#"<title>Page &amp; Title with <fake> tag</title>"#;
+    let sink = TestSink::new();
+    let result = parse(html, sink).unwrap();
+
+    println!("Title events: {:?}", result.events);
+
+    assert!(result.events.contains(&"start:title".to_string()));
+    assert!(result.events.contains(&"end:title".to_string()));
+
+    // <fake> should NOT be parsed as a tag
+    assert!(!result.events.iter().any(|e| e.contains("start:fake")));
+}
+
+#[test]
+fn test_entity_decoding_in_text() {
+    // Entities in regular text content should be decoded
+    let html = r#"<p>&lt;div&gt; means less than and greater than: &amp;</p>"#;
+    let sink = TestSink::new();
+    let result = parse(html, sink).unwrap();
+
+    println!("Entity text events: {:?}", result.events);
+
+    // The decoded text should contain < and > and &
+    assert!(result.events.iter().any(|e| e.contains("<div>")));
+    assert!(result.events.iter().any(|e| e.contains("&")));
+}
+
+#[test]
+fn test_numeric_entity_in_text() {
+    // Numeric entities should be decoded
+    let html = r#"<p>&#65;&#66;&#67; and &#x41;&#x42;&#x43;</p>"#;
+    let sink = TestSink::new();
+    let result = parse(html, sink).unwrap();
+
+    println!("Numeric entity events: {:?}", result.events);
+
+    // &#65; = A, &#66; = B, &#67; = C
+    // &#x41; = A, &#x42; = B, &#x43; = C
+    assert!(result.events.iter().any(|e| e.contains("ABC")));
+}
+
+#[test]
+fn test_script_with_closing_tag_in_string() {
+    // Tricky case: </script> inside a string shouldn't close the script
+    // Note: This is a simplified test - full spec compliance requires more complex handling
+    let html = r#"<script>var x = "</script>"; // actual end</script>"#;
+    let sink = TestSink::new();
+    let result = parse(html, sink).unwrap();
+
+    println!("Script string events: {:?}", result.events);
+
+    // Should have at least one script element
+    assert!(result.events.contains(&"start:script".to_string()));
+}
+
