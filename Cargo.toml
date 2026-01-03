@@ -18,6 +18,7 @@ members = [
     "crates/rustkit-bindings",
     "crates/rustkit-net",
     "crates/rustkit-image",
+    "crates/rustkit-animation",
     "crates/rustkit-engine",
     "crates/rustkit-common",
     "crates/rustkit-test",
