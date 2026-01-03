@@ -117,6 +117,8 @@ pub enum Display {
     InlineBlock,
     Flex,
     InlineFlex,
+    Grid,
+    InlineGrid,
     None,
 }
 
@@ -124,6 +126,11 @@ impl Display {
     /// Check if this is a flex container.
     pub fn is_flex(self) -> bool {
         matches!(self, Display::Flex | Display::InlineFlex)
+    }
+
+    /// Check if this is a grid container.
+    pub fn is_grid(self) -> bool {
+        matches!(self, Display::Grid | Display::InlineGrid)
     }
 }
 
@@ -225,6 +232,347 @@ pub enum FlexBasis {
     Length(f32),
     /// Percentage of container.
     Percent(f32),
+}
+
+// ==================== Grid Types ====================
+
+/// A grid track size.
+#[derive(Debug, Clone, PartialEq)]
+pub enum TrackSize {
+    /// Fixed length in pixels.
+    Px(f32),
+    /// Percentage of container.
+    Percent(f32),
+    /// Fractional unit (flexible).
+    Fr(f32),
+    /// Size based on content minimum.
+    MinContent,
+    /// Size based on content maximum.
+    MaxContent,
+    /// Auto sizing.
+    Auto,
+    /// Minimum/maximum constraint.
+    MinMax(Box<TrackSize>, Box<TrackSize>),
+    /// Fit content with maximum.
+    FitContent(f32),
+}
+
+impl Default for TrackSize {
+    fn default() -> Self {
+        TrackSize::Auto
+    }
+}
+
+impl TrackSize {
+    /// Create a fixed pixel size.
+    pub fn px(value: f32) -> Self {
+        TrackSize::Px(value)
+    }
+
+    /// Create a fractional size.
+    pub fn fr(value: f32) -> Self {
+        TrackSize::Fr(value)
+    }
+
+    /// Create a minmax constraint.
+    pub fn minmax(min: TrackSize, max: TrackSize) -> Self {
+        TrackSize::MinMax(Box::new(min), Box::new(max))
+    }
+
+    /// Check if this is a flexible track (contains fr units).
+    pub fn is_flexible(&self) -> bool {
+        match self {
+            TrackSize::Fr(_) => true,
+            TrackSize::MinMax(_, max) => max.is_flexible(),
+            _ => false,
+        }
+    }
+
+    /// Get the minimum size contribution.
+    pub fn min_size(&self) -> f32 {
+        match self {
+            TrackSize::Px(v) => *v,
+            TrackSize::MinMax(min, _) => min.min_size(),
+            TrackSize::FitContent(max) => 0.0_f32.min(*max),
+            _ => 0.0,
+        }
+    }
+}
+
+/// A grid track definition (for grid-template-columns/rows).
+#[derive(Debug, Clone, PartialEq)]
+pub struct TrackDefinition {
+    /// Track sizing.
+    pub size: TrackSize,
+    /// Optional line name(s) before this track.
+    pub line_names: Vec<String>,
+}
+
+impl TrackDefinition {
+    /// Create a simple track without line names.
+    pub fn simple(size: TrackSize) -> Self {
+        Self {
+            size,
+            line_names: Vec::new(),
+        }
+    }
+
+    /// Create a track with line name.
+    pub fn named(size: TrackSize, name: &str) -> Self {
+        Self {
+            size,
+            line_names: vec![name.to_string()],
+        }
+    }
+}
+
+/// Repeat function for grid tracks.
+#[derive(Debug, Clone, PartialEq)]
+pub enum TrackRepeat {
+    /// Repeat a fixed number of times.
+    Count(u32, Vec<TrackDefinition>),
+    /// Auto-fill: as many as fit.
+    AutoFill(Vec<TrackDefinition>),
+    /// Auto-fit: as many as fit, collapsing empty tracks.
+    AutoFit(Vec<TrackDefinition>),
+}
+
+/// Grid template definition.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct GridTemplate {
+    /// Explicit track definitions.
+    pub tracks: Vec<TrackDefinition>,
+    /// Repeat patterns.
+    pub repeats: Vec<(usize, TrackRepeat)>, // (insert_position, repeat)
+    /// Final line names.
+    pub final_line_names: Vec<String>,
+}
+
+impl GridTemplate {
+    /// Create an empty template (no explicit tracks).
+    pub fn none() -> Self {
+        Self::default()
+    }
+
+    /// Create from a list of track sizes.
+    pub fn from_sizes(sizes: Vec<TrackSize>) -> Self {
+        Self {
+            tracks: sizes.into_iter().map(TrackDefinition::simple).collect(),
+            repeats: Vec::new(),
+            final_line_names: Vec::new(),
+        }
+    }
+
+    /// Get the number of explicit tracks.
+    pub fn track_count(&self) -> usize {
+        self.tracks.len()
+    }
+}
+
+/// Named grid area.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GridArea {
+    pub name: String,
+    pub row_start: i32,
+    pub row_end: i32,
+    pub column_start: i32,
+    pub column_end: i32,
+}
+
+/// Grid template areas.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct GridTemplateAreas {
+    /// Row strings (e.g., ["header header", "nav main", "footer footer"]).
+    pub rows: Vec<Vec<Option<String>>>,
+    /// Named areas derived from rows.
+    pub areas: Vec<GridArea>,
+}
+
+impl GridTemplateAreas {
+    /// Parse grid-template-areas value.
+    pub fn parse(value: &str) -> Option<Self> {
+        let mut rows = Vec::new();
+        
+        for line in value.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+            // Remove quotes if present
+            let line = line.trim_matches('"').trim_matches('\'');
+            
+            let cells: Vec<Option<String>> = line
+                .split_whitespace()
+                .map(|s| {
+                    if s == "." {
+                        None
+                    } else {
+                        Some(s.to_string())
+                    }
+                })
+                .collect();
+            
+            rows.push(cells);
+        }
+
+        if rows.is_empty() {
+            return None;
+        }
+
+        // Extract named areas
+        let mut areas = Vec::new();
+        let mut area_names: std::collections::HashSet<String> = std::collections::HashSet::new();
+        
+        for (row_idx, row) in rows.iter().enumerate() {
+            for (col_idx, cell) in row.iter().enumerate() {
+                if let Some(name) = cell {
+                    if !area_names.contains(name) {
+                        // Find extent of this area
+                        let (row_end, col_end) = Self::find_area_extent(&rows, row_idx, col_idx, name);
+                        areas.push(GridArea {
+                            name: name.clone(),
+                            row_start: row_idx as i32 + 1,
+                            row_end: row_end as i32 + 1,
+                            column_start: col_idx as i32 + 1,
+                            column_end: col_end as i32 + 1,
+                        });
+                        area_names.insert(name.clone());
+                    }
+                }
+            }
+        }
+
+        Some(Self { rows, areas })
+    }
+
+    fn find_area_extent(rows: &[Vec<Option<String>>], start_row: usize, start_col: usize, name: &str) -> (usize, usize) {
+        let mut row_end = start_row;
+        let mut col_end = start_col;
+
+        // Find column extent
+        for col in start_col..rows[start_row].len() {
+            if rows[start_row].get(col) == Some(&Some(name.to_string())) {
+                col_end = col + 1;
+            } else {
+                break;
+            }
+        }
+
+        // Find row extent
+        for row in start_row..rows.len() {
+            if rows[row].get(start_col) == Some(&Some(name.to_string())) {
+                row_end = row + 1;
+            } else {
+                break;
+            }
+        }
+
+        (row_end, col_end)
+    }
+
+    /// Get area by name.
+    pub fn get_area(&self, name: &str) -> Option<&GridArea> {
+        self.areas.iter().find(|a| a.name == name)
+    }
+}
+
+/// Grid auto flow direction.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum GridAutoFlow {
+    #[default]
+    Row,
+    Column,
+    RowDense,
+    ColumnDense,
+}
+
+impl GridAutoFlow {
+    /// Check if this is a row-based flow.
+    pub fn is_row(self) -> bool {
+        matches!(self, GridAutoFlow::Row | GridAutoFlow::RowDense)
+    }
+
+    /// Check if this uses dense packing.
+    pub fn is_dense(self) -> bool {
+        matches!(self, GridAutoFlow::RowDense | GridAutoFlow::ColumnDense)
+    }
+}
+
+/// Grid line reference (for grid-column-start, etc.).
+#[derive(Debug, Clone, PartialEq)]
+pub enum GridLine {
+    /// Auto placement.
+    Auto,
+    /// Specific line number (1-based, can be negative).
+    Number(i32),
+    /// Named line.
+    Name(String),
+    /// Span a number of tracks.
+    Span(u32),
+    /// Span to a named line.
+    SpanName(String),
+}
+
+impl Default for GridLine {
+    fn default() -> Self {
+        GridLine::Auto
+    }
+}
+
+/// Grid placement for an item.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct GridPlacement {
+    /// Column start line.
+    pub column_start: GridLine,
+    /// Column end line.
+    pub column_end: GridLine,
+    /// Row start line.
+    pub row_start: GridLine,
+    /// Row end line.
+    pub row_end: GridLine,
+}
+
+impl GridPlacement {
+    /// Create placement from a named area.
+    pub fn from_area(name: &str) -> Self {
+        Self {
+            column_start: GridLine::Name(format!("{}-start", name)),
+            column_end: GridLine::Name(format!("{}-end", name)),
+            row_start: GridLine::Name(format!("{}-start", name)),
+            row_end: GridLine::Name(format!("{}-end", name)),
+        }
+    }
+
+    /// Create placement from explicit lines.
+    pub fn from_lines(col_start: i32, col_end: i32, row_start: i32, row_end: i32) -> Self {
+        Self {
+            column_start: GridLine::Number(col_start),
+            column_end: GridLine::Number(col_end),
+            row_start: GridLine::Number(row_start),
+            row_end: GridLine::Number(row_end),
+        }
+    }
+}
+
+/// Justify items (horizontal alignment in grid cells).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum JustifyItems {
+    #[default]
+    Stretch,
+    Start,
+    End,
+    Center,
+}
+
+/// Justify self (horizontal alignment for individual item).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum JustifySelf {
+    #[default]
+    Auto,
+    Stretch,
+    Start,
+    End,
+    Center,
 }
 
 /// Position property values.
@@ -562,6 +910,24 @@ pub struct ComputedStyle {
     pub scrollbar_width: ScrollbarWidth,
     pub scrollbar_gutter: ScrollbarGutter,
     pub scrollbar_color: Option<(Color, Color)>, // (thumb, track)
+
+    // Grid Container
+    pub grid_template_columns: GridTemplate,
+    pub grid_template_rows: GridTemplate,
+    pub grid_template_areas: Option<GridTemplateAreas>,
+    pub grid_auto_columns: TrackSize,
+    pub grid_auto_rows: TrackSize,
+    pub grid_auto_flow: GridAutoFlow,
+
+    // Grid Item
+    pub grid_column_start: GridLine,
+    pub grid_column_end: GridLine,
+    pub grid_row_start: GridLine,
+    pub grid_row_end: GridLine,
+
+    // Grid Alignment (also used by Flexbox)
+    pub justify_items: JustifyItems,
+    pub justify_self: JustifySelf,
 }
 
 impl ComputedStyle {

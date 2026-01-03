@@ -16,10 +16,12 @@
 
 pub mod flex;
 pub mod forms;
+pub mod grid;
 pub mod images;
 pub mod scroll;
 pub mod text;
 
+pub use grid::{layout_grid_container, GridItem, GridLayout, GridTrack};
 pub use forms::{
     calculate_caret_position, calculate_selection_rects, render_button, render_checkbox,
     render_input, render_radio, CaretInfo, InputLayout, InputState, SelectionInfo,
@@ -438,7 +440,25 @@ impl LayoutBox {
     pub fn layout(&mut self, containing_block: &Dimensions) {
         match self.box_type {
             BoxType::Block | BoxType::AnonymousBlock => {
-                self.layout_block(containing_block);
+                // Check for flex or grid container
+                if self.style.display.is_flex() {
+                    self.layout_block(containing_block);
+                    // Flex layout is applied to children
+                    flex::layout_flex_container(
+                        self,
+                        &self.dimensions.clone(),
+                    );
+                } else if self.style.display.is_grid() {
+                    self.layout_block(containing_block);
+                    // Grid layout is applied to children
+                    grid::layout_grid_container(
+                        self,
+                        self.dimensions.content.width,
+                        self.dimensions.content.height,
+                    );
+                } else {
+                    self.layout_block(containing_block);
+                }
             }
             BoxType::Inline | BoxType::Text(_) => {
                 // Inline layout handled by parent
