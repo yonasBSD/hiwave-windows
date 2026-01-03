@@ -282,12 +282,24 @@ impl Default for WindowState {
     }
 }
 
+/// IPC message from JavaScript.
+#[derive(Debug, Clone)]
+pub struct IpcMessage {
+    /// The message payload (JSON string from postMessage)
+    pub payload: String,
+}
+
+/// IPC callback type for handling messages from JavaScript.
+pub type IpcCallback = Box<dyn Fn(IpcMessage) + Send + Sync>;
+
 /// DOM bindings context.
 pub struct DomBindings {
     runtime: RefCell<JsRuntime>,
     window: RefCell<WindowState>,
     event_listeners: RefCell<Vec<EventListener>>,
     node_map: RefCell<HashMap<u64, Rc<Node>>>,
+    /// Queue of IPC messages from JavaScript
+    ipc_queue: RefCell<Vec<IpcMessage>>,
 }
 
 impl DomBindings {
@@ -303,6 +315,7 @@ impl DomBindings {
             window: RefCell::new(WindowState::default()),
             event_listeners: RefCell::new(Vec::new()),
             node_map: RefCell::new(HashMap::new()),
+            ipc_queue: RefCell::new(Vec::new()),
         })
     }
 
@@ -376,12 +389,42 @@ impl DomBindings {
                 confirm: function(msg) { console.log('[confirm]', msg); return false; },
                 prompt: function(msg, def) { console.log('[prompt]', msg); return def || null; }
             };
-            
+
             // Alias
             var self = window;
         "#;
 
         runtime.evaluate_script(window_js)?;
+
+        // IPC bridge for communication with Rust
+        let ipc_js = r#"
+            // IPC queue for postMessage calls
+            window.__ipcQueue = [];
+
+            // IPC object for browser-to-Rust communication
+            window.ipc = {
+                postMessage: function(message) {
+                    // Store message in queue for Rust to poll
+                    window.__ipcQueue.push(message);
+                }
+            };
+
+            // Helper to drain the IPC queue (called from Rust)
+            window.__drainIpcQueue = function() {
+                var queue = window.__ipcQueue;
+                window.__ipcQueue = [];
+                return JSON.stringify(queue);
+            };
+
+            // HiWave Chrome API (for Chrome UI compatibility)
+            window.hiwaveChrome = {
+                postMessage: function(message) {
+                    window.ipc.postMessage(message);
+                }
+            };
+        "#;
+
+        runtime.evaluate_script(ipc_js)?;
 
         // Document object stub
         let document_js = r#"
@@ -818,6 +861,54 @@ impl DomBindings {
             .borrow_mut()
             .evaluate_script(script)
             .map_err(Into::into)
+    }
+
+    /// Drain the IPC message queue.
+    ///
+    /// This method collects all IPC messages that were queued via
+    /// `window.ipc.postMessage()` since the last drain call.
+    ///
+    /// Returns a Vec of IpcMessage structs.
+    pub fn drain_ipc_queue(&self) -> Vec<IpcMessage> {
+        // Call JS to drain the queue and get JSON
+        let result = self.runtime
+            .borrow_mut()
+            .evaluate_script("window.__drainIpcQueue()");
+
+        match result {
+            Ok(JsValue::String(json)) => {
+                // Parse the JSON array
+                match serde_json::from_str::<Vec<String>>(&json) {
+                    Ok(messages) => {
+                        messages
+                            .into_iter()
+                            .map(|payload| IpcMessage { payload })
+                            .collect()
+                    }
+                    Err(e) => {
+                        trace!(error = %e, "Failed to parse IPC queue JSON");
+                        Vec::new()
+                    }
+                }
+            }
+            Ok(_) => {
+                trace!("IPC queue returned non-string value");
+                Vec::new()
+            }
+            Err(e) => {
+                trace!(error = %e, "Failed to drain IPC queue");
+                Vec::new()
+            }
+        }
+    }
+
+    /// Check if there are pending IPC messages.
+    pub fn has_pending_ipc(&self) -> bool {
+        let result = self.runtime
+            .borrow_mut()
+            .evaluate_script("window.__ipcQueue.length > 0");
+
+        matches!(result, Ok(JsValue::Boolean(true)))
     }
 
     /// Add an event listener.

@@ -4811,6 +4811,8 @@ dependencies = [
  "rustkit-core",
  "rustkit-dom",
  "rustkit-js",
+ "serde",
+ "serde_json",
  "thiserror 1.0.69",
  "tracing",
  "tracing-subscriber",
