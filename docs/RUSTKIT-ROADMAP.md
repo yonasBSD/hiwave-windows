@@ -4,7 +4,7 @@
 
 RustKit is a Rust-native browser engine designed to replace WebKit's WinCairo port for the HiWave browser. This roadmap outlines the development phases beyond the initial MVP implementation.
 
-**Current Status:** Phase 29 Complete (Web Workers) - Ready for Phase 30 (Accessibility)
+**Current Status:** Phase 30 Complete (Accessibility) - Initial Roadmap Complete! 🎉
 **Branch:** `master`
 
 ---
@@ -44,6 +44,7 @@ RustKit is a Rust-native browser engine designed to replace WebKit's WinCairo po
 | 27 | Service Workers | ✅ Complete | Registration, lifecycle, Cache API |
 | 28 | IndexedDB | ✅ Complete | IDBFactory, object stores, transactions |
 | 29 | Web Workers | ✅ Complete | DedicatedWorker, SharedWorker, MessageChannel |
+| 30 | Accessibility | ✅ Complete | ARIA, accessibility tree, focus management |
 
 ---
 
@@ -342,6 +343,7 @@ rustkit-media      # Audio/video playback
 rustkit-sw         # Service workers
 rustkit-idb        # IndexedDB
 rustkit-worker     # Web Workers
+rustkit-a11y       # Accessibility
 rustkit-engine     # Orchestration, multi-view
 rustkit-test       # WPT harness
 rustkit-bench      # Benchmarks
