@@ -9,6 +9,16 @@
 //! 3. **Performance**: Minimize overhead at the boundary
 //! 4. **Extensibility**: Easy to add new APIs
 
+pub mod events;
+
+pub use events::{
+    AnimationEventData, DataTransfer, DragEventData, DroppedFile, Event, EventDispatcher,
+    EventListenerEntry, EventListenerOptions, EventPhase, ExtendedEventData, FocusManager,
+    FocusVisibility, FocusableElement, HoverTracker, MessageEventData, PointerEventData,
+    PointerLockState, PointerType, RafCallbackId, RafScheduler, Touch, TouchEventData,
+    TransitionEventData, WheelDeltaMode, WheelEventData,
+};
+
 use rustkit_dom::{Document, Node, NodeId};
 use rustkit_js::{JsError, JsRuntime, JsValue};
 use std::cell::RefCell;
