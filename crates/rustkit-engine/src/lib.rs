@@ -20,6 +20,7 @@ use rustkit_compositor::Compositor;
 use rustkit_core::{LoadEvent, NavigationRequest, NavigationStateMachine};
 use rustkit_css::ComputedStyle;
 use rustkit_dom::Document;
+use rustkit_image::ImageManager;
 use rustkit_js::JsRuntime;
 use rustkit_layout::{BoxType, Dimensions, DisplayList, LayoutBox, Rect};
 use rustkit_net::{LoaderConfig, NetError, Request, ResourceLoader};
@@ -107,6 +108,24 @@ pub enum EngineEvent {
     ViewFocused { view_id: EngineViewId },
     /// Download started.
     DownloadStarted { url: Url, filename: String },
+    /// Image loaded.
+    ImageLoaded {
+        view_id: EngineViewId,
+        url: Url,
+        width: u32,
+        height: u32,
+    },
+    /// Image failed to load.
+    ImageError {
+        view_id: EngineViewId,
+        url: Url,
+        error: String,
+    },
+    /// Favicon detected.
+    FaviconDetected {
+        view_id: EngineViewId,
+        url: Url,
+    },
 }
 
 /// View state.
@@ -162,6 +181,7 @@ pub struct Engine {
     viewhost: ViewHost,
     compositor: Compositor,
     loader: Arc<ResourceLoader>,
+    image_manager: Arc<ImageManager>,
     views: HashMap<EngineViewId, ViewState>,
     event_tx: mpsc::UnboundedSender<EngineEvent>,
     event_rx: Option<mpsc::UnboundedReceiver<EngineEvent>>,
@@ -187,6 +207,9 @@ impl Engine {
         let loader =
             Arc::new(ResourceLoader::new(loader_config).map_err(EngineError::NetworkError)?);
 
+        // Initialize ImageManager
+        let image_manager = Arc::new(ImageManager::new());
+
         // Event channel
         let (event_tx, event_rx) = mpsc::unbounded_channel();
 
@@ -200,6 +223,7 @@ impl Engine {
             viewhost,
             compositor,
             loader,
+            image_manager,
             views: HashMap::new(),
             event_tx,
             event_rx: Some(event_rx),
@@ -726,7 +750,6 @@ impl Engine {
         // Handle Tab key for focus navigation
         if event.event_type == KeyEventType::KeyDown && event.key_code == KeyCode::Tab {
             // TODO: Implement Tab navigation between focusable elements
-            return;
         }
 
         // Dispatch to focused element via DOM events
@@ -772,6 +795,60 @@ impl Engine {
     /// Get the currently focused node in a view.
     pub fn get_focused_element(&self, view_id: EngineViewId) -> Option<rustkit_dom::NodeId> {
         self.views.get(&view_id).and_then(|v| v.focused_node)
+    }
+
+    /// Load an image from a URL.
+    pub async fn load_image(&self, view_id: EngineViewId, url: Url) -> Result<(), EngineError> {
+        let image_manager = self.image_manager.clone();
+        let event_tx = self.event_tx.clone();
+
+        match image_manager.load(url.clone()).await {
+            Ok(image) => {
+                let _ = event_tx.send(EngineEvent::ImageLoaded {
+                    view_id,
+                    url,
+                    width: image.natural_width,
+                    height: image.natural_height,
+                });
+                Ok(())
+            }
+            Err(e) => {
+                let error = e.to_string();
+                let _ = event_tx.send(EngineEvent::ImageError {
+                    view_id,
+                    url: url.clone(),
+                    error: error.clone(),
+                });
+                Err(EngineError::RenderError(format!("Image load failed: {}", error)))
+            }
+        }
+    }
+
+    /// Preload an image (non-blocking).
+    pub fn preload_image(&self, url: Url) {
+        self.image_manager.preload(url);
+    }
+
+    /// Check if an image is cached.
+    pub fn is_image_cached(&self, url: &Url) -> bool {
+        self.image_manager.is_cached(url)
+    }
+
+    /// Get a cached image's dimensions.
+    pub fn get_image_dimensions(&self, url: &Url) -> Option<(u32, u32)> {
+        self.image_manager
+            .get_cached(url)
+            .map(|img| (img.natural_width, img.natural_height))
+    }
+
+    /// Get the image manager for direct access.
+    pub fn image_manager(&self) -> Arc<ImageManager> {
+        self.image_manager.clone()
+    }
+
+    /// Clear the image cache.
+    pub fn clear_image_cache(&self) {
+        self.image_manager.clear_cache();
     }
 }
 

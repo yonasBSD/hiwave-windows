@@ -224,7 +224,7 @@ impl Default for MouseEventData {
 }
 
 /// Keyboard event data.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct KeyboardEventData {
     /// The key value.
     pub key: String,
@@ -244,35 +244,14 @@ pub struct KeyboardEventData {
     pub location: u32,
 }
 
-impl Default for KeyboardEventData {
-    fn default() -> Self {
-        Self {
-            key: String::new(),
-            code: String::new(),
-            repeat: false,
-            ctrl_key: false,
-            alt_key: false,
-            shift_key: false,
-            meta_key: false,
-            location: 0,
-        }
-    }
-}
 
 /// Focus event data.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct FocusEventData {
     /// The related target (element losing/gaining focus).
     pub related_target: Option<NodeId>,
 }
 
-impl Default for FocusEventData {
-    fn default() -> Self {
-        Self {
-            related_target: None,
-        }
-    }
-}
 
 /// Input event data.
 #[derive(Debug, Clone)]

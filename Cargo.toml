@@ -17,6 +17,7 @@ members = [
     "crates/rustkit-js",
     "crates/rustkit-bindings",
     "crates/rustkit-net",
+    "crates/rustkit-image",
     "crates/rustkit-engine",
     "crates/rustkit-common",
     "crates/rustkit-test",
@@ -68,6 +69,10 @@ rand = "0.8"
 fuzzy-matcher = "0.3"
 url = "2.5"
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "blocking"] }
+base64 = "0.22"
+urlencoding = "2.1"
+lru = "0.12"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "ico"] }
 dirs = "5.0"
 rfd = "0.15"
 
@@ -90,6 +95,7 @@ rustkit-layout = { path = "crates/rustkit-layout" }
 rustkit-js = { path = "crates/rustkit-js" }
 rustkit-bindings = { path = "crates/rustkit-bindings" }
 rustkit-net = { path = "crates/rustkit-net" }
+rustkit-image = { path = "crates/rustkit-image" }
 rustkit-engine = { path = "crates/rustkit-engine" }
 rustkit-test = { path = "crates/rustkit-test" }
 rustkit-bench = { path = "crates/rustkit-bench" }

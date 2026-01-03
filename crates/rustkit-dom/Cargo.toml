@@ -24,5 +24,8 @@ tracing = "0.1"
 url = "2.5"
 urlencoding = "2.1"
 
+# Image support
+rustkit-image = { path = "../rustkit-image" }
+
 [dev-dependencies]
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

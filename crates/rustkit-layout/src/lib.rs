@@ -15,11 +15,16 @@
 //! 8. **Text rendering**: Font fallback, decorations, line height
 
 pub mod forms;
+pub mod images;
 pub mod text;
 
 pub use forms::{
     calculate_caret_position, calculate_selection_rects, render_button, render_checkbox,
     render_input, render_radio, CaretInfo, InputLayout, InputState, SelectionInfo,
+};
+pub use images::{
+    calculate_intrinsic_size, calculate_placeholder_size, render_background_image,
+    render_broken_image, render_image, ImageLayoutInfo,
 };
 pub use text::{
     apply_text_transform, collapse_whitespace, FontCache, FontDisplay, FontFaceRule,
@@ -1066,6 +1071,32 @@ pub enum DisplayCommand {
         color: Color,
         style: TextDecorationStyleValue,
     },
+    /// Draw an image.
+    Image {
+        /// URL or cache key of the image
+        url: String,
+        /// Source rectangle in the image (for sprites or cropping)
+        src_rect: Option<Rect>,
+        /// Destination rectangle on screen
+        dest_rect: Rect,
+        /// Object-fit mode
+        object_fit: ObjectFit,
+        /// Opacity (0.0 - 1.0)
+        opacity: f32,
+    },
+    /// Draw a background image.
+    BackgroundImage {
+        /// URL or cache key of the image
+        url: String,
+        /// Destination rectangle
+        rect: Rect,
+        /// Background size
+        size: BackgroundSize,
+        /// Background position (0-1 range)
+        position: (f32, f32),
+        /// Background repeat
+        repeat: BackgroundRepeat,
+    },
     /// Push a clip rect (for overflow handling).
     PushClip(Rect),
     /// Pop clip rect.
@@ -1084,6 +1115,241 @@ pub enum TextDecorationStyleValue {
     Dotted,
     Dashed,
     Wavy,
+}
+
+/// CSS object-fit values for images.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ObjectFit {
+    /// Fill the box, possibly distorting the image
+    Fill,
+    /// Scale to fit inside the box, preserving aspect ratio
+    #[default]
+    Contain,
+    /// Scale to cover the box, preserving aspect ratio
+    Cover,
+    /// Don't scale the image
+    None,
+    /// Like contain but never scale up
+    ScaleDown,
+}
+
+impl ObjectFit {
+    /// Parse from CSS value
+    pub fn from_css(value: &str) -> Self {
+        match value.trim().to_lowercase().as_str() {
+            "fill" => ObjectFit::Fill,
+            "contain" => ObjectFit::Contain,
+            "cover" => ObjectFit::Cover,
+            "none" => ObjectFit::None,
+            "scale-down" => ObjectFit::ScaleDown,
+            _ => ObjectFit::default(),
+        }
+    }
+
+    /// Calculate the image rectangle within a container
+    pub fn compute_rect(
+        &self,
+        container: Rect,
+        image_width: f32,
+        image_height: f32,
+        position: (f32, f32),
+    ) -> ImageDrawRect {
+        if image_width == 0.0 || image_height == 0.0 {
+            return ImageDrawRect {
+                dest: container,
+                src: None,
+            };
+        }
+
+        let image_aspect = image_width / image_height;
+        let container_aspect = container.width / container.height;
+
+        let (draw_width, draw_height) = match self {
+            ObjectFit::Fill => (container.width, container.height),
+
+            ObjectFit::Contain => {
+                if image_aspect > container_aspect {
+                    (container.width, container.width / image_aspect)
+                } else {
+                    (container.height * image_aspect, container.height)
+                }
+            }
+
+            ObjectFit::Cover => {
+                if image_aspect > container_aspect {
+                    (container.height * image_aspect, container.height)
+                } else {
+                    (container.width, container.width / image_aspect)
+                }
+            }
+
+            ObjectFit::None => (image_width, image_height),
+
+            ObjectFit::ScaleDown => {
+                if image_width <= container.width && image_height <= container.height {
+                    (image_width, image_height)
+                } else if image_aspect > container_aspect {
+                    (container.width, container.width / image_aspect)
+                } else {
+                    (container.height * image_aspect, container.height)
+                }
+            }
+        };
+
+        let x = container.x + (container.width - draw_width) * position.0;
+        let y = container.y + (container.height - draw_height) * position.1;
+
+        ImageDrawRect {
+            dest: Rect {
+                x,
+                y,
+                width: draw_width,
+                height: draw_height,
+            },
+            src: None,
+        }
+    }
+}
+
+/// Result of computing image draw rectangle
+#[derive(Debug, Clone)]
+pub struct ImageDrawRect {
+    /// Destination rectangle
+    pub dest: Rect,
+    /// Source rectangle (for cropping, e.g., in cover mode)
+    pub src: Option<Rect>,
+}
+
+/// CSS background-size values.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub enum BackgroundSize {
+    /// Stretch to fill
+    Cover,
+    /// Scale to fit
+    Contain,
+    /// Explicit size
+    Explicit { width: Option<f32>, height: Option<f32> },
+    /// Auto sizing
+    #[default]
+    Auto,
+}
+
+impl BackgroundSize {
+    /// Parse from CSS value
+    pub fn from_css(value: &str) -> Self {
+        match value.trim().to_lowercase().as_str() {
+            "cover" => BackgroundSize::Cover,
+            "contain" => BackgroundSize::Contain,
+            "auto" => BackgroundSize::Auto,
+            _ => {
+                // Try to parse explicit size
+                let parts: Vec<&str> = value.split_whitespace().collect();
+                let width = parts.first().and_then(|s| parse_length(s));
+                let height = parts.get(1).and_then(|s| parse_length(s));
+                BackgroundSize::Explicit { width, height }
+            }
+        }
+    }
+
+    /// Calculate the background image size
+    pub fn compute_size(
+        &self,
+        container: Rect,
+        image_width: f32,
+        image_height: f32,
+    ) -> (f32, f32) {
+        if image_width == 0.0 || image_height == 0.0 {
+            return (0.0, 0.0);
+        }
+
+        let image_aspect = image_width / image_height;
+        let container_aspect = container.width / container.height;
+
+        match self {
+            BackgroundSize::Cover => {
+                if image_aspect > container_aspect {
+                    (container.height * image_aspect, container.height)
+                } else {
+                    (container.width, container.width / image_aspect)
+                }
+            }
+
+            BackgroundSize::Contain => {
+                if image_aspect > container_aspect {
+                    (container.width, container.width / image_aspect)
+                } else {
+                    (container.height * image_aspect, container.height)
+                }
+            }
+
+            BackgroundSize::Auto => (image_width, image_height),
+
+            BackgroundSize::Explicit { width, height } => {
+                match (width, height) {
+                    (Some(w), Some(h)) => (*w, *h),
+                    (Some(w), None) => (*w, *w / image_aspect),
+                    (None, Some(h)) => (*h * image_aspect, *h),
+                    (None, None) => (image_width, image_height),
+                }
+            }
+        }
+    }
+}
+
+/// CSS background-repeat values.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BackgroundRepeat {
+    /// Repeat in both directions
+    #[default]
+    Repeat,
+    /// Repeat horizontally only
+    RepeatX,
+    /// Repeat vertically only
+    RepeatY,
+    /// No repeat
+    NoRepeat,
+    /// Space evenly
+    Space,
+    /// Round to fill
+    Round,
+}
+
+impl BackgroundRepeat {
+    /// Parse from CSS value
+    pub fn from_css(value: &str) -> Self {
+        match value.trim().to_lowercase().as_str() {
+            "repeat" => BackgroundRepeat::Repeat,
+            "repeat-x" => BackgroundRepeat::RepeatX,
+            "repeat-y" => BackgroundRepeat::RepeatY,
+            "no-repeat" => BackgroundRepeat::NoRepeat,
+            "space" => BackgroundRepeat::Space,
+            "round" => BackgroundRepeat::Round,
+            _ => BackgroundRepeat::default(),
+        }
+    }
+
+    /// Check if repeating on x-axis
+    pub fn repeats_x(&self) -> bool {
+        matches!(self, BackgroundRepeat::Repeat | BackgroundRepeat::RepeatX | BackgroundRepeat::Space | BackgroundRepeat::Round)
+    }
+
+    /// Check if repeating on y-axis
+    pub fn repeats_y(&self) -> bool {
+        matches!(self, BackgroundRepeat::Repeat | BackgroundRepeat::RepeatY | BackgroundRepeat::Space | BackgroundRepeat::Round)
+    }
+}
+
+/// Parse a CSS length value to pixels
+fn parse_length(value: &str) -> Option<f32> {
+    let value = value.trim();
+    if value.ends_with("px") {
+        value.trim_end_matches("px").parse().ok()
+    } else if value.ends_with('%') {
+        // Percentages would need container size - return None for now
+        None
+    } else {
+        value.parse().ok()
+    }
 }
 
 /// A paint item with z-index for sorting.
@@ -1459,25 +1725,26 @@ mod tests {
 
     #[test]
     fn test_dimensions_boxes() {
-        let mut d = Dimensions::default();
-        d.content = Rect::new(20.0, 20.0, 100.0, 50.0);
-        d.padding = EdgeSizes {
-            top: 5.0,
-            right: 5.0,
-            bottom: 5.0,
-            left: 5.0,
-        };
-        d.border = EdgeSizes {
-            top: 1.0,
-            right: 1.0,
-            bottom: 1.0,
-            left: 1.0,
-        };
-        d.margin = EdgeSizes {
-            top: 10.0,
-            right: 10.0,
-            bottom: 10.0,
-            left: 10.0,
+        let d = Dimensions {
+            content: Rect::new(20.0, 20.0, 100.0, 50.0),
+            padding: EdgeSizes {
+                top: 5.0,
+                right: 5.0,
+                bottom: 5.0,
+                left: 5.0,
+            },
+            border: EdgeSizes {
+                top: 1.0,
+                right: 1.0,
+                bottom: 1.0,
+                left: 1.0,
+            },
+            margin: EdgeSizes {
+                top: 10.0,
+                right: 10.0,
+                bottom: 10.0,
+                left: 10.0,
+            },
         };
 
         let pb = d.padding_box();
@@ -1619,7 +1886,7 @@ mod tests {
         let display_list = DisplayList::build(&parent);
 
         // Should have commands for both parent and child
-        assert!(display_list.commands.len() >= 1);
+        assert!(!display_list.commands.is_empty());
     }
 
     #[test]

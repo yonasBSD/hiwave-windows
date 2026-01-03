@@ -13,6 +13,7 @@
 
 pub mod events;
 pub mod forms;
+pub mod images;
 
 pub use events::{
     AddEventListenerOptions, DomEvent, Event, EventDispatcher, EventId, EventListenerCallback,
@@ -21,6 +22,10 @@ pub use events::{
 pub use forms::{
     CheckableState, FormDataEntry, FormDataValue, FormEnctype, FormMethod, FormState, InputType,
     SelectionDirection, SelectionRange, TextEditState,
+};
+pub use images::{
+    CrossOrigin, FaviconLink, ImageDecoding, ImageElement, ImageElementManager, ImageLoading,
+    ImageLoadingState, PictureElement, PictureSource,
 };
 
 use html5ever::parse_document;
@@ -519,7 +524,7 @@ mod tests {
         // Check sibling relationships
         let first = &paragraphs[0];
         let second = &paragraphs[1];
-        let third = &paragraphs[2];
+        let _third = &paragraphs[2];
 
         assert!(
             first.previous_sibling().is_none() || !first.previous_sibling().unwrap().is_element()

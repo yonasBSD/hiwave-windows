@@ -17,6 +17,7 @@ rustkit-layout = { path = "../rustkit-layout" }
 rustkit-js = { path = "../rustkit-js" }
 rustkit-bindings = { path = "../rustkit-bindings" }
 rustkit-net = { path = "../rustkit-net" }
+rustkit-image = { path = "../rustkit-image" }
 
 # Async runtime
 tokio = { version = "1.42", features = ["sync", "time", "rt"] }

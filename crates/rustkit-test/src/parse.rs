@@ -149,9 +149,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_parse_simple_html() {
-        let runner = ParseTestRunner::new();
-        // Test that runner initializes correctly
-        assert!(true);
+    fn test_parse_runner_initialization() {
+        // Just verify the runner can be constructed
+        let _ = ParseTestRunner::new();
     }
 }

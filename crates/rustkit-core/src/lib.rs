@@ -514,7 +514,7 @@ mod tests {
         // Start navigation
         let url = Url::parse("https://example.com").unwrap();
         let request = NavigationRequest::new(url.clone());
-        let nav_id = nav.start_navigation(request).unwrap();
+        let _nav_id = nav.start_navigation(request).unwrap();
 
         assert_eq!(nav.state(), NavigationState::Provisional);
         assert!(nav.is_loading());

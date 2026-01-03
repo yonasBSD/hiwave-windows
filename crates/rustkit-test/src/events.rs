@@ -7,7 +7,8 @@ use rustkit_core::{
     Modifiers, MouseButton, MouseEvent, MouseEventType, MouseState, Point,
 };
 use rustkit_css::ComputedStyle;
-use rustkit_dom::{DomEvent, Event, FocusEventData};
+use rustkit_dom::events::{DomEvent, Event};
+use rustkit_dom::FocusEventData;
 use rustkit_layout::{BoxType, Dimensions, LayoutBox, Rect};
 
 /// Test basic input event types.

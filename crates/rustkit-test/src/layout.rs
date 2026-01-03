@@ -136,8 +136,10 @@ mod tests {
         let style = ComputedStyle::new();
         let mut root = LayoutBox::new(BoxType::Block, style);
 
-        let mut containing = Dimensions::default();
-        containing.content = Rect::new(0.0, 0.0, 100.0, 100.0);
+        let containing = Dimensions {
+            content: Rect::new(0.0, 0.0, 100.0, 100.0),
+            ..Default::default()
+        };
         root.layout(&containing);
 
         let output = format_layout(&root);

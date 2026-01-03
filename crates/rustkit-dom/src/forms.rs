@@ -110,6 +110,8 @@ pub enum InputType {
 
 impl InputType {
     /// Parse from a string (case-insensitive).
+    /// Parse input type from string.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         match s.to_lowercase().as_str() {
             "text" => InputType::Text,
@@ -583,6 +585,8 @@ pub enum FormEnctype {
 }
 
 impl FormEnctype {
+    /// Parse form enctype from string.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         match s {
             "multipart/form-data" => FormEnctype::MultipartFormData,
@@ -610,6 +614,8 @@ pub enum FormMethod {
 }
 
 impl FormMethod {
+    /// Parse form method from string.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         match s.to_lowercase().as_str() {
             "post" => FormMethod::Post,
@@ -632,6 +638,8 @@ pub enum WrapMode {
 }
 
 impl WrapMode {
+    /// Parse wrap mode from string.
+    #[allow(clippy::should_implement_trait)]
     pub fn from_str(s: &str) -> Self {
         match s.to_lowercase().as_str() {
             "hard" => WrapMode::Hard,
@@ -642,18 +650,12 @@ impl WrapMode {
 }
 
 /// Line position in a textarea.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct LinePosition {
     /// Zero-indexed line number.
     pub line: usize,
     /// Column (character offset within line).
     pub column: usize,
-}
-
-impl Default for LinePosition {
-    fn default() -> Self {
-        Self { line: 0, column: 0 }
-    }
 }
 
 /// Text editing state for textarea elements with multi-line support.
@@ -1485,12 +1487,12 @@ pub mod keyboard {
         let mut new_pos = pos.saturating_sub(1);
 
         // Skip whitespace
-        while new_pos > 0 && chars.get(new_pos).map_or(false, |c| c.is_whitespace()) {
+        while new_pos > 0 && chars.get(new_pos).is_some_and(|c| c.is_whitespace()) {
             new_pos -= 1;
         }
 
         // Skip word characters
-        while new_pos > 0 && chars.get(new_pos - 1).map_or(false, |c| !c.is_whitespace()) {
+        while new_pos > 0 && chars.get(new_pos - 1).is_some_and(|c| !c.is_whitespace()) {
             new_pos -= 1;
         }
 
@@ -1510,12 +1512,12 @@ pub mod keyboard {
         let mut new_pos = pos;
 
         // Skip current word
-        while new_pos < len && chars.get(new_pos).map_or(false, |c| !c.is_whitespace()) {
+        while new_pos < len && chars.get(new_pos).is_some_and(|c| !c.is_whitespace()) {
             new_pos += 1;
         }
 
         // Skip whitespace
-        while new_pos < len && chars.get(new_pos).map_or(false, |c| c.is_whitespace()) {
+        while new_pos < len && chars.get(new_pos).is_some_and(|c| c.is_whitespace()) {
             new_pos += 1;
         }
 
@@ -1543,12 +1545,12 @@ pub mod keyboard {
         let mut start = pos.saturating_sub(1);
 
         // Skip whitespace
-        while start > 0 && chars.get(start).map_or(false, |c| c.is_whitespace()) {
+        while start > 0 && chars.get(start).is_some_and(|c| c.is_whitespace()) {
             start -= 1;
         }
 
         // Skip word characters
-        while start > 0 && chars.get(start - 1).map_or(false, |c| !c.is_whitespace()) {
+        while start > 0 && chars.get(start - 1).is_some_and(|c| !c.is_whitespace()) {
             start -= 1;
         }
 
@@ -1579,12 +1581,12 @@ pub mod keyboard {
         let mut end = pos;
 
         // Skip word characters
-        while end < len && chars.get(end).map_or(false, |c| !c.is_whitespace()) {
+        while end < len && chars.get(end).is_some_and(|c| !c.is_whitespace()) {
             end += 1;
         }
 
         // Skip whitespace
-        while end < len && chars.get(end).map_or(false, |c| c.is_whitespace()) {
+        while end < len && chars.get(end).is_some_and(|c| c.is_whitespace()) {
             end += 1;
         }
 
@@ -1700,7 +1702,7 @@ mod tests {
         state.set_max_length(Some(5));
 
         state.insert_text("Hello");
-        assert!(state.insert_text("!") == false);
+        assert!(!state.insert_text("!"));
         assert_eq!(state.value(), "Hello");
     }
 
