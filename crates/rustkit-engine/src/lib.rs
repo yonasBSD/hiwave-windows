@@ -126,6 +126,10 @@ struct ViewState {
     navigation: NavigationStateMachine,
     #[allow(dead_code)]
     nav_event_rx: mpsc::UnboundedReceiver<LoadEvent>,
+    /// Currently focused DOM node.
+    focused_node: Option<rustkit_dom::NodeId>,
+    /// Whether the view itself has focus.
+    view_focused: bool,
 }
 
 /// Engine configuration.
@@ -251,6 +255,8 @@ impl Engine {
             bindings: None,
             navigation,
             nav_event_rx: nav_rx,
+            focused_node: None,
+            view_focused: false,
         };
 
         self.views.insert(id, view_state);
@@ -547,6 +553,222 @@ impl Engine {
     /// Get GPU info.
     pub fn gpu_info(&self) -> String {
         format!("{:?}", self.compositor.adapter_info())
+    }
+
+    /// Handle a view event from the viewhost.
+    #[cfg(windows)]
+    pub fn handle_view_event(&mut self, event: rustkit_viewhost::ViewEvent) {
+        use rustkit_viewhost::ViewEvent;
+
+        match event {
+            ViewEvent::Resized {
+                view_id: viewhost_id,
+                bounds,
+                dpi: _,
+            } => {
+                // Find engine view id for this viewhost id
+                if let Some((id, _)) = self
+                    .views
+                    .iter()
+                    .find(|(_, v)| v.viewhost_id == viewhost_id)
+                {
+                    let id = *id;
+                    let _ = self.resize_view(
+                        id,
+                        rustkit_viewhost::Bounds::new(bounds.x, bounds.y, bounds.width, bounds.height),
+                    );
+                }
+            }
+            ViewEvent::Focused { view_id: viewhost_id } => {
+                if let Some((id, view)) = self
+                    .views
+                    .iter_mut()
+                    .find(|(_, v)| v.viewhost_id == viewhost_id)
+                {
+                    view.view_focused = true;
+                    let _ = self.event_tx.send(EngineEvent::ViewFocused { view_id: *id });
+                }
+            }
+            ViewEvent::Blurred { view_id: viewhost_id } => {
+                if let Some(view) = self
+                    .views
+                    .values_mut()
+                    .find(|v| v.viewhost_id == viewhost_id)
+                {
+                    view.view_focused = false;
+                }
+            }
+            ViewEvent::Input { view_id: viewhost_id, event: input_event } => {
+                self.handle_input_event(viewhost_id, input_event);
+            }
+            _ => {}
+        }
+    }
+
+    /// Handle an input event.
+    #[cfg(windows)]
+    fn handle_input_event(
+        &mut self,
+        viewhost_id: ViewId,
+        event: rustkit_core::InputEvent,
+    ) {
+        use rustkit_core::InputEvent;
+
+        // Find the view
+        let engine_id = self
+            .views
+            .iter()
+            .find(|(_, v)| v.viewhost_id == viewhost_id)
+            .map(|(id, _)| *id);
+
+        let Some(engine_id) = engine_id else {
+            return;
+        };
+
+        match event {
+            InputEvent::Mouse(mouse_event) => {
+                self.handle_mouse_event(engine_id, mouse_event);
+            }
+            InputEvent::Key(key_event) => {
+                self.handle_key_event(engine_id, key_event);
+            }
+            InputEvent::Focus(focus_event) => {
+                // Focus events are handled via ViewEvent::Focused/Blurred
+                let _ = focus_event;
+            }
+        }
+    }
+
+    /// Handle a mouse event.
+    #[cfg(windows)]
+    fn handle_mouse_event(
+        &mut self,
+        view_id: EngineViewId,
+        event: rustkit_core::MouseEvent,
+    ) {
+        use rustkit_core::MouseEventType;
+        use rustkit_dom::MouseEventData;
+
+        let view = match self.views.get_mut(&view_id) {
+            Some(v) => v,
+            None => return,
+        };
+
+        // Perform hit testing if we have layout
+        let hit_result = view.layout.as_ref().and_then(|layout| {
+            layout.hit_test(event.position.x as f32, event.position.y as f32)
+        });
+
+        // Convert to DOM event
+        let dom_event_type = match event.event_type {
+            MouseEventType::MouseDown => "mousedown",
+            MouseEventType::MouseUp => "mouseup",
+            MouseEventType::MouseMove => "mousemove",
+            MouseEventType::MouseEnter => "mouseenter",
+            MouseEventType::MouseLeave => "mouseleave",
+            MouseEventType::Wheel => "wheel",
+            MouseEventType::ContextMenu => "contextmenu",
+        };
+
+        let _mouse_data = MouseEventData {
+            client_x: event.position.x,
+            client_y: event.position.y,
+            screen_x: event.screen_position.x,
+            screen_y: event.screen_position.y,
+            offset_x: hit_result.as_ref().map(|r| r.local_x as f64).unwrap_or(0.0),
+            offset_y: hit_result.as_ref().map(|r| r.local_y as f64).unwrap_or(0.0),
+            button: event.button.button_index(),
+            buttons: event.buttons,
+            ctrl_key: event.modifiers.ctrl,
+            alt_key: event.modifiers.alt,
+            shift_key: event.modifiers.shift,
+            meta_key: event.modifiers.meta,
+            related_target: None,
+        };
+
+        // If we have a hit and a document, dispatch the event
+        if let (Some(_hit), Some(_document)) = (hit_result, &view.document) {
+            // TODO: Map hit result to DOM node and dispatch event
+            // For now, just log
+            trace!(?view_id, event_type = dom_event_type, "Mouse event");
+        }
+
+        // Handle click focus change
+        if event.event_type == MouseEventType::MouseDown {
+            // TODO: Focus the clicked element if focusable
+        }
+    }
+
+    /// Handle a keyboard event.
+    #[cfg(windows)]
+    fn handle_key_event(
+        &mut self,
+        view_id: EngineViewId,
+        event: rustkit_core::KeyEvent,
+    ) {
+        use rustkit_core::{KeyEventType, KeyCode};
+
+        let view = match self.views.get_mut(&view_id) {
+            Some(v) => v,
+            None => return,
+        };
+
+        // Only process keyboard events if the view has focus
+        if !view.view_focused {
+            return;
+        }
+
+        trace!(?view_id, key = ?event.key_code, event_type = ?event.event_type, "Key event");
+
+        // Handle Tab key for focus navigation
+        if event.event_type == KeyEventType::KeyDown && event.key_code == KeyCode::Tab {
+            // TODO: Implement Tab navigation between focusable elements
+            return;
+        }
+
+        // Dispatch to focused element via DOM events
+        // TODO: Dispatch KeyboardEvent to focused DOM node
+    }
+
+    /// Focus a DOM node in a view.
+    pub fn focus_element(
+        &mut self,
+        view_id: EngineViewId,
+        node_id: rustkit_dom::NodeId,
+    ) -> Result<(), EngineError> {
+        let view = self
+            .views
+            .get_mut(&view_id)
+            .ok_or(EngineError::ViewNotFound(view_id))?;
+
+        let old_focused = view.focused_node;
+        view.focused_node = Some(node_id);
+
+        // TODO: Dispatch blur event to old focused element
+        // TODO: Dispatch focus event to new focused element
+
+        debug!(?view_id, ?node_id, ?old_focused, "Focus changed");
+        Ok(())
+    }
+
+    /// Blur the currently focused element.
+    pub fn blur_element(&mut self, view_id: EngineViewId) -> Result<(), EngineError> {
+        let view = self
+            .views
+            .get_mut(&view_id)
+            .ok_or(EngineError::ViewNotFound(view_id))?;
+
+        let old_focused = view.focused_node.take();
+
+        // TODO: Dispatch blur event to old focused element
+
+        debug!(?view_id, ?old_focused, "Element blurred");
+        Ok(())
+    }
+
+    /// Get the currently focused node in a view.
+    pub fn get_focused_element(&self, view_id: EngineViewId) -> Option<rustkit_dom::NodeId> {
+        self.views.get(&view_id).and_then(|v| v.focused_node)
     }
 }
 

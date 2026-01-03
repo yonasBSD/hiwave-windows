@@ -4886,6 +4886,7 @@ name = "rustkit-test"
 version = "0.1.0"
 dependencies = [
  "glob",
+ "rustkit-core",
  "rustkit-css",
  "rustkit-dom",
  "rustkit-js",
@@ -4904,6 +4905,7 @@ dependencies = [
 name = "rustkit-viewhost"
 version = "0.1.0"
 dependencies = [
+ "rustkit-core",
  "thiserror 1.0.69",
  "tracing",
  "tracing-subscriber",

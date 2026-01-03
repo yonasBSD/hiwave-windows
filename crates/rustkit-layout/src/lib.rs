@@ -870,6 +870,161 @@ impl LayoutBox {
 
         result
     }
+
+    /// Perform hit testing at the given point.
+    /// Returns the hit test result with information about the element at the point.
+    pub fn hit_test(&self, x: f32, y: f32) -> Option<HitTestResult> {
+        self.hit_test_internal(x, y, 0)
+    }
+
+    /// Internal hit test that tracks depth.
+    fn hit_test_internal(&self, x: f32, y: f32, depth: u32) -> Option<HitTestResult> {
+        // Get the border box for this element
+        let border_box = self.dimensions.border_box();
+
+        // Check if the point is within our border box
+        if !border_box.contains(x, y) {
+            return None;
+        }
+
+        // Check children in reverse paint order (topmost first)
+        let paint_order = self.get_paint_order();
+        for child in paint_order.iter().rev() {
+            if let Some(mut result) = child.hit_test_internal(x, y, depth + 1) {
+                // Found a hit in a child - add ourselves to the path
+                result.ancestors.push(HitTestAncestor {
+                    box_type: self.box_type.clone(),
+                    border_box: self.dimensions.border_box(),
+                    content_box: self.dimensions.content,
+                    z_index: self.z_index,
+                    position: self.position,
+                });
+                return Some(result);
+            }
+        }
+
+        // No child was hit, so we are the target
+        Some(HitTestResult {
+            box_type: self.box_type.clone(),
+            border_box,
+            content_box: self.dimensions.content,
+            padding_box: self.dimensions.padding_box(),
+            local_x: x - border_box.x,
+            local_y: y - border_box.y,
+            depth,
+            ancestors: Vec::new(),
+            z_index: self.z_index,
+            position: self.position,
+            is_scrollable: false, // TODO: detect overflow
+        })
+    }
+
+    /// Check if a point is within the border box.
+    pub fn contains_point(&self, x: f32, y: f32) -> bool {
+        self.dimensions.border_box().contains(x, y)
+    }
+
+    /// Get all elements at a point (including overlapping elements).
+    pub fn hit_test_all(&self, x: f32, y: f32) -> Vec<HitTestResult> {
+        let mut results = Vec::new();
+        self.hit_test_all_internal(x, y, 0, &mut results);
+        results
+    }
+
+    /// Internal hit test that collects all results.
+    fn hit_test_all_internal(&self, x: f32, y: f32, depth: u32, results: &mut Vec<HitTestResult>) {
+        let border_box = self.dimensions.border_box();
+
+        if !border_box.contains(x, y) {
+            return;
+        }
+
+        // Add this element
+        results.push(HitTestResult {
+            box_type: self.box_type.clone(),
+            border_box,
+            content_box: self.dimensions.content,
+            padding_box: self.dimensions.padding_box(),
+            local_x: x - border_box.x,
+            local_y: y - border_box.y,
+            depth,
+            ancestors: Vec::new(),
+            z_index: self.z_index,
+            position: self.position,
+            is_scrollable: false,
+        });
+
+        // Check all children
+        for child in &self.children {
+            child.hit_test_all_internal(x, y, depth + 1, results);
+        }
+    }
+}
+
+/// Result of a hit test operation.
+#[derive(Debug, Clone)]
+pub struct HitTestResult {
+    /// The type of the hit box.
+    pub box_type: BoxType,
+    /// The border box of the hit element.
+    pub border_box: Rect,
+    /// The content box of the hit element.
+    pub content_box: Rect,
+    /// The padding box of the hit element.
+    pub padding_box: Rect,
+    /// X coordinate relative to the border box.
+    pub local_x: f32,
+    /// Y coordinate relative to the border box.
+    pub local_y: f32,
+    /// Depth in the layout tree (0 = root).
+    pub depth: u32,
+    /// Ancestor chain from parent to root.
+    pub ancestors: Vec<HitTestAncestor>,
+    /// Z-index of the hit element.
+    pub z_index: i32,
+    /// Position property of the hit element.
+    pub position: Position,
+    /// Whether the element is scrollable.
+    pub is_scrollable: bool,
+}
+
+impl HitTestResult {
+    /// Check if the hit was in the content area.
+    pub fn is_in_content(&self) -> bool {
+        self.content_box.contains(
+            self.border_box.x + self.local_x,
+            self.border_box.y + self.local_y,
+        )
+    }
+
+    /// Check if the hit was in the padding area.
+    pub fn is_in_padding(&self) -> bool {
+        let abs_x = self.border_box.x + self.local_x;
+        let abs_y = self.border_box.y + self.local_y;
+        self.padding_box.contains(abs_x, abs_y) && !self.content_box.contains(abs_x, abs_y)
+    }
+
+    /// Check if the hit was in the border area.
+    pub fn is_in_border(&self) -> bool {
+        let abs_x = self.border_box.x + self.local_x;
+        let abs_y = self.border_box.y + self.local_y;
+        self.border_box.contains(abs_x, abs_y) && !self.padding_box.contains(abs_x, abs_y)
+    }
+}
+
+/// Information about an ancestor in the hit test path.
+#[derive(Debug, Clone)]
+pub struct HitTestAncestor {
+    /// Box type.
+    pub box_type: BoxType,
+    /// Border box.
+    pub border_box: Rect,
+    /// Content box.
+    pub content_box: Rect,
+    /// Z-index.
+    pub z_index: i32,
+    /// Position property.
+    pub position: Position,
 }
 
 /// A paint command for rendering.

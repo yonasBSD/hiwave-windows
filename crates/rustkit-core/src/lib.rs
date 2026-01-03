@@ -1,7 +1,7 @@
 //! # RustKit Core
 //!
 //! Core engine runtime for the RustKit browser engine.
-//! Provides task scheduling, timers, and navigation state management.
+//! Provides task scheduling, timers, navigation state management, and input events.
 //!
 //! ## Design Goals
 //!
@@ -9,6 +9,10 @@
 //! 2. **Reliable lifecycle events**: start → commit → finish guaranteed
 //! 3. **Timer accuracy**: setTimeout/setInterval equivalents
 //! 4. **Structured logging**: Full tracing support
+//! 5. **Platform-agnostic input**: Unified input event types
+
+pub mod input;
+pub use input::*;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};

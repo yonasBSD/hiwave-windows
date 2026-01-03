@@ -56,6 +56,59 @@ pub struct EventListener {
     pub capture: bool,
 }
 
+/// Mouse event data for JavaScript binding.
+#[derive(Debug, Clone, Default)]
+pub struct MouseEventBindingData {
+    pub client_x: f64,
+    pub client_y: f64,
+    pub screen_x: f64,
+    pub screen_y: f64,
+    pub offset_x: f64,
+    pub offset_y: f64,
+    pub button: i16,
+    pub buttons: u16,
+    pub ctrl_key: bool,
+    pub alt_key: bool,
+    pub shift_key: bool,
+    pub meta_key: bool,
+}
+
+/// Keyboard event data for JavaScript binding.
+#[derive(Debug, Clone, Default)]
+pub struct KeyboardEventBindingData {
+    pub key: String,
+    pub code: String,
+    pub repeat: bool,
+    pub ctrl_key: bool,
+    pub alt_key: bool,
+    pub shift_key: bool,
+    pub meta_key: bool,
+    pub location: u32,
+}
+
+/// Focus event data for JavaScript binding.
+#[derive(Debug, Clone, Default)]
+pub struct FocusEventBindingData {
+    pub related_target: Option<u64>,
+}
+
+/// Input event data for JavaScript binding.
+#[derive(Debug, Clone, Default)]
+pub struct InputEventBindingData {
+    pub data: Option<String>,
+    pub input_type: String,
+    pub is_composing: bool,
+}
+
+/// Event data for JavaScript dispatch.
+#[derive(Debug, Clone)]
+pub enum EventData {
+    Mouse(MouseEventBindingData),
+    Keyboard(KeyboardEventBindingData),
+    Focus(FocusEventBindingData),
+    Input(InputEventBindingData),
+}
+
 /// Location object (window.location).
 #[derive(Debug, Clone)]
 pub struct Location {
@@ -465,7 +518,17 @@ impl DomBindings {
     }
 
     /// Dispatch an event.
-    pub fn dispatch_event(&self, node_id: NodeId, event_type: &str) -> Result<(), BindingError> {
+    pub fn dispatch_event(&self, node_id: NodeId, event_type: &str) -> Result<bool, BindingError> {
+        self.dispatch_event_with_data(node_id, event_type, None)
+    }
+
+    /// Dispatch an event with additional data.
+    pub fn dispatch_event_with_data(
+        &self,
+        node_id: NodeId,
+        event_type: &str,
+        event_data: Option<&EventData>,
+    ) -> Result<bool, BindingError> {
         let listeners: Vec<_> = self
             .event_listeners
             .borrow()
@@ -474,12 +537,108 @@ impl DomBindings {
             .map(|l| l.callback.clone())
             .collect();
 
-        let mut runtime = self.runtime.borrow_mut();
-        for callback in listeners {
-            runtime.evaluate_script(&callback)?;
+        if listeners.is_empty() {
+            return Ok(true);
         }
 
-        Ok(())
+        // Create the Event object in JS
+        let event_js = Self::create_event_object(event_type, event_data);
+
+        let mut runtime = self.runtime.borrow_mut();
+        runtime.evaluate_script(&event_js)?;
+
+        // Execute each listener
+        for callback in listeners {
+            runtime.evaluate_script(&format!(
+                "(function(e) {{ {} }})(__rustkit_event)",
+                callback
+            ))?;
+        }
+
+        // Check if default was prevented
+        let prevented = runtime.evaluate_script("__rustkit_event.defaultPrevented")?;
+        let was_prevented = matches!(prevented, JsValue::Boolean(true));
+
+        // Clean up
+        runtime.evaluate_script("delete __rustkit_event;")?;
+
+        Ok(!was_prevented)
+    }
+
+    /// Create a JavaScript Event object.
+    fn create_event_object(event_type: &str, data: Option<&EventData>) -> String {
+        let mut props = vec![
+            format!("type: {:?}", event_type),
+            "bubbles: true".to_string(),
+            "cancelable: true".to_string(),
+            "defaultPrevented: false".to_string(),
+            "target: null".to_string(),
+            "currentTarget: null".to_string(),
+            "eventPhase: 0".to_string(),
+            "timeStamp: Date.now()".to_string(),
+            "isTrusted: true".to_string(),
+            "preventDefault: function() { this.defaultPrevented = true; }".to_string(),
+            "stopPropagation: function() { this._stopped = true; }".to_string(),
+            "stopImmediatePropagation: function() { this._stoppedImmediate = true; }".to_string(),
+        ];
+
+        // Add type-specific properties
+        if let Some(event_data) = data {
+            match event_data {
+                EventData::Mouse(mouse) => {
+                    props.push(format!("clientX: {}", mouse.client_x));
+                    props.push(format!("clientY: {}", mouse.client_y));
+                    props.push(format!("screenX: {}", mouse.screen_x));
+                    props.push(format!("screenY: {}", mouse.screen_y));
+                    props.push(format!("offsetX: {}", mouse.offset_x));
+                    props.push(format!("offsetY: {}", mouse.offset_y));
+                    props.push(format!("button: {}", mouse.button));
+                    props.push(format!("buttons: {}", mouse.buttons));
+                    props.push(format!("ctrlKey: {}", mouse.ctrl_key));
+                    props.push(format!("altKey: {}", mouse.alt_key));
+                    props.push(format!("shiftKey: {}", mouse.shift_key));
+                    props.push(format!("metaKey: {}", mouse.meta_key));
+                }
+                EventData::Keyboard(keyboard) => {
+                    props.push(format!("key: {:?}", keyboard.key));
+                    props.push(format!("code: {:?}", keyboard.code));
+                    props.push(format!("repeat: {}", keyboard.repeat));
+                    props.push(format!("ctrlKey: {}", keyboard.ctrl_key));
+                    props.push(format!("altKey: {}", keyboard.alt_key));
+                    props.push(format!("shiftKey: {}", keyboard.shift_key));
+                    props.push(format!("metaKey: {}", keyboard.meta_key));
+                    props.push(format!("location: {}", keyboard.location));
+                }
+                EventData::Focus(focus) => {
+                    if let Some(related) = focus.related_target {
+                        props.push(format!("relatedTarget: {{ nodeId: {} }}", related));
+                    } else {
+                        props.push("relatedTarget: null".to_string());
+                    }
+                }
+                EventData::Input(input) => {
+                    if let Some(ref data) = input.data {
+                        props.push(format!("data: {:?}", data));
+                    } else {
+                        props.push("data: null".to_string());
+                    }
+                    props.push(format!("inputType: {:?}", input.input_type));
+                    props.push(format!("isComposing: {}", input.is_composing));
+                }
+            }
+        }
+
+        format!("var __rustkit_event = {{ {} }};", props.join(", "))
+    }
+
+    /// Dispatch a DOM event through the DOM event system.
+    pub fn dispatch_dom_event(
+        &self,
+        dom_event: &mut rustkit_dom::DomEvent,
+        target: &std::rc::Rc<rustkit_dom::Node>,
+        ancestors: &[std::rc::Rc<rustkit_dom::Node>],
+    ) -> bool {
+        rustkit_dom::EventDispatcher::dispatch(dom_event, target, ancestors)
     }
 
     /// Get the current location.

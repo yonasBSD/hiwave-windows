@@ -1,7 +1,8 @@
 //! # RustKit ViewHost
 //!
 //! Win32 window hosting layer for the RustKit browser engine.
-//! Handles child HWND creation, resize events, DPI changes, focus, and visibility.
+//! Handles child HWND creation, resize events, DPI changes, focus, visibility,
+//! and input event translation (mouse, keyboard).
 //!
 //! ## Design Goals
 //!
@@ -9,6 +10,7 @@
 //! 2. **Resize correctness**: WM_SIZE triggers surface resize immediately
 //! 3. **DPI awareness**: Per-monitor DPI scaling
 //! 4. **Focus management**: Proper focus chain for keyboard events
+//! 5. **Input handling**: Win32 messages translated to platform-agnostic events
 
 // Allow Arc with non-Send/Sync types - intentional for Win32 HWND handling
 #![allow(clippy::arc_with_non_send_sync)]
@@ -19,22 +21,35 @@ use thiserror::Error;
 use tracing::{debug, error, info, trace};
 
 #[cfg(windows)]
+use rustkit_core::{
+    FocusEvent, FocusEventType, InputEvent, KeyCode, KeyEvent, KeyEventType, KeyboardState,
+    Modifiers, MouseButton, MouseEvent, MouseEventType, MouseState, Point,
+};
+
+#[cfg(windows)]
 use windows::{
     core::PCWSTR,
     Win32::{
-        Foundation::{HWND, LPARAM, LRESULT, RECT, WPARAM},
-        Graphics::Gdi::{BeginPaint, EndPaint, InvalidateRect, HBRUSH, PAINTSTRUCT},
+        Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM},
+        Graphics::Gdi::{BeginPaint, EndPaint, InvalidateRect, HBRUSH, PAINTSTRUCT, ScreenToClient},
         System::LibraryLoader::GetModuleHandleW,
         UI::{
             HiDpi::{
                 GetDpiForWindow, SetProcessDpiAwarenessContext,
                 DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
             },
-            Input::KeyboardAndMouse::SetFocus,
+            Input::KeyboardAndMouse::{
+                GetAsyncKeyState, SetFocus, TrackMouseEvent, TRACKMOUSEEVENT, TME_LEAVE,
+                VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT,
+            },
             WindowsAndMessaging::*,
         },
     },
 };
+
+/// Win32 message constants.
+#[cfg(windows)]
+const WM_MOUSELEAVE_MSG: u32 = 0x02A3;
 
 /// Unique identifier for a view.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -124,32 +139,84 @@ pub enum ViewEvent {
     DpiChanged { view_id: ViewId, dpi: u32 },
     /// View is being destroyed.
     Destroyed { view_id: ViewId },
+    /// Input event from the view (Windows only).
+    #[cfg(windows)]
+    Input { view_id: ViewId, event: InputEvent },
 }
 
 /// Callback for view events.
-pub type EventCallback = Box<dyn Fn(ViewEvent) + Send + Sync>;
+pub type EventCallback = Arc<dyn Fn(ViewEvent) + Send + Sync>;
 
-/// Per-view state.
+/// Per-view state. Stores HWND as isize for thread safety.
 #[allow(dead_code)]
 struct ViewState {
     id: ViewId,
-    #[cfg(windows)]
-    hwnd: HWND,
-    #[cfg(not(windows))]
-    hwnd: (),
+    /// HWND stored as isize for Send + Sync safety.
+    hwnd_raw: isize,
     bounds: Bounds,
     dpi: u32,
     visible: bool,
-    #[allow(dead_code)]
     focused: bool,
+    #[cfg(windows)]
+    keyboard_state: KeyboardState,
+    #[cfg(windows)]
+    mouse_state: MouseState,
+    #[cfg(windows)]
+    last_click_time: u64,
+    #[cfg(windows)]
+    last_click_pos: Point,
+    #[cfg(windows)]
+    click_count: u32,
+    #[cfg(windows)]
+    tracking_mouse: bool,
+}
+
+/// Global view registry for window procedure lookups.
+#[cfg(windows)]
+static VIEW_REGISTRY: std::sync::LazyLock<RwLock<ViewRegistry>> =
+    std::sync::LazyLock::new(|| RwLock::new(ViewRegistry::new()));
+
+#[cfg(windows)]
+struct ViewRegistry {
+    hwnd_to_state: HashMap<isize, Arc<Mutex<ViewState>>>,
+    event_callback: Option<EventCallback>,
+}
+
+#[cfg(windows)]
+impl ViewRegistry {
+    fn new() -> Self {
+        Self {
+            hwnd_to_state: HashMap::new(),
+            event_callback: None,
+        }
+    }
+
+    fn register(&mut self, hwnd_raw: isize, state: Arc<Mutex<ViewState>>) {
+        self.hwnd_to_state.insert(hwnd_raw, state);
+    }
+
+    fn unregister(&mut self, hwnd_raw: isize) {
+        self.hwnd_to_state.remove(&hwnd_raw);
+    }
+
+    fn get(&self, hwnd_raw: isize) -> Option<Arc<Mutex<ViewState>>> {
+        self.hwnd_to_state.get(&hwnd_raw).cloned()
+    }
+
+    fn set_callback(&mut self, callback: EventCallback) {
+        self.event_callback = Some(callback);
+    }
+
+    fn emit(&self, event: ViewEvent) {
+        if let Some(ref cb) = self.event_callback {
+            cb(event);
+        }
+    }
 }
 
 /// The main ViewHost that manages all views.
 pub struct ViewHost {
     views: RwLock<HashMap<ViewId, Arc<Mutex<ViewState>>>>,
-    #[cfg(windows)]
-    hwnd_to_view: RwLock<HashMap<isize, ViewId>>,
-    event_callback: Option<EventCallback>,
 }
 
 impl ViewHost {
@@ -165,15 +232,20 @@ impl ViewHost {
 
         Self {
             views: RwLock::new(HashMap::new()),
-            #[cfg(windows)]
-            hwnd_to_view: RwLock::new(HashMap::new()),
-            event_callback: None,
         }
     }
 
     /// Set the event callback for all views.
-    pub fn set_event_callback(&mut self, callback: EventCallback) {
-        self.event_callback = Some(callback);
+    #[cfg(windows)]
+    pub fn set_event_callback(&self, callback: EventCallback) {
+        let mut registry = VIEW_REGISTRY.write().unwrap();
+        registry.set_callback(callback);
+    }
+
+    /// Set the event callback (non-Windows stub).
+    #[cfg(not(windows))]
+    pub fn set_event_callback(&self, _callback: EventCallback) {
+        // No-op on non-Windows
     }
 
     /// Create a new child view under the given parent HWND.
@@ -222,25 +294,33 @@ impl ViewHost {
             return Err(ViewHostError::WindowCreation(err.to_string()));
         }
 
+        let hwnd_raw = hwnd.0 as isize;
+
         let state = Arc::new(Mutex::new(ViewState {
             id: view_id,
-            hwnd,
+            hwnd_raw,
             bounds: initial_bounds,
             dpi,
             visible: true,
             focused: false,
+            keyboard_state: KeyboardState::new(),
+            mouse_state: MouseState::new(),
+            last_click_time: 0,
+            last_click_pos: Point::zero(),
+            click_count: 0,
+            tracking_mouse: false,
         }));
 
-        // Store the view
+        // Store in local views map
         {
             let mut views = self.views.write().unwrap();
-            views.insert(view_id, state);
+            views.insert(view_id, state.clone());
         }
 
-        // Map HWND to ViewId for window proc lookups
+        // Register in global registry for window proc
         {
-            let mut hwnd_map = self.hwnd_to_view.write().unwrap();
-            hwnd_map.insert(hwnd.0 as isize, view_id);
+            let mut registry = VIEW_REGISTRY.write().unwrap();
+            registry.register(hwnd_raw, state);
         }
 
         info!(?view_id, ?hwnd, dpi, "View created");
@@ -257,7 +337,7 @@ impl ViewHost {
         let view_id = ViewId::new();
         let state = Arc::new(Mutex::new(ViewState {
             id: view_id,
-            hwnd: (),
+            hwnd_raw: 0,
             bounds: initial_bounds,
             dpi: 96,
             visible: true,
@@ -279,9 +359,10 @@ impl ViewHost {
 
         #[cfg(windows)]
         {
+            let hwnd = HWND(state.hwnd_raw as *mut _);
             unsafe {
                 let _ = SetWindowPos(
-                    state.hwnd,
+                    hwnd,
                     None,
                     bounds.x,
                     bounds.y,
@@ -291,7 +372,7 @@ impl ViewHost {
                 );
 
                 // Force repaint
-                let _ = InvalidateRect(state.hwnd, None, false);
+                let _ = InvalidateRect(hwnd, None, false);
             }
         }
 
@@ -321,8 +402,9 @@ impl ViewHost {
 
         #[cfg(windows)]
         {
+            let hwnd = HWND(state.hwnd_raw as *mut _);
             unsafe {
-                let _ = ShowWindow(state.hwnd, if visible { SW_SHOW } else { SW_HIDE });
+                let _ = ShowWindow(hwnd, if visible { SW_SHOW } else { SW_HIDE });
             }
         }
 
@@ -341,8 +423,9 @@ impl ViewHost {
 
         #[cfg(windows)]
         {
+            let hwnd = HWND(state.hwnd_raw as *mut _);
             unsafe {
-                let _ = SetFocus(state.hwnd);
+                let _ = SetFocus(hwnd);
             }
         }
 
@@ -357,8 +440,8 @@ impl ViewHost {
         let state = views
             .get(&view_id)
             .ok_or(ViewHostError::ViewNotFound(view_id))?;
-        let hwnd = state.lock().unwrap().hwnd;
-        Ok(hwnd)
+        let hwnd_raw = state.lock().unwrap().hwnd_raw;
+        Ok(HWND(hwnd_raw as *mut _))
     }
 
     /// Get the DPI for a view.
@@ -379,15 +462,21 @@ impl ViewHost {
         };
 
         if let Some(state) = state {
-            let state = state.lock().unwrap();
+            let state_lock = state.lock().unwrap();
+            let hwnd_raw = state_lock.hwnd_raw;
+            drop(state_lock);
 
             #[cfg(windows)]
             {
-                let mut hwnd_map = self.hwnd_to_view.write().unwrap();
-                hwnd_map.remove(&(state.hwnd.0 as isize));
+                // Unregister from global registry
+                {
+                    let mut registry = VIEW_REGISTRY.write().unwrap();
+                    registry.unregister(hwnd_raw);
+                }
 
+                let hwnd = HWND(hwnd_raw as *mut _);
                 unsafe {
-                    let _ = DestroyWindow(state.hwnd);
+                    let _ = DestroyWindow(hwnd);
                 }
             }
 
@@ -431,7 +520,7 @@ impl ViewHost {
         REGISTER.call_once(|| unsafe {
             let wc = WNDCLASSEXW {
                 cbSize: std::mem::size_of::<WNDCLASSEXW>() as u32,
-                style: CS_HREDRAW | CS_VREDRAW,
+                style: CS_HREDRAW | CS_VREDRAW | CS_DBLCLKS,
                 lpfnWndProc: Some(Self::wnd_proc),
                 cbClsExtra: 0,
                 cbWndExtra: 0,
@@ -450,6 +539,42 @@ impl ViewHost {
         Ok(PCWSTR::from_raw(CLASS_NAME.as_ptr()))
     }
 
+    /// Get current timestamp in milliseconds.
+    #[cfg(windows)]
+    fn timestamp() -> u64 {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_millis() as u64)
+            .unwrap_or(0)
+    }
+
+    /// Get current modifier state.
+    #[cfg(windows)]
+    fn get_modifiers() -> Modifiers {
+        unsafe {
+            Modifiers {
+                ctrl: GetAsyncKeyState(VK_CONTROL.0 as i32) < 0,
+                alt: GetAsyncKeyState(VK_MENU.0 as i32) < 0,
+                shift: GetAsyncKeyState(VK_SHIFT.0 as i32) < 0,
+                meta: GetAsyncKeyState(VK_LWIN.0 as i32) < 0
+                    || GetAsyncKeyState(VK_RWIN.0 as i32) < 0,
+            }
+        }
+    }
+
+    /// Translate Win32 mouse button.
+    #[cfg(windows)]
+    fn translate_mouse_button(msg: u32) -> MouseButton {
+        match msg {
+            WM_LBUTTONDOWN | WM_LBUTTONUP | WM_LBUTTONDBLCLK => MouseButton::Primary,
+            WM_RBUTTONDOWN | WM_RBUTTONUP | WM_RBUTTONDBLCLK => MouseButton::Secondary,
+            WM_MBUTTONDOWN | WM_MBUTTONUP | WM_MBUTTONDBLCLK => MouseButton::Auxiliary,
+            WM_XBUTTONDOWN | WM_XBUTTONUP | WM_XBUTTONDBLCLK => MouseButton::Back,
+            _ => MouseButton::Primary,
+        }
+    }
+
     /// Window procedure for view windows.
     #[cfg(windows)]
     unsafe extern "system" fn wnd_proc(
@@ -458,36 +583,334 @@ impl ViewHost {
         wparam: WPARAM,
         lparam: LPARAM,
     ) -> LRESULT {
+        let hwnd_raw = hwnd.0 as isize;
+
+        // Helper to get view state
+        let get_state = || -> Option<Arc<Mutex<ViewState>>> {
+            let registry = VIEW_REGISTRY.read().ok()?;
+            registry.get(hwnd_raw)
+        };
+
+        // Helper to emit event
+        let emit = |event: ViewEvent| {
+            if let Ok(registry) = VIEW_REGISTRY.read() {
+                registry.emit(event);
+            }
+        };
+
         match msg {
-            WM_SIZE => {
-                let width = (lparam.0 & 0xFFFF) as u32;
-                let height = ((lparam.0 >> 16) & 0xFFFF) as u32;
-                trace!(?hwnd, width, height, "WM_SIZE received");
-                // Compositor will be notified via ViewEvent::Resized
-            }
-            WM_DPICHANGED => {
-                let new_dpi = (wparam.0 & 0xFFFF) as u32;
-                let suggested_rect = lparam.0 as *const RECT;
-                if !suggested_rect.is_null() {
-                    let rect = &*suggested_rect;
-                    let _ = SetWindowPos(
-                        hwnd,
-                        None,
-                        rect.left,
-                        rect.top,
-                        rect.right - rect.left,
-                        rect.bottom - rect.top,
-                        SWP_NOZORDER | SWP_NOACTIVATE,
-                    );
+            // === Mouse Events ===
+            WM_MOUSEMOVE => {
+                if let Some(state) = get_state() {
+                    let mut state = state.lock().unwrap();
+                    let x = (lparam.0 & 0xFFFF) as i16 as f64;
+                    let y = ((lparam.0 >> 16) & 0xFFFF) as i16 as f64;
+                    let pos = Point::new(x, y);
+
+                    state.mouse_state.set_position(pos);
+
+                    // Start mouse tracking for WM_MOUSELEAVE
+                    if !state.tracking_mouse {
+                        let mut tme = TRACKMOUSEEVENT {
+                            cbSize: std::mem::size_of::<TRACKMOUSEEVENT>() as u32,
+                            dwFlags: TME_LEAVE,
+                            hwndTrack: hwnd,
+                            dwHoverTime: 0,
+                        };
+                        let _ = TrackMouseEvent(&mut tme);
+                        state.tracking_mouse = true;
+                    }
+
+                    let view_id = state.id;
+                    let buttons = state.mouse_state.buttons;
+                    drop(state);
+
+                    let event = MouseEvent::new(MouseEventType::MouseMove, pos)
+                        .with_buttons(buttons)
+                        .with_modifiers(Self::get_modifiers())
+                        .with_timestamp(Self::timestamp());
+
+                    emit(ViewEvent::Input {
+                        view_id,
+                        event: InputEvent::Mouse(event),
+                    });
                 }
-                trace!(?hwnd, new_dpi, "WM_DPICHANGED");
             }
+
+            WM_LBUTTONDOWN | WM_RBUTTONDOWN | WM_MBUTTONDOWN => {
+                if let Some(state) = get_state() {
+                    let mut state = state.lock().unwrap();
+                    let x = (lparam.0 & 0xFFFF) as i16 as f64;
+                    let y = ((lparam.0 >> 16) & 0xFFFF) as i16 as f64;
+                    let pos = Point::new(x, y);
+                    let button = Self::translate_mouse_button(msg);
+                    let timestamp = Self::timestamp();
+
+                    state.mouse_state.button_down(button);
+
+                    // Detect double-click (within 500ms and 5 pixels)
+                    let double_click_time = 500;
+                    let double_click_dist = 5.0;
+                    if timestamp - state.last_click_time < double_click_time
+                        && (pos.x - state.last_click_pos.x).abs() < double_click_dist
+                        && (pos.y - state.last_click_pos.y).abs() < double_click_dist
+                    {
+                        state.click_count += 1;
+                    } else {
+                        state.click_count = 1;
+                    }
+                    state.last_click_time = timestamp;
+                    state.last_click_pos = pos;
+
+                    let view_id = state.id;
+                    let buttons = state.mouse_state.buttons;
+                    let click_count = state.click_count;
+                    drop(state);
+
+                    let event = MouseEvent::new(MouseEventType::MouseDown, pos)
+                        .with_button(button)
+                        .with_buttons(buttons)
+                        .with_click_count(click_count)
+                        .with_modifiers(Self::get_modifiers())
+                        .with_timestamp(timestamp);
+
+                    emit(ViewEvent::Input {
+                        view_id,
+                        event: InputEvent::Mouse(event),
+                    });
+                }
+            }
+
+            WM_LBUTTONUP | WM_RBUTTONUP | WM_MBUTTONUP => {
+                if let Some(state) = get_state() {
+                    let mut state = state.lock().unwrap();
+                    let x = (lparam.0 & 0xFFFF) as i16 as f64;
+                    let y = ((lparam.0 >> 16) & 0xFFFF) as i16 as f64;
+                    let pos = Point::new(x, y);
+                    let button = Self::translate_mouse_button(msg);
+
+                    state.mouse_state.button_up(button);
+
+                    let view_id = state.id;
+                    let buttons = state.mouse_state.buttons;
+                    let click_count = state.click_count;
+                    drop(state);
+
+                    let event = MouseEvent::new(MouseEventType::MouseUp, pos)
+                        .with_button(button)
+                        .with_buttons(buttons)
+                        .with_click_count(click_count)
+                        .with_modifiers(Self::get_modifiers())
+                        .with_timestamp(Self::timestamp());
+
+                    emit(ViewEvent::Input {
+                        view_id,
+                        event: InputEvent::Mouse(event),
+                    });
+                }
+            }
+
+            WM_MOUSEWHEEL | WM_MOUSEHWHEEL => {
+                if let Some(state) = get_state() {
+                    let state = state.lock().unwrap();
+                    let view_id = state.id;
+                    drop(state);
+
+                    // Convert screen coords to client coords
+                    let mut pt = POINT {
+                        x: (lparam.0 & 0xFFFF) as i16 as i32,
+                        y: ((lparam.0 >> 16) & 0xFFFF) as i16 as i32,
+                    };
+                    let _ = ScreenToClient(hwnd, &mut pt);
+                    let pos = Point::new(pt.x as f64, pt.y as f64);
+
+                    let delta_raw = (wparam.0 >> 16) as i16 as f64;
+                    let delta = if msg == WM_MOUSEWHEEL {
+                        Point::new(0.0, delta_raw / 120.0)
+                    } else {
+                        Point::new(delta_raw / 120.0, 0.0)
+                    };
+
+                    let event = MouseEvent::new(MouseEventType::Wheel, pos)
+                        .with_delta(delta)
+                        .with_modifiers(Self::get_modifiers())
+                        .with_timestamp(Self::timestamp());
+
+                    emit(ViewEvent::Input {
+                        view_id,
+                        event: InputEvent::Mouse(event),
+                    });
+                }
+            }
+
+            m if m == WM_MOUSELEAVE_MSG => {
+                if let Some(state) = get_state() {
+                    let mut state = state.lock().unwrap();
+                    state.tracking_mouse = false;
+                    let view_id = state.id;
+                    let pos = state.mouse_state.position;
+                    drop(state);
+
+                    let event = MouseEvent::new(MouseEventType::MouseLeave, pos)
+                        .with_timestamp(Self::timestamp());
+
+                    emit(ViewEvent::Input {
+                        view_id,
+                        event: InputEvent::Mouse(event),
+                    });
+                }
+            }
+
+            // === Keyboard Events ===
+            WM_KEYDOWN | WM_SYSKEYDOWN => {
+                if let Some(state) = get_state() {
+                    let mut state = state.lock().unwrap();
+                    let vk = wparam.0 as u32;
+                    let key_code = KeyCode::from_vk(vk);
+
+                    let repeat = state.keyboard_state.key_down(key_code);
+                    let modifiers = state.keyboard_state.modifiers();
+                    let view_id = state.id;
+                    drop(state);
+
+                    let event = KeyEvent::new(KeyEventType::KeyDown, key_code, modifiers)
+                        .with_repeat(repeat)
+                        .with_timestamp(Self::timestamp());
+
+                    emit(ViewEvent::Input {
+                        view_id,
+                        event: InputEvent::Key(event),
+                    });
+                }
+            }
+
+            WM_KEYUP | WM_SYSKEYUP => {
+                if let Some(state) = get_state() {
+                    let mut state = state.lock().unwrap();
+                    let vk = wparam.0 as u32;
+                    let key_code = KeyCode::from_vk(vk);
+
+                    state.keyboard_state.key_up(key_code);
+                    let modifiers = state.keyboard_state.modifiers();
+                    let view_id = state.id;
+                    drop(state);
+
+                    let event = KeyEvent::new(KeyEventType::KeyUp, key_code, modifiers)
+                        .with_timestamp(Self::timestamp());
+
+                    emit(ViewEvent::Input {
+                        view_id,
+                        event: InputEvent::Key(event),
+                    });
+                }
+            }
+
+            WM_CHAR => {
+                if let Some(state) = get_state() {
+                    let state = state.lock().unwrap();
+                    let view_id = state.id;
+                    drop(state);
+
+                    // wparam contains the UTF-16 code unit
+                    let ch = char::from_u32(wparam.0 as u32).unwrap_or('\0');
+                    if !ch.is_control() || ch == '\r' || ch == '\t' {
+                        let event = KeyEvent::input(ch).with_timestamp(Self::timestamp());
+
+                        emit(ViewEvent::Input {
+                            view_id,
+                            event: InputEvent::Key(event),
+                        });
+                    }
+                }
+            }
+
+            // === Focus Events ===
             WM_SETFOCUS => {
-                trace!(?hwnd, "WM_SETFOCUS");
+                if let Some(state) = get_state() {
+                    let mut state = state.lock().unwrap();
+                    state.focused = true;
+                    let view_id = state.id;
+                    drop(state);
+
+                    let event =
+                        FocusEvent::new(FocusEventType::Focus).with_timestamp(Self::timestamp());
+
+                    emit(ViewEvent::Focused { view_id });
+                    emit(ViewEvent::Input {
+                        view_id,
+                        event: InputEvent::Focus(event),
+                    });
+                }
             }
+
             WM_KILLFOCUS => {
-                trace!(?hwnd, "WM_KILLFOCUS");
+                if let Some(state) = get_state() {
+                    let mut state = state.lock().unwrap();
+                    state.focused = false;
+                    let view_id = state.id;
+                    drop(state);
+
+                    let event =
+                        FocusEvent::new(FocusEventType::Blur).with_timestamp(Self::timestamp());
+
+                    emit(ViewEvent::Blurred { view_id });
+                    emit(ViewEvent::Input {
+                        view_id,
+                        event: InputEvent::Focus(event),
+                    });
+                }
             }
+
+            // === Window Events ===
+            WM_SIZE => {
+                if let Some(state) = get_state() {
+                    let state = state.lock().unwrap();
+                    let width = (lparam.0 & 0xFFFF) as u32;
+                    let height = ((lparam.0 >> 16) & 0xFFFF) as u32;
+                    let view_id = state.id;
+                    let bounds = Bounds::new(state.bounds.x, state.bounds.y, width, height);
+                    let dpi = state.dpi;
+                    drop(state);
+
+                    trace!(?view_id, width, height, "WM_SIZE received");
+                    emit(ViewEvent::Resized {
+                        view_id,
+                        bounds,
+                        dpi,
+                    });
+                }
+            }
+
+            WM_DPICHANGED => {
+                if let Some(state) = get_state() {
+                    let mut state = state.lock().unwrap();
+                    let new_dpi = (wparam.0 & 0xFFFF) as u32;
+                    state.dpi = new_dpi;
+                    let view_id = state.id;
+                    drop(state);
+
+                    let suggested_rect = lparam.0 as *const RECT;
+                    if !suggested_rect.is_null() {
+                        let rect = &*suggested_rect;
+                        let _ = SetWindowPos(
+                            hwnd,
+                            None,
+                            rect.left,
+                            rect.top,
+                            rect.right - rect.left,
+                            rect.bottom - rect.top,
+                            SWP_NOZORDER | SWP_NOACTIVATE,
+                        );
+                    }
+
+                    trace!(?view_id, new_dpi, "WM_DPICHANGED");
+                    emit(ViewEvent::DpiChanged {
+                        view_id,
+                        dpi: new_dpi,
+                    });
+                }
+            }
+
             WM_PAINT => {
                 let mut ps = PAINTSTRUCT::default();
                 let _hdc = BeginPaint(hwnd, &mut ps);
@@ -495,13 +918,23 @@ impl ViewHost {
                 let _ = EndPaint(hwnd, &ps);
                 return LRESULT(0);
             }
+
             WM_ERASEBKGND => {
                 // Prevent flicker - compositor handles background
                 return LRESULT(1);
             }
+
             WM_DESTROY => {
-                trace!(?hwnd, "WM_DESTROY");
+                if let Some(state) = get_state() {
+                    let state = state.lock().unwrap();
+                    let view_id = state.id;
+                    drop(state);
+
+                    trace!(?view_id, "WM_DESTROY");
+                    emit(ViewEvent::Destroyed { view_id });
+                }
             }
+
             _ => {}
         }
 

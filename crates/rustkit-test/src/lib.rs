@@ -24,6 +24,7 @@ use std::path::{Path, PathBuf};
 use thiserror::Error;
 use tracing::{debug, info};
 
+pub mod events;
 pub mod layout;
 pub mod parse;
 pub mod reftest;

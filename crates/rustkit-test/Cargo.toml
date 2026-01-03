@@ -8,6 +8,7 @@ license = "MIT"
 
 [dependencies]
 # RustKit crates
+rustkit-core = { path = "../rustkit-core" }
 rustkit-dom = { path = "../rustkit-dom" }
 rustkit-css = { path = "../rustkit-css" }
 rustkit-layout = { path = "../rustkit-layout" }

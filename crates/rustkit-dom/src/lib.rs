@@ -9,6 +9,14 @@
 //! 2. **Efficient tree structure**: Arena-based allocation for cache-friendly traversal
 //! 3. **Query support**: Element lookup by ID, class, tag name
 //! 4. **Mutation support**: Node insertion, removal, attribute modification
+//! 5. **Event dispatch**: DOM Events with capture/bubble phases
+
+pub mod events;
+
+pub use events::{
+    AddEventListenerOptions, DomEvent, Event, EventDispatcher, EventId, EventListenerCallback,
+    EventPhase, EventTarget, FocusEventData, InputEventData, KeyboardEventData, MouseEventData,
+};
 
 use html5ever::parse_document;
 use html5ever::tendril::TendrilSink;
@@ -85,6 +93,8 @@ pub struct Node {
     prev_sibling: RefCell<Option<Weak<Node>>>,
     /// Next sibling.
     next_sibling: RefCell<Option<Weak<Node>>>,
+    /// Event target mixin for event handling.
+    pub event_target: EventTarget,
 }
 
 impl Node {
@@ -97,6 +107,7 @@ impl Node {
             children: RefCell::new(Vec::new()),
             prev_sibling: RefCell::new(None),
             next_sibling: RefCell::new(None),
+            event_target: EventTarget::new(),
         })
     }
 
