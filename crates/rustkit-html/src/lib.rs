@@ -70,6 +70,34 @@ pub trait TreeSink {
 
     /// Called to reconstruct active formatting elements.
     fn reconstruct_active_formatting_elements(&mut self);
+
+    // ==================== AAA (Adoption Agency Algorithm) Methods ====================
+
+    /// Create an element without appending it to the tree.
+    /// Used by AAA to create cloned formatting elements.
+    fn create_element(&mut self, name: String, attrs: Vec<(String, String)>) -> Self::NodeId;
+
+    /// Append a node as a child of the given parent.
+    /// Used by AAA for reparenting operations.
+    fn append_child(&mut self, parent: Self::NodeId, child: Self::NodeId);
+
+    /// Remove a node from its parent (detach it from the tree).
+    /// The node still exists but is no longer in the tree.
+    fn remove_from_parent(&mut self, node: Self::NodeId);
+
+    /// Move all children from one node to another.
+    /// Used by AAA to transfer children during adoption.
+    fn reparent_children(&mut self, from: Self::NodeId, to: Self::NodeId);
+
+    /// Insert a node before a reference node within a parent.
+    /// If reference is None, append at the end.
+    fn insert_before(&mut self, parent: Self::NodeId, node: Self::NodeId, reference: Option<Self::NodeId>);
+
+    /// Get the parent of a node, if any.
+    fn get_parent(&self, node: Self::NodeId) -> Option<Self::NodeId>;
+
+    /// Get the tag name of a node.
+    fn get_tag_name(&self, node: Self::NodeId) -> Option<String>;
 }
 
 /// Parse HTML from a string using the provided sink.
@@ -136,7 +164,7 @@ mod tests {
             let node_id = self.nodes.len();
             self.nodes.push(node);
             
-            if let Some(&parent_id) = self.stack.last() {
+            if let Some(&_parent_id) = self.stack.last() {
                 // In a real implementation, we'd add to parent's children
                 // For this test, we just track the structure
             }
@@ -175,6 +203,44 @@ mod tests {
 
         fn reconstruct_active_formatting_elements(&mut self) {
             // Simplified for tests
+        }
+
+        // AAA methods - simplified implementations for testing
+
+        fn create_element(&mut self, name: String, attrs: Vec<(String, String)>) -> Self::NodeId {
+            let node = TestNode {
+                name,
+                attrs,
+                children: vec![],
+            };
+            let node_id = self.nodes.len();
+            self.nodes.push(node);
+            node_id
+        }
+
+        fn append_child(&mut self, _parent: Self::NodeId, _child: Self::NodeId) {
+            // Simplified for tests - in real impl would modify parent's children
+        }
+
+        fn remove_from_parent(&mut self, _node: Self::NodeId) {
+            // Simplified for tests
+        }
+
+        fn reparent_children(&mut self, _from: Self::NodeId, _to: Self::NodeId) {
+            // Simplified for tests
+        }
+
+        fn insert_before(&mut self, _parent: Self::NodeId, _node: Self::NodeId, _reference: Option<Self::NodeId>) {
+            // Simplified for tests
+        }
+
+        fn get_parent(&self, _node: Self::NodeId) -> Option<Self::NodeId> {
+            // Simplified for tests
+            None
+        }
+
+        fn get_tag_name(&self, node: Self::NodeId) -> Option<String> {
+            self.nodes.get(node).map(|n| n.name.clone())
         }
     }
 

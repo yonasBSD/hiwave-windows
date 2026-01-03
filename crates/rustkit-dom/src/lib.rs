@@ -212,6 +212,55 @@ impl Node {
         // Add to children
         self.children.borrow_mut().push(child);
     }
+
+    /// Remove this node from its parent.
+    pub fn remove_from_parent(self: &Rc<Self>) {
+        if let Some(parent) = self.parent() {
+            // Update sibling links
+            if let Some(prev) = self.previous_sibling() {
+                *prev.next_sibling.borrow_mut() = self.next_sibling.borrow().clone();
+            }
+            if let Some(next) = self.next_sibling() {
+                *next.prev_sibling.borrow_mut() = self.prev_sibling.borrow().clone();
+            }
+
+            // Remove from parent's children
+            parent.children.borrow_mut().retain(|c| !Rc::ptr_eq(c, self));
+
+            // Clear our parent reference
+            *self.parent.borrow_mut() = None;
+            *self.prev_sibling.borrow_mut() = None;
+            *self.next_sibling.borrow_mut() = None;
+        }
+    }
+
+    /// Insert a child node before a reference node.
+    pub fn insert_before(self: &Rc<Self>, new_child: Rc<Node>, reference: Rc<Node>) {
+        // Find the index of the reference node
+        let mut children = self.children.borrow_mut();
+        let ref_idx = children.iter().position(|c| Rc::ptr_eq(c, &reference));
+
+        if let Some(idx) = ref_idx {
+            // Update new_child's parent
+            *new_child.parent.borrow_mut() = Some(Rc::downgrade(self));
+
+            // Update sibling links
+            *new_child.next_sibling.borrow_mut() = Some(Rc::downgrade(&reference));
+            if idx > 0 {
+                let prev = &children[idx - 1];
+                *new_child.prev_sibling.borrow_mut() = Some(Rc::downgrade(prev));
+                *prev.next_sibling.borrow_mut() = Some(Rc::downgrade(&new_child));
+            }
+            *reference.prev_sibling.borrow_mut() = Some(Rc::downgrade(&new_child));
+
+            // Insert into children
+            children.insert(idx, new_child);
+        } else {
+            // Reference not found, append at end
+            drop(children);
+            self.append_child(new_child);
+        }
+    }
 }
 
 /// A complete DOM document.
@@ -355,6 +404,54 @@ impl rustkit_html::TreeSink for DocumentSink {
 
     fn reconstruct_active_formatting_elements(&mut self) {
         // Simplified: not implemented for this initial version
+    }
+
+    // ==================== AAA (Adoption Agency Algorithm) Methods ====================
+
+    fn create_element(&mut self, name: String, attrs: Vec<(String, String)>) -> Self::NodeId {
+        let mut attributes = HashMap::new();
+        for (key, value) in attrs {
+            attributes.insert(key, value);
+        }
+
+        self.create_node(NodeType::Element {
+            tag_name: name,
+            namespace: String::from("http://www.w3.org/1999/xhtml"),
+            attributes,
+        })
+    }
+
+    fn append_child(&mut self, parent: Self::NodeId, child: Self::NodeId) {
+        parent.append_child(child);
+    }
+
+    fn remove_from_parent(&mut self, node: Self::NodeId) {
+        node.remove_from_parent();
+    }
+
+    fn reparent_children(&mut self, from: Self::NodeId, to: Self::NodeId) {
+        // Move all children from 'from' to 'to'
+        let children = from.children();
+        for child in children {
+            child.remove_from_parent();
+            to.append_child(child);
+        }
+    }
+
+    fn insert_before(&mut self, parent: Self::NodeId, node: Self::NodeId, reference: Option<Self::NodeId>) {
+        if let Some(ref_node) = reference {
+            parent.insert_before(node, ref_node);
+        } else {
+            parent.append_child(node);
+        }
+    }
+
+    fn get_parent(&self, node: Self::NodeId) -> Option<Self::NodeId> {
+        node.parent()
+    }
+
+    fn get_tag_name(&self, node: Self::NodeId) -> Option<String> {
+        node.tag_name().map(|s| s.to_string())
     }
 }
 
