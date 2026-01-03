@@ -13,6 +13,7 @@ members = [
     "crates/rustkit-core",
     "crates/rustkit-dom",
     "crates/rustkit-css",
+    "crates/rustkit-cssparser",
     "crates/rustkit-layout",
     "crates/rustkit-js",
     "crates/rustkit-bindings",

@@ -11,6 +11,7 @@
 
 use thiserror::Error;
 use tracing::debug;
+use rustkit_cssparser::parse_stylesheet;
 
 /// Errors that can occur in CSS operations.
 #[derive(Error, Debug)]
@@ -1023,67 +1024,27 @@ impl Stylesheet {
     /// Parse a CSS string into a stylesheet.
     pub fn parse(css: &str) -> Result<Self, CssError> {
         debug!(len = css.len(), "Parsing CSS");
-        let mut stylesheet = Stylesheet::new();
+        let ast = parse_stylesheet(css).map_err(|e| CssError::ParseError(e.to_string()))?;
 
-        // Simple CSS parser (not full spec)
-        let chars = css.chars().peekable();
-        let mut current_selector = String::new();
-        let mut in_block = false;
-        let mut current_property = String::new();
-        let mut current_value = String::new();
-        let mut in_value = false;
+        let rules = ast
+            .rules
+            .into_iter()
+            .map(|r| Rule {
+                selector: r.selector,
+                declarations: r
+                    .declarations
+                    .into_iter()
+                    .map(|d| Declaration {
+                        property: d.property,
+                        value: PropertyValue::Specified(d.value),
+                        important: d.important,
+                    })
+                    .collect(),
+            })
+            .collect::<Vec<_>>();
 
-        for c in chars {
-            if !in_block {
-                if c == '{' {
-                    in_block = true;
-                    current_selector = current_selector.trim().to_string();
-                } else {
-                    current_selector.push(c);
-                }
-            } else if c == '}' {
-                // End of block
-                if !current_property.is_empty() && !current_value.is_empty() {
-                    stylesheet.rules.push(Rule {
-                        selector: current_selector.clone(),
-                        declarations: vec![Declaration {
-                            property: current_property.trim().to_string(),
-                            value: PropertyValue::Specified(current_value.trim().to_string()),
-                            important: current_value.contains("!important"),
-                        }],
-                    });
-                }
-                in_block = false;
-                current_selector.clear();
-                current_property.clear();
-                current_value.clear();
-                in_value = false;
-            } else if c == ':' && !in_value {
-                in_value = true;
-            } else if c == ';' {
-                // End of declaration
-                if !current_property.is_empty() && !current_value.is_empty() {
-                    stylesheet.rules.push(Rule {
-                        selector: current_selector.clone(),
-                        declarations: vec![Declaration {
-                            property: current_property.trim().to_string(),
-                            value: PropertyValue::Specified(current_value.trim().to_string()),
-                            important: current_value.contains("!important"),
-                        }],
-                    });
-                }
-                current_property.clear();
-                current_value.clear();
-                in_value = false;
-            } else if in_value {
-                current_value.push(c);
-            } else {
-                current_property.push(c);
-            }
-        }
-
-        debug!(rule_count = stylesheet.rules.len(), "CSS parsed");
-        Ok(stylesheet)
+        debug!(rule_count = rules.len(), "CSS parsed");
+        Ok(Stylesheet { rules })
     }
 
     /// Get the number of rules in this stylesheet.

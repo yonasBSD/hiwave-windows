@@ -551,8 +551,9 @@
                 Even "privacy-focused" Chromium browsers inherit Google's codebase and its priorities.
             </p>
             <p>
-                <strong>HiWave is built from scratch on Rust.</strong> No Chromium. No Google code.
-                No ad company calling the shots.
+                <strong>HiWave is built from scratch on Rust with our own RustKit engine.</strong>
+                No Chromium. No Google code. No ad company calling the shots.
+                ~37,600 lines of custom browser engine code and growing.
             </p>
         </div>
 
@@ -591,6 +592,49 @@
                     <span>Keyboard First - No telemetry tracking</span>
                 </div>
             </div>
+        </div>
+
+        <!-- RustKit Engine -->
+        <div class="card">
+            <h2 class="card-title">
+                <span class="icon">🦀</span>
+                RustKit: Our Custom Browser Engine
+            </h2>
+            <p>
+                HiWave doesn't just wrap Chromium with privacy settings—we're building a
+                <strong>custom browser engine from scratch</strong> called RustKit.
+            </p>
+            <div class="features">
+                <div class="feature">
+                    <span class="feature-icon">📐</span>
+                    <span>Custom Layout (Flexbox, Grid, Box Model)</span>
+                </div>
+                <div class="feature">
+                    <span class="feature-icon">🎨</span>
+                    <span>GPU Renderer (wgpu/DirectX)</span>
+                </div>
+                <div class="feature">
+                    <span class="feature-icon">🖼️</span>
+                    <span>SVG & Canvas 2D</span>
+                </div>
+                <div class="feature">
+                    <span class="feature-icon">✨</span>
+                    <span>CSS Animations & Transitions</span>
+                </div>
+                <div class="feature">
+                    <span class="feature-icon">🔐</span>
+                    <span>Built-in CSP & CORS</span>
+                </div>
+                <div class="feature">
+                    <span class="feature-icon">📝</span>
+                    <span>Full DOM Events</span>
+                </div>
+            </div>
+            <p style="margin-top: 16px; color: var(--text-muted); font-size: 0.9rem;">
+                <strong style="color: var(--accent);">~37,600 lines</strong> of Rust powering HTML parsing, CSS styling, layout computation,
+                event handling, and GPU rendering. ~45-50% custom algorithms, built on proven foundations
+                (html5ever, wgpu, boa).
+            </p>
         </div>
 
         <!-- Rust Advantage -->
@@ -666,7 +710,8 @@
             <div class="credits">
                 <p><strong>Built With:</strong></p>
                 <p>
-                    Rust • Tauri/WRY • WebKit/WebView2 •
+                    Rust • RustKit Engine • WRY • wgpu • html5ever • boa_engine •
+                    <a href="https://github.com/nickel-org/rust-cssparser" target="_blank">cssparser</a> •
                     <a href="https://github.com/brave/adblock-rust" target="_blank">Brave's adblock-rust</a>
                 </p>
             </div>
@@ -733,7 +778,7 @@
                 <a href="https://twitter.com/hiwavebrowser">Twitter</a>
             </p>
             <p style="margin-top: 16px; font-size: 0.7rem;">
-                © 2024 HiWave. Licensed under MPL-2.0.
+                © 2024-2026 HiWave. Licensed under MPL-2.0.
             </p>
         </div>
     </div>
