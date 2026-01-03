@@ -51,7 +51,7 @@ pub struct Modifiers {
     pub ctrl: bool,
     pub alt: bool,
     pub shift: bool,
-    pub meta: bool,  // Windows/Command key
+    pub meta: bool, // Windows/Command key
 }
 
 impl Modifiers {
@@ -381,42 +381,258 @@ impl KeyCode {
     /// Get the key string for KeyboardEvent.key.
     pub fn key_string(&self, shift: bool) -> &'static str {
         match self {
-            KeyCode::KeyA => if shift { "A" } else { "a" },
-            KeyCode::KeyB => if shift { "B" } else { "b" },
-            KeyCode::KeyC => if shift { "C" } else { "c" },
-            KeyCode::KeyD => if shift { "D" } else { "d" },
-            KeyCode::KeyE => if shift { "E" } else { "e" },
-            KeyCode::KeyF => if shift { "F" } else { "f" },
-            KeyCode::KeyG => if shift { "G" } else { "g" },
-            KeyCode::KeyH => if shift { "H" } else { "h" },
-            KeyCode::KeyI => if shift { "I" } else { "i" },
-            KeyCode::KeyJ => if shift { "J" } else { "j" },
-            KeyCode::KeyK => if shift { "K" } else { "k" },
-            KeyCode::KeyL => if shift { "L" } else { "l" },
-            KeyCode::KeyM => if shift { "M" } else { "m" },
-            KeyCode::KeyN => if shift { "N" } else { "n" },
-            KeyCode::KeyO => if shift { "O" } else { "o" },
-            KeyCode::KeyP => if shift { "P" } else { "p" },
-            KeyCode::KeyQ => if shift { "Q" } else { "q" },
-            KeyCode::KeyR => if shift { "R" } else { "r" },
-            KeyCode::KeyS => if shift { "S" } else { "s" },
-            KeyCode::KeyT => if shift { "T" } else { "t" },
-            KeyCode::KeyU => if shift { "U" } else { "u" },
-            KeyCode::KeyV => if shift { "V" } else { "v" },
-            KeyCode::KeyW => if shift { "W" } else { "w" },
-            KeyCode::KeyX => if shift { "X" } else { "x" },
-            KeyCode::KeyY => if shift { "Y" } else { "y" },
-            KeyCode::KeyZ => if shift { "Z" } else { "z" },
-            KeyCode::Digit0 => if shift { ")" } else { "0" },
-            KeyCode::Digit1 => if shift { "!" } else { "1" },
-            KeyCode::Digit2 => if shift { "@" } else { "2" },
-            KeyCode::Digit3 => if shift { "#" } else { "3" },
-            KeyCode::Digit4 => if shift { "$" } else { "4" },
-            KeyCode::Digit5 => if shift { "%" } else { "5" },
-            KeyCode::Digit6 => if shift { "^" } else { "6" },
-            KeyCode::Digit7 => if shift { "&" } else { "7" },
-            KeyCode::Digit8 => if shift { "*" } else { "8" },
-            KeyCode::Digit9 => if shift { "(" } else { "9" },
+            KeyCode::KeyA => {
+                if shift {
+                    "A"
+                } else {
+                    "a"
+                }
+            }
+            KeyCode::KeyB => {
+                if shift {
+                    "B"
+                } else {
+                    "b"
+                }
+            }
+            KeyCode::KeyC => {
+                if shift {
+                    "C"
+                } else {
+                    "c"
+                }
+            }
+            KeyCode::KeyD => {
+                if shift {
+                    "D"
+                } else {
+                    "d"
+                }
+            }
+            KeyCode::KeyE => {
+                if shift {
+                    "E"
+                } else {
+                    "e"
+                }
+            }
+            KeyCode::KeyF => {
+                if shift {
+                    "F"
+                } else {
+                    "f"
+                }
+            }
+            KeyCode::KeyG => {
+                if shift {
+                    "G"
+                } else {
+                    "g"
+                }
+            }
+            KeyCode::KeyH => {
+                if shift {
+                    "H"
+                } else {
+                    "h"
+                }
+            }
+            KeyCode::KeyI => {
+                if shift {
+                    "I"
+                } else {
+                    "i"
+                }
+            }
+            KeyCode::KeyJ => {
+                if shift {
+                    "J"
+                } else {
+                    "j"
+                }
+            }
+            KeyCode::KeyK => {
+                if shift {
+                    "K"
+                } else {
+                    "k"
+                }
+            }
+            KeyCode::KeyL => {
+                if shift {
+                    "L"
+                } else {
+                    "l"
+                }
+            }
+            KeyCode::KeyM => {
+                if shift {
+                    "M"
+                } else {
+                    "m"
+                }
+            }
+            KeyCode::KeyN => {
+                if shift {
+                    "N"
+                } else {
+                    "n"
+                }
+            }
+            KeyCode::KeyO => {
+                if shift {
+                    "O"
+                } else {
+                    "o"
+                }
+            }
+            KeyCode::KeyP => {
+                if shift {
+                    "P"
+                } else {
+                    "p"
+                }
+            }
+            KeyCode::KeyQ => {
+                if shift {
+                    "Q"
+                } else {
+                    "q"
+                }
+            }
+            KeyCode::KeyR => {
+                if shift {
+                    "R"
+                } else {
+                    "r"
+                }
+            }
+            KeyCode::KeyS => {
+                if shift {
+                    "S"
+                } else {
+                    "s"
+                }
+            }
+            KeyCode::KeyT => {
+                if shift {
+                    "T"
+                } else {
+                    "t"
+                }
+            }
+            KeyCode::KeyU => {
+                if shift {
+                    "U"
+                } else {
+                    "u"
+                }
+            }
+            KeyCode::KeyV => {
+                if shift {
+                    "V"
+                } else {
+                    "v"
+                }
+            }
+            KeyCode::KeyW => {
+                if shift {
+                    "W"
+                } else {
+                    "w"
+                }
+            }
+            KeyCode::KeyX => {
+                if shift {
+                    "X"
+                } else {
+                    "x"
+                }
+            }
+            KeyCode::KeyY => {
+                if shift {
+                    "Y"
+                } else {
+                    "y"
+                }
+            }
+            KeyCode::KeyZ => {
+                if shift {
+                    "Z"
+                } else {
+                    "z"
+                }
+            }
+            KeyCode::Digit0 => {
+                if shift {
+                    ")"
+                } else {
+                    "0"
+                }
+            }
+            KeyCode::Digit1 => {
+                if shift {
+                    "!"
+                } else {
+                    "1"
+                }
+            }
+            KeyCode::Digit2 => {
+                if shift {
+                    "@"
+                } else {
+                    "2"
+                }
+            }
+            KeyCode::Digit3 => {
+                if shift {
+                    "#"
+                } else {
+                    "3"
+                }
+            }
+            KeyCode::Digit4 => {
+                if shift {
+                    "$"
+                } else {
+                    "4"
+                }
+            }
+            KeyCode::Digit5 => {
+                if shift {
+                    "%"
+                } else {
+                    "5"
+                }
+            }
+            KeyCode::Digit6 => {
+                if shift {
+                    "^"
+                } else {
+                    "6"
+                }
+            }
+            KeyCode::Digit7 => {
+                if shift {
+                    "&"
+                } else {
+                    "7"
+                }
+            }
+            KeyCode::Digit8 => {
+                if shift {
+                    "*"
+                } else {
+                    "8"
+                }
+            }
+            KeyCode::Digit9 => {
+                if shift {
+                    "("
+                } else {
+                    "9"
+                }
+            }
             KeyCode::F1 => "F1",
             KeyCode::F2 => "F2",
             KeyCode::F3 => "F3",
@@ -449,17 +665,83 @@ impl KeyCode {
             KeyCode::ControlLeft | KeyCode::ControlRight => "Control",
             KeyCode::AltLeft | KeyCode::AltRight => "Alt",
             KeyCode::MetaLeft | KeyCode::MetaRight => "Meta",
-            KeyCode::Minus => if shift { "_" } else { "-" },
-            KeyCode::Equal => if shift { "+" } else { "=" },
-            KeyCode::BracketLeft => if shift { "{" } else { "[" },
-            KeyCode::BracketRight => if shift { "}" } else { "]" },
-            KeyCode::Backslash => if shift { "|" } else { "\\" },
-            KeyCode::Semicolon => if shift { ":" } else { ";" },
-            KeyCode::Quote => if shift { "\"" } else { "'" },
-            KeyCode::Comma => if shift { "<" } else { "," },
-            KeyCode::Period => if shift { ">" } else { "." },
-            KeyCode::Slash => if shift { "?" } else { "/" },
-            KeyCode::Backquote => if shift { "~" } else { "`" },
+            KeyCode::Minus => {
+                if shift {
+                    "_"
+                } else {
+                    "-"
+                }
+            }
+            KeyCode::Equal => {
+                if shift {
+                    "+"
+                } else {
+                    "="
+                }
+            }
+            KeyCode::BracketLeft => {
+                if shift {
+                    "{"
+                } else {
+                    "["
+                }
+            }
+            KeyCode::BracketRight => {
+                if shift {
+                    "}"
+                } else {
+                    "]"
+                }
+            }
+            KeyCode::Backslash => {
+                if shift {
+                    "|"
+                } else {
+                    "\\"
+                }
+            }
+            KeyCode::Semicolon => {
+                if shift {
+                    ":"
+                } else {
+                    ";"
+                }
+            }
+            KeyCode::Quote => {
+                if shift {
+                    "\""
+                } else {
+                    "'"
+                }
+            }
+            KeyCode::Comma => {
+                if shift {
+                    "<"
+                } else {
+                    ","
+                }
+            }
+            KeyCode::Period => {
+                if shift {
+                    ">"
+                } else {
+                    "."
+                }
+            }
+            KeyCode::Slash => {
+                if shift {
+                    "?"
+                } else {
+                    "/"
+                }
+            }
+            KeyCode::Backquote => {
+                if shift {
+                    "~"
+                } else {
+                    "`"
+                }
+            }
             KeyCode::Unknown => "Unidentified",
         }
     }
@@ -807,14 +1089,14 @@ mod tests {
     #[test]
     fn test_keyboard_state() {
         let mut state = KeyboardState::new();
-        
+
         // First press is not repeat
         assert!(!state.key_down(KeyCode::KeyA));
         assert!(state.is_pressed(KeyCode::KeyA));
-        
+
         // Second press is repeat
         assert!(state.key_down(KeyCode::KeyA));
-        
+
         // Release
         state.key_up(KeyCode::KeyA);
         assert!(!state.is_pressed(KeyCode::KeyA));
@@ -823,13 +1105,12 @@ mod tests {
     #[test]
     fn test_mouse_state() {
         let mut state = MouseState::new();
-        
+
         state.button_down(MouseButton::Primary);
         assert!(state.is_pressed(MouseButton::Primary));
         assert!(!state.is_pressed(MouseButton::Secondary));
-        
+
         state.button_up(MouseButton::Primary);
         assert!(!state.is_pressed(MouseButton::Primary));
     }
 }
-

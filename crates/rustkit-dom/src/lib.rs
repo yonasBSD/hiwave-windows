@@ -12,10 +12,15 @@
 //! 5. **Event dispatch**: DOM Events with capture/bubble phases
 
 pub mod events;
+pub mod forms;
 
 pub use events::{
     AddEventListenerOptions, DomEvent, Event, EventDispatcher, EventId, EventListenerCallback,
     EventPhase, EventTarget, FocusEventData, InputEventData, KeyboardEventData, MouseEventData,
+};
+pub use forms::{
+    CheckableState, FormDataEntry, FormDataValue, FormEnctype, FormMethod, FormState, InputType,
+    SelectionDirection, SelectionRange, TextEditState,
 };
 
 use html5ever::parse_document;

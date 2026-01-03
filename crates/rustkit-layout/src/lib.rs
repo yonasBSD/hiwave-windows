@@ -14,8 +14,13 @@
 //! 7. **Stacking contexts**: Z-index based paint ordering
 //! 8. **Text rendering**: Font fallback, decorations, line height
 
+pub mod forms;
 pub mod text;
 
+pub use forms::{
+    calculate_caret_position, calculate_selection_rects, render_button, render_checkbox,
+    render_input, render_radio, CaretInfo, InputLayout, InputState, SelectionInfo,
+};
 pub use text::{
     apply_text_transform, collapse_whitespace, FontCache, FontDisplay, FontFaceRule,
     FontFamilyChain, FontLoader, LineHeight, PositionedGlyph, ShapedRun, TextDecoration, TextError,

@@ -508,7 +508,9 @@ impl EventDispatcher {
                 break;
             }
             event.event().set_current_target(Some(node.id));
-            let to_remove = node.event_target.invoke_listeners(event, EventPhase::Capturing);
+            let to_remove = node
+                .event_target
+                .invoke_listeners(event, EventPhase::Capturing);
             node.event_target.remove_listeners(&event_type, to_remove);
         }
 
@@ -627,4 +629,3 @@ mod tests {
         assert!(focusin.event().bubbles); // focusin does bubble
     }
 }
-

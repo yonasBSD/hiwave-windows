@@ -31,7 +31,9 @@ use windows::{
     core::PCWSTR,
     Win32::{
         Foundation::{HWND, LPARAM, LRESULT, POINT, RECT, WPARAM},
-        Graphics::Gdi::{BeginPaint, EndPaint, InvalidateRect, HBRUSH, PAINTSTRUCT, ScreenToClient},
+        Graphics::Gdi::{
+            BeginPaint, EndPaint, InvalidateRect, ScreenToClient, HBRUSH, PAINTSTRUCT,
+        },
         System::LibraryLoader::GetModuleHandleW,
         UI::{
             HiDpi::{
@@ -39,7 +41,7 @@ use windows::{
                 DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2,
             },
             Input::KeyboardAndMouse::{
-                GetAsyncKeyState, SetFocus, TrackMouseEvent, TRACKMOUSEEVENT, TME_LEAVE,
+                GetAsyncKeyState, SetFocus, TrackMouseEvent, TME_LEAVE, TRACKMOUSEEVENT,
                 VK_CONTROL, VK_LWIN, VK_MENU, VK_RWIN, VK_SHIFT,
             },
             WindowsAndMessaging::*,

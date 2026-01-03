@@ -22,6 +22,7 @@ tracing = "0.1"
 
 # URL handling
 url = "2.5"
+urlencoding = "2.1"
 
 [dev-dependencies]
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }

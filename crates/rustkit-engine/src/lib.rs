@@ -575,21 +575,32 @@ impl Engine {
                     let id = *id;
                     let _ = self.resize_view(
                         id,
-                        rustkit_viewhost::Bounds::new(bounds.x, bounds.y, bounds.width, bounds.height),
+                        rustkit_viewhost::Bounds::new(
+                            bounds.x,
+                            bounds.y,
+                            bounds.width,
+                            bounds.height,
+                        ),
                     );
                 }
             }
-            ViewEvent::Focused { view_id: viewhost_id } => {
+            ViewEvent::Focused {
+                view_id: viewhost_id,
+            } => {
                 if let Some((id, view)) = self
                     .views
                     .iter_mut()
                     .find(|(_, v)| v.viewhost_id == viewhost_id)
                 {
                     view.view_focused = true;
-                    let _ = self.event_tx.send(EngineEvent::ViewFocused { view_id: *id });
+                    let _ = self
+                        .event_tx
+                        .send(EngineEvent::ViewFocused { view_id: *id });
                 }
             }
-            ViewEvent::Blurred { view_id: viewhost_id } => {
+            ViewEvent::Blurred {
+                view_id: viewhost_id,
+            } => {
                 if let Some(view) = self
                     .views
                     .values_mut()
@@ -598,7 +609,10 @@ impl Engine {
                     view.view_focused = false;
                 }
             }
-            ViewEvent::Input { view_id: viewhost_id, event: input_event } => {
+            ViewEvent::Input {
+                view_id: viewhost_id,
+                event: input_event,
+            } => {
                 self.handle_input_event(viewhost_id, input_event);
             }
             _ => {}
@@ -607,11 +621,7 @@ impl Engine {
 
     /// Handle an input event.
     #[cfg(windows)]
-    fn handle_input_event(
-        &mut self,
-        viewhost_id: ViewId,
-        event: rustkit_core::InputEvent,
-    ) {
+    fn handle_input_event(&mut self, viewhost_id: ViewId, event: rustkit_core::InputEvent) {
         use rustkit_core::InputEvent;
 
         // Find the view
@@ -641,11 +651,7 @@ impl Engine {
 
     /// Handle a mouse event.
     #[cfg(windows)]
-    fn handle_mouse_event(
-        &mut self,
-        view_id: EngineViewId,
-        event: rustkit_core::MouseEvent,
-    ) {
+    fn handle_mouse_event(&mut self, view_id: EngineViewId, event: rustkit_core::MouseEvent) {
         use rustkit_core::MouseEventType;
         use rustkit_dom::MouseEventData;
 
@@ -655,9 +661,10 @@ impl Engine {
         };
 
         // Perform hit testing if we have layout
-        let hit_result = view.layout.as_ref().and_then(|layout| {
-            layout.hit_test(event.position.x as f32, event.position.y as f32)
-        });
+        let hit_result = view
+            .layout
+            .as_ref()
+            .and_then(|layout| layout.hit_test(event.position.x as f32, event.position.y as f32));
 
         // Convert to DOM event
         let dom_event_type = match event.event_type {
@@ -701,12 +708,8 @@ impl Engine {
 
     /// Handle a keyboard event.
     #[cfg(windows)]
-    fn handle_key_event(
-        &mut self,
-        view_id: EngineViewId,
-        event: rustkit_core::KeyEvent,
-    ) {
-        use rustkit_core::{KeyEventType, KeyCode};
+    fn handle_key_event(&mut self, view_id: EngineViewId, event: rustkit_core::KeyEvent) {
+        use rustkit_core::{KeyCode, KeyEventType};
 
         let view = match self.views.get_mut(&view_id) {
             Some(v) => v,

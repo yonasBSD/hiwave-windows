@@ -290,4 +290,3 @@ fn test_input_event_wrapper() {
     let input = InputEvent::Focus(focus);
     assert!(matches!(input, InputEvent::Focus(_)));
 }
-

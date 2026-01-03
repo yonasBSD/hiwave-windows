@@ -396,6 +396,256 @@ impl DomBindings {
 
         runtime.evaluate_script(document_js)?;
 
+        // HTMLInputElement prototype
+        let input_element_js = r#"
+            // Save original createElement for internal use
+            var _origCreateElement = document.createElement.bind(document);
+            
+            // Input element factory (does NOT call createElement)
+            document._createInputElement = function(type) {
+                var elem = {
+                    tagName: 'INPUT',
+                    id: '',
+                    className: '',
+                    textContent: '',
+                    innerHTML: '',
+                    style: {},
+                    attributes: {},
+                    children: [],
+                    parentNode: null,
+                    getAttribute: function(name) { return this.attributes[name] || null; },
+                    setAttribute: function(name, value) { this.attributes[name] = value; },
+                    removeAttribute: function(name) { delete this.attributes[name]; },
+                    appendChild: function(child) { this.children.push(child); child.parentNode = this; return child; },
+                    removeChild: function(child) { var idx = this.children.indexOf(child); if (idx >= 0) { this.children.splice(idx, 1); child.parentNode = null; } return child; }
+                };
+                elem.type = type || 'text';
+                elem.value = '';
+                elem.defaultValue = '';
+                elem.name = '';
+                elem.placeholder = '';
+                elem.disabled = false;
+                elem.readOnly = false;
+                elem.required = false;
+                elem.checked = false;
+                elem.indeterminate = false;
+                elem.maxLength = -1;
+                elem.minLength = 0;
+                elem.selectionStart = 0;
+                elem.selectionEnd = 0;
+                elem.selectionDirection = 'none';
+                elem._form = null;
+                
+                // Selection methods
+                elem.select = function() {
+                    this.selectionStart = 0;
+                    this.selectionEnd = this.value.length;
+                };
+                
+                elem.setSelectionRange = function(start, end, direction) {
+                    this.selectionStart = Math.max(0, Math.min(start, this.value.length));
+                    this.selectionEnd = Math.max(this.selectionStart, Math.min(end, this.value.length));
+                    this.selectionDirection = direction || 'none';
+                };
+                
+                elem.setRangeText = function(replacement, start, end, selectMode) {
+                    start = start !== undefined ? start : this.selectionStart;
+                    end = end !== undefined ? end : this.selectionEnd;
+                    var before = this.value.substring(0, start);
+                    var after = this.value.substring(end);
+                    this.value = before + replacement + after;
+                    
+                    switch(selectMode) {
+                        case 'select':
+                            this.selectionStart = start;
+                            this.selectionEnd = start + replacement.length;
+                            break;
+                        case 'start':
+                            this.selectionStart = this.selectionEnd = start;
+                            break;
+                        case 'end':
+                            this.selectionStart = this.selectionEnd = start + replacement.length;
+                            break;
+                        default: // 'preserve'
+                            break;
+                    }
+                };
+                
+                // Validation methods
+                elem.checkValidity = function() {
+                    if (this.required && this.value === '') return false;
+                    if (this.minLength > 0 && this.value.length < this.minLength) return false;
+                    if (this.maxLength >= 0 && this.value.length > this.maxLength) return false;
+                    if (this.pattern) {
+                        var regex = new RegExp('^' + this.pattern + '$');
+                        if (!regex.test(this.value)) return false;
+                    }
+                    return true;
+                };
+                
+                elem.reportValidity = function() {
+                    return this.checkValidity();
+                };
+                
+                elem.setCustomValidity = function(msg) {
+                    this._customValidityMessage = msg;
+                };
+                
+                // Form getter
+                Object.defineProperty(elem, 'form', {
+                    get: function() { return this._form; }
+                });
+                
+                // Validity getter
+                Object.defineProperty(elem, 'validity', {
+                    get: function() {
+                        var el = this;
+                        return {
+                            get valid() { return el.checkValidity(); },
+                            get valueMissing() { return el.required && el.value === ''; },
+                            get tooShort() { return el.minLength > 0 && el.value.length < el.minLength; },
+                            get tooLong() { return el.maxLength >= 0 && el.value.length > el.maxLength; },
+                            get patternMismatch() {
+                                if (!el.pattern) return false;
+                                var regex = new RegExp('^' + el.pattern + '$');
+                                return !regex.test(el.value);
+                            },
+                            get typeMismatch() { return false; },
+                            get stepMismatch() { return false; },
+                            get rangeUnderflow() { return false; },
+                            get rangeOverflow() { return false; },
+                            get badInput() { return false; },
+                            get customError() { return !!el._customValidityMessage; }
+                        };
+                    }
+                });
+                
+                // Focus/blur methods
+                elem.focus = function() {
+                    this.dispatchEvent(new Event('focus', { bubbles: false }));
+                };
+                
+                elem.blur = function() {
+                    this.dispatchEvent(new Event('blur', { bubbles: false }));
+                };
+                
+                // Event dispatch
+                elem.dispatchEvent = function(event) {
+                    // Simplified event dispatch
+                    return true;
+                };
+                
+                return elem;
+            };
+            
+            // Textarea element factory
+            document._createTextAreaElement = function() {
+                var elem = document._createInputElement('text');
+                elem.tagName = 'TEXTAREA';
+                elem.rows = 2;
+                elem.cols = 20;
+                elem.wrap = 'soft';
+                elem.textLength = 0;
+                
+                // Override to update textLength
+                var origValue = '';
+                Object.defineProperty(elem, 'value', {
+                    get: function() { return origValue; },
+                    set: function(val) {
+                        origValue = val;
+                        this.textLength = val.length;
+                    }
+                });
+                
+                return elem;
+            };
+            
+            // Override createElement for input/textarea
+            document.createElement = function(tagName) {
+                var tag = tagName.toUpperCase();
+                if (tag === 'INPUT') {
+                    return document._createInputElement('text');
+                } else if (tag === 'TEXTAREA') {
+                    return document._createTextAreaElement();
+                } else if (tag === 'FORM') {
+                    return document._createFormElement();
+                }
+                // For other elements, create a basic element object
+                return {
+                    tagName: tag,
+                    id: '',
+                    className: '',
+                    textContent: '',
+                    innerHTML: '',
+                    style: {},
+                    attributes: {},
+                    children: [],
+                    parentNode: null,
+                    getAttribute: function(name) { return this.attributes[name] || null; },
+                    setAttribute: function(name, value) { this.attributes[name] = value; },
+                    removeAttribute: function(name) { delete this.attributes[name]; },
+                    appendChild: function(child) { this.children.push(child); child.parentNode = this; return child; },
+                    removeChild: function(child) { var idx = this.children.indexOf(child); if (idx >= 0) { this.children.splice(idx, 1); child.parentNode = null; } return child; },
+                    addEventListener: function(type, callback, options) {},
+                    removeEventListener: function(type, callback, options) {}
+                };
+            };
+            
+            // HTMLFormElement prototype
+            document._createFormElement = function() {
+                var form = {
+                    tagName: 'FORM',
+                    id: '',
+                    className: '',
+                    style: {},
+                    attributes: {},
+                    children: [],
+                    parentNode: null,
+                    getAttribute: function(name) { return this.attributes[name] || null; },
+                    setAttribute: function(name, value) { this.attributes[name] = value; },
+                    removeAttribute: function(name) { delete this.attributes[name]; },
+                    appendChild: function(child) { this.children.push(child); child.parentNode = this; return child; },
+                    removeChild: function(child) { var idx = this.children.indexOf(child); if (idx >= 0) { this.children.splice(idx, 1); child.parentNode = null; } return child; }
+                };
+                form.action = '';
+                form.method = 'get';
+                form.enctype = 'application/x-www-form-urlencoded';
+                form.target = '';
+                form.noValidate = false;
+                form.elements = [];
+                
+                form.submit = function() {
+                    // Native submit - would be handled by engine
+                    console.log('[form submit]', this.action, this.method);
+                };
+                
+                form.reset = function() {
+                    this.elements.forEach(function(el) {
+                        if (el.defaultValue !== undefined) {
+                            el.value = el.defaultValue;
+                        }
+                        if (el.defaultChecked !== undefined) {
+                            el.checked = el.defaultChecked;
+                        }
+                    });
+                };
+                
+                form.checkValidity = function() {
+                    return this.elements.every(function(el) {
+                        return !el.checkValidity || el.checkValidity();
+                    });
+                };
+                
+                form.reportValidity = function() {
+                    return this.checkValidity();
+                };
+                
+                return form;
+            };
+        "#;
+
+        runtime.evaluate_script(input_element_js)?;
+
         debug!("Global objects injected");
         Ok(())
     }
@@ -717,5 +967,153 @@ mod tests {
 
         let width = bindings.evaluate("window.innerWidth").unwrap();
         assert!(matches!(width, JsValue::Number(n) if (n - 1024.0).abs() < f64::EPSILON));
+    }
+
+    #[test]
+    fn test_input_element_creation() {
+        let runtime = JsRuntime::new().unwrap();
+        let bindings = DomBindings::new(runtime).unwrap();
+
+        bindings
+            .evaluate("var input = document.createElement('input')")
+            .unwrap();
+
+        let tag = bindings.evaluate("input.tagName").unwrap();
+        assert!(matches!(tag, JsValue::String(s) if s == "INPUT"));
+
+        let input_type = bindings.evaluate("input.type").unwrap();
+        assert!(matches!(input_type, JsValue::String(s) if s == "text"));
+    }
+
+    #[test]
+    fn test_input_element_value() {
+        let runtime = JsRuntime::new().unwrap();
+        let bindings = DomBindings::new(runtime).unwrap();
+
+        bindings
+            .evaluate(
+                r#"
+            var input = document.createElement('input');
+            input.value = 'Hello World';
+        "#,
+            )
+            .unwrap();
+
+        let value = bindings.evaluate("input.value").unwrap();
+        assert!(matches!(value, JsValue::String(s) if s == "Hello World"));
+    }
+
+    #[test]
+    fn test_input_element_selection() {
+        let runtime = JsRuntime::new().unwrap();
+        let bindings = DomBindings::new(runtime).unwrap();
+
+        bindings
+            .evaluate(
+                r#"
+            var input = document.createElement('input');
+            input.value = 'Hello World';
+            input.setSelectionRange(0, 5);
+        "#,
+            )
+            .unwrap();
+
+        let start = bindings.evaluate("input.selectionStart").unwrap();
+        let end = bindings.evaluate("input.selectionEnd").unwrap();
+
+        assert!(matches!(start, JsValue::Number(n) if n == 0.0));
+        assert!(matches!(end, JsValue::Number(n) if n == 5.0));
+    }
+
+    #[test]
+    fn test_input_element_select_all() {
+        let runtime = JsRuntime::new().unwrap();
+        let bindings = DomBindings::new(runtime).unwrap();
+
+        bindings
+            .evaluate(
+                r#"
+            var input = document.createElement('input');
+            input.value = 'Hello World';
+            input.select();
+        "#,
+            )
+            .unwrap();
+
+        let start = bindings.evaluate("input.selectionStart").unwrap();
+        let end = bindings.evaluate("input.selectionEnd").unwrap();
+
+        assert!(matches!(start, JsValue::Number(n) if n == 0.0));
+        assert!(matches!(end, JsValue::Number(n) if n == 11.0)); // "Hello World" = 11 chars
+    }
+
+    #[test]
+    fn test_input_element_validation() {
+        let runtime = JsRuntime::new().unwrap();
+        let bindings = DomBindings::new(runtime).unwrap();
+
+        // Empty required field should be invalid
+        bindings
+            .evaluate(
+                r#"
+            var input = document.createElement('input');
+            input.required = true;
+        "#,
+            )
+            .unwrap();
+
+        let valid = bindings.evaluate("input.checkValidity()").unwrap();
+        assert!(matches!(valid, JsValue::Boolean(false)));
+
+        // Non-empty required field should be valid
+        bindings.evaluate("input.value = 'test'").unwrap();
+        let valid = bindings.evaluate("input.checkValidity()").unwrap();
+        assert!(matches!(valid, JsValue::Boolean(true)));
+    }
+
+    #[test]
+    fn test_textarea_element() {
+        let runtime = JsRuntime::new().unwrap();
+        let bindings = DomBindings::new(runtime).unwrap();
+
+        bindings
+            .evaluate(
+                r#"
+            var textarea = document.createElement('textarea');
+            textarea.value = 'Line1\nLine2';
+        "#,
+            )
+            .unwrap();
+
+        let tag = bindings.evaluate("textarea.tagName").unwrap();
+        assert!(matches!(tag, JsValue::String(s) if s == "TEXTAREA"));
+
+        let rows = bindings.evaluate("textarea.rows").unwrap();
+        assert!(matches!(rows, JsValue::Number(n) if n == 2.0));
+
+        let length = bindings.evaluate("textarea.textLength").unwrap();
+        assert!(matches!(length, JsValue::Number(n) if n == 11.0)); // "Line1\nLine2" = 11 chars
+    }
+
+    #[test]
+    fn test_form_element() {
+        let runtime = JsRuntime::new().unwrap();
+        let bindings = DomBindings::new(runtime).unwrap();
+
+        bindings
+            .evaluate(
+                r#"
+            var form = document._createFormElement();
+            form.action = '/submit';
+            form.method = 'post';
+        "#,
+            )
+            .unwrap();
+
+        let action = bindings.evaluate("form.action").unwrap();
+        assert!(matches!(action, JsValue::String(s) if s == "/submit"));
+
+        let method = bindings.evaluate("form.method").unwrap();
+        assert!(matches!(method, JsValue::String(s) if s == "post"));
     }
 }
