@@ -156,10 +156,11 @@ impl IWebView for RustKitView {
     }
 
     fn load_html(&self, html: &str) {
-        // For HTML, we use a data URL approach
-        let encoded = urlencoding::encode(html);
-        let data_url = format!("data:text/html,{}", encoded);
-        self.load_url_blocking(&data_url);
+        // Use the engine's direct HTML loading (no data URL encoding needed)
+        let mut engine = self.engine.borrow_mut();
+        if let Err(e) = engine.load_html(self.view_id, html) {
+            error!(error = %e, "Failed to load HTML content");
+        }
     }
 
     fn evaluate_script(&self, script: &str) {
@@ -204,9 +205,9 @@ impl IWebView for RustKitView {
     }
 
     fn focus(&self) {
-        // Focus the view through viewhost
-        // Would need to expose focus() on Engine
-        debug!("Focus requested");
+        if let Err(e) = self.engine.borrow().focus_view(self.view_id) {
+            warn!(error = %e, "Failed to focus view");
+        }
     }
 
     fn clear_all_browsing_data(&self) {
@@ -216,8 +217,9 @@ impl IWebView for RustKitView {
 
     fn set_visible(&self, visible: bool) {
         *self.visible.borrow_mut() = visible;
-        // Would need to expose visibility on Engine
-        debug!(visible, "Visibility changed");
+        if let Err(e) = self.engine.borrow().set_view_visible(self.view_id, visible) {
+            warn!(error = %e, "Failed to set view visibility");
+        }
     }
 }
 

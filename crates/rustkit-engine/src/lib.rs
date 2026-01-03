@@ -352,6 +352,32 @@ impl Engine {
         Ok(())
     }
 
+    /// Focus a view.
+    pub fn focus_view(&self, id: EngineViewId) -> Result<(), EngineError> {
+        let view = self.views.get(&id).ok_or(EngineError::ViewNotFound(id))?;
+
+        debug!(?id, "Focusing view");
+
+        self.viewhost
+            .focus(view.viewhost_id)
+            .map_err(|e| EngineError::ViewError(e.to_string()))?;
+
+        Ok(())
+    }
+
+    /// Set view visibility.
+    pub fn set_view_visible(&self, id: EngineViewId, visible: bool) -> Result<(), EngineError> {
+        let view = self.views.get(&id).ok_or(EngineError::ViewNotFound(id))?;
+
+        debug!(?id, visible, "Setting view visibility");
+
+        self.viewhost
+            .set_visible(view.viewhost_id, visible)
+            .map_err(|e| EngineError::ViewError(e.to_string()))?;
+
+        Ok(())
+    }
+
     /// Load a URL in a view.
     pub async fn load_url(&mut self, id: EngineViewId, url: Url) -> Result<(), EngineError> {
         let view = self
