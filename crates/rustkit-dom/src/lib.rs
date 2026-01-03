@@ -28,9 +28,6 @@ pub use images::{
     ImageLoadingState, PictureElement, PictureSource,
 };
 
-use html5ever::parse_document;
-use html5ever::tendril::TendrilSink;
-use markup5ever_rcdom::{Handle, NodeData, RcDom};
 use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::rc::{Rc, Weak};
@@ -229,6 +226,138 @@ pub struct Document {
     next_id: Cell<usize>,
 }
 
+/// Sink for building a Document from HTML parsing.
+struct DocumentSink {
+    doc: Document,
+    /// Stack of open elements during parsing.
+    open_elements: Vec<Rc<Node>>,
+}
+
+impl DocumentSink {
+    fn new() -> Self {
+        Self {
+            doc: Document::new(),
+            open_elements: vec![],
+        }
+    }
+
+    fn current_parent(&self) -> Rc<Node> {
+        self.open_elements
+            .last()
+            .cloned()
+            .unwrap_or_else(|| self.doc.root.clone())
+    }
+
+    fn create_node(&mut self, node_type: NodeType) -> Rc<Node> {
+        let id = NodeId::new(self.doc.next_id.get());
+        self.doc.next_id.set(self.doc.next_id.get() + 1);
+
+        let node = Node::new(id, node_type);
+        self.doc.nodes.insert(id, node.clone());
+        node
+    }
+}
+
+impl rustkit_html::TreeSink for DocumentSink {
+    type NodeId = Rc<Node>;
+
+    fn doctype(&mut self, name: String, public_id: String, system_id: String) {
+        let node = self.create_node(NodeType::DocumentType {
+            name,
+            public_id,
+            system_id,
+        });
+        self.doc.root.append_child(node);
+    }
+
+    fn start_element(
+        &mut self,
+        name: String,
+        attrs: Vec<(String, String)>,
+        _self_closing: bool,
+    ) -> Self::NodeId {
+        let mut attributes = HashMap::new();
+        for (key, value) in attrs {
+            attributes.insert(key, value);
+        }
+
+        let node = self.create_node(NodeType::Element {
+            tag_name: name,
+            namespace: String::from("http://www.w3.org/1999/xhtml"),
+            attributes,
+        });
+
+        // Index by ID attribute
+        if let Some(id) = node.get_attribute("id") {
+            self.doc.elements_by_id.insert(id.to_string(), node.clone());
+        }
+
+        let parent = self.current_parent();
+        parent.append_child(node.clone());
+
+        // Push onto stack for nested elements
+        self.open_elements.push(node.clone());
+
+        node
+    }
+
+    fn end_element(&mut self, _name: String) {
+        self.open_elements.pop();
+    }
+
+    fn text(&mut self, data: String) {
+        if !data.is_empty() {
+            let node = self.create_node(NodeType::Text(data));
+            let parent = self.current_parent();
+            parent.append_child(node);
+        }
+    }
+
+    fn comment(&mut self, data: String) {
+        let node = self.create_node(NodeType::Comment(data));
+        let parent = self.current_parent();
+        parent.append_child(node);
+    }
+
+    fn current_node(&self) -> Option<Self::NodeId> {
+        self.open_elements.last().cloned()
+    }
+
+    fn in_scope(&self, tag_name: &str) -> bool {
+        for node in self.open_elements.iter().rev() {
+            if node.tag_name() == Some(tag_name) {
+                return true;
+            }
+        }
+        false
+    }
+
+    fn pop_until(&mut self, tag_name: &str) {
+        while let Some(node) = self.open_elements.last() {
+            let should_stop = node.tag_name() == Some(tag_name);
+            self.open_elements.pop();
+            if should_stop {
+                break;
+            }
+        }
+    }
+
+    fn close_p_element_in_button_scope(&mut self) {
+        // Simplified: just pop until we find a p element
+        while let Some(node) = self.open_elements.last() {
+            let is_p = node.tag_name() == Some("p");
+            self.open_elements.pop();
+            if is_p {
+                break;
+            }
+        }
+    }
+
+    fn reconstruct_active_formatting_elements(&mut self) {
+        // Simplified: not implemented for this initial version
+    }
+}
+
 impl Document {
     /// Create a new empty document.
     pub fn new() -> Self {
@@ -244,78 +373,17 @@ impl Document {
         }
     }
 
-    /// Parse HTML and create a document.
+    /// Parse HTML and create a document (new rustkit-html parser).
     pub fn parse_html(html: &str) -> Result<Self, DomError> {
-        debug!(len = html.len(), "Parsing HTML");
+        debug!(len = html.len(), "Parsing HTML (rustkit-html)");
 
-        let dom = parse_document(RcDom::default(), Default::default())
-            .from_utf8()
-            .read_from(&mut html.as_bytes())
-            .map_err(|e| DomError::ParseError(e.to_string()))?;
+        let sink = DocumentSink::new();
+        let sink = rustkit_html::parse(html, sink).map_err(|e| DomError::ParseError(e.to_string()))?;
 
-        let mut doc = Document::new();
-        doc.convert_rcdom(&dom.document, &doc.root.clone());
-
-        // Index elements by ID
-        doc.index_elements();
-
-        debug!(node_count = doc.nodes.len(), "HTML parsed");
-        Ok(doc)
+        debug!(node_count = sink.doc.nodes.len(), "HTML parsed");
+        Ok(sink.doc)
     }
 
-    fn convert_rcdom(&mut self, handle: &Handle, parent: &Rc<Node>) {
-        for child_handle in handle.children.borrow().iter() {
-            let node_type = match &child_handle.data {
-                NodeData::Document => continue, // Skip document node itself
-                NodeData::Doctype {
-                    name,
-                    public_id,
-                    system_id,
-                } => NodeType::DocumentType {
-                    name: name.to_string(),
-                    public_id: public_id.to_string(),
-                    system_id: system_id.to_string(),
-                },
-                NodeData::Element { name, attrs, .. } => {
-                    let mut attributes = HashMap::new();
-                    for attr in attrs.borrow().iter() {
-                        attributes.insert(attr.name.local.to_string(), attr.value.to_string());
-                    }
-                    NodeType::Element {
-                        tag_name: name.local.to_string(),
-                        namespace: name.ns.to_string(),
-                        attributes,
-                    }
-                }
-                NodeData::Text { contents } => NodeType::Text(contents.borrow().to_string()),
-                NodeData::Comment { contents } => NodeType::Comment(contents.to_string()),
-                NodeData::ProcessingInstruction { target, contents } => {
-                    NodeType::ProcessingInstruction {
-                        target: target.to_string(),
-                        data: contents.to_string(),
-                    }
-                }
-            };
-
-            let id = NodeId::new(self.next_id.get());
-            self.next_id.set(self.next_id.get() + 1);
-
-            let node = Node::new(id, node_type);
-            self.nodes.insert(id, node.clone());
-            parent.append_child(node.clone());
-
-            // Recurse for children
-            self.convert_rcdom(child_handle, &node);
-        }
-    }
-
-    fn index_elements(&mut self) {
-        for node in self.nodes.values() {
-            if let Some(id) = node.get_attribute("id") {
-                self.elements_by_id.insert(id.to_string(), node.clone());
-            }
-        }
-    }
 
     /// Get the document root.
     pub fn root(&self) -> &Rc<Node> {

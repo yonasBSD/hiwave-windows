@@ -32,6 +32,7 @@ members = [
     "crates/rustkit-worker",
     "crates/rustkit-a11y",
     "crates/rustkit-http",
+    "crates/rustkit-html",
     "crates/rustkit-engine",
     "crates/rustkit-common",
     "crates/rustkit-test",

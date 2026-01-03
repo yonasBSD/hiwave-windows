@@ -7,9 +7,8 @@ authors = ["HiWave Team"]
 license = "MIT"
 
 [dependencies]
-# HTML parsing - use matching versions
-html5ever = "0.27"
-markup5ever_rcdom = "0.3"
+# HTML parsing
+rustkit-html = { path = "../rustkit-html" }
 
 # String interning
 string_cache = "0.8"
