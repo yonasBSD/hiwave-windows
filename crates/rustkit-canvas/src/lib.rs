@@ -1,31 +1,30 @@
 //! # RustKit Canvas
 //!
-//! HTML5 Canvas 2D API implementation for the RustKit browser engine.
+//! HTML5 Canvas 2D API for the RustKit browser engine.
 //!
 //! ## Features
 //!
 //! - **CanvasRenderingContext2D**: Full 2D drawing context
-//! - **Path operations**: moveTo, lineTo, arc, bezierCurveTo, quadraticCurveTo
-//! - **Drawing**: fillRect, strokeRect, fillText, drawImage
-//! - **State management**: save, restore, transform stack
-//! - **Styles**: fillStyle, strokeStyle, lineWidth, lineCap, lineJoin
-//! - **Image data**: getImageData, putImageData, createImageData
+//! - **Paths**: Path building with lines, arcs, beziers
+//! - **Drawing**: Fill, stroke, images, text
+//! - **Transforms**: Translate, rotate, scale, matrix
+//! - **State**: Save/restore state stack
+//! - **Pixel Manipulation**: ImageData get/put
 //!
 //! ## Architecture
 //!
 //! ```text
-//! Canvas2D
-//!    ├── Context State Stack
-//!    │      ├── Transform Matrix
-//!    │      ├── Fill/Stroke Style
-//!    │      └── Clipping Region
-//!    ├── Current Path
-//!    └── Pixel Buffer (ImageData)
+//! Canvas Element
+//!    └── CanvasRenderingContext2D
+//!           ├── State Stack
+//!           ├── Current Path
+//!           ├── Pixel Buffer
+//!           └── Transform Matrix
 //! ```
 
 use rustkit_css::Color;
+use std::collections::VecDeque;
 use std::f32::consts::PI;
-use std::sync::atomic::{AtomicU64, Ordering};
 use thiserror::Error;
 
 // ==================== Errors ====================
@@ -36,40 +35,163 @@ pub enum CanvasError {
     #[error("Invalid state: {0}")]
     InvalidState(String),
 
-    #[error("Index out of bounds: {0}")]
-    IndexOutOfBounds(String),
+    #[error("Invalid argument: {0}")]
+    InvalidArgument(String),
 
-    #[error("Invalid image data")]
-    InvalidImageData,
+    #[error("Out of bounds: {0}")]
+    OutOfBounds(String),
 }
 
-// ==================== Identifiers ====================
+// ==================== Color & Style ====================
 
-/// Unique canvas identifier.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct CanvasId(u64);
-
-impl CanvasId {
-    pub fn new() -> Self {
-        static COUNTER: AtomicU64 = AtomicU64::new(1);
-        Self(COUNTER.fetch_add(1, Ordering::Relaxed))
-    }
+/// A canvas fill or stroke style.
+#[derive(Debug, Clone)]
+pub enum CanvasStyle {
+    /// Solid color.
+    Color(Color),
+    /// Linear gradient.
+    LinearGradient(LinearGradient),
+    /// Radial gradient.
+    RadialGradient(RadialGradient),
+    /// Pattern (image-based).
+    Pattern(CanvasPattern),
 }
 
-impl Default for CanvasId {
+impl Default for CanvasStyle {
     fn default() -> Self {
-        Self::new()
+        CanvasStyle::Color(Color::BLACK)
     }
 }
 
-// ==================== Transform Matrix ====================
+impl CanvasStyle {
+    /// Parse from CSS color string.
+    pub fn from_color_string(s: &str) -> Self {
+        if let Some(color) = parse_canvas_color(s) {
+            CanvasStyle::Color(color)
+        } else {
+            CanvasStyle::Color(Color::BLACK)
+        }
+    }
+}
 
-/// 2D affine transformation matrix.
-/// Represents: [a c e]
-///             [b d f]
-///             [0 0 1]
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Transform {
+/// A color stop in a gradient.
+#[derive(Debug, Clone)]
+pub struct ColorStop {
+    pub offset: f32,
+    pub color: Color,
+}
+
+/// Linear gradient.
+#[derive(Debug, Clone)]
+pub struct LinearGradient {
+    pub x0: f32,
+    pub y0: f32,
+    pub x1: f32,
+    pub y1: f32,
+    pub stops: Vec<ColorStop>,
+}
+
+impl LinearGradient {
+    /// Create a new linear gradient.
+    pub fn new(x0: f32, y0: f32, x1: f32, y1: f32) -> Self {
+        Self {
+            x0, y0, x1, y1,
+            stops: Vec::new(),
+        }
+    }
+
+    /// Add a color stop.
+    pub fn add_color_stop(&mut self, offset: f32, color: Color) {
+        self.stops.push(ColorStop {
+            offset: offset.clamp(0.0, 1.0),
+            color,
+        });
+        self.stops.sort_by(|a, b| a.offset.partial_cmp(&b.offset).unwrap());
+    }
+
+    /// Sample the gradient at a given position.
+    pub fn sample(&self, t: f32) -> Color {
+        if self.stops.is_empty() {
+            return Color::TRANSPARENT;
+        }
+        if self.stops.len() == 1 {
+            return self.stops[0].color;
+        }
+
+        let t = t.clamp(0.0, 1.0);
+
+        // Find surrounding stops
+        for i in 0..self.stops.len() - 1 {
+            if t >= self.stops[i].offset && t <= self.stops[i + 1].offset {
+                let range = self.stops[i + 1].offset - self.stops[i].offset;
+                let local_t = if range > 0.0 {
+                    (t - self.stops[i].offset) / range
+                } else {
+                    0.0
+                };
+                return interpolate_color(&self.stops[i].color, &self.stops[i + 1].color, local_t);
+            }
+        }
+
+        self.stops.last().map(|s| s.color).unwrap_or(Color::TRANSPARENT)
+    }
+}
+
+/// Radial gradient.
+#[derive(Debug, Clone)]
+pub struct RadialGradient {
+    pub x0: f32,
+    pub y0: f32,
+    pub r0: f32,
+    pub x1: f32,
+    pub y1: f32,
+    pub r1: f32,
+    pub stops: Vec<ColorStop>,
+}
+
+impl RadialGradient {
+    /// Create a new radial gradient.
+    pub fn new(x0: f32, y0: f32, r0: f32, x1: f32, y1: f32, r1: f32) -> Self {
+        Self {
+            x0, y0, r0, x1, y1, r1,
+            stops: Vec::new(),
+        }
+    }
+
+    /// Add a color stop.
+    pub fn add_color_stop(&mut self, offset: f32, color: Color) {
+        self.stops.push(ColorStop {
+            offset: offset.clamp(0.0, 1.0),
+            color,
+        });
+        self.stops.sort_by(|a, b| a.offset.partial_cmp(&b.offset).unwrap());
+    }
+}
+
+/// Canvas pattern.
+#[derive(Debug, Clone)]
+pub struct CanvasPattern {
+    pub image_data: Vec<u8>,
+    pub width: u32,
+    pub height: u32,
+    pub repetition: PatternRepetition,
+}
+
+/// Pattern repetition mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum PatternRepetition {
+    #[default]
+    Repeat,
+    RepeatX,
+    RepeatY,
+    NoRepeat,
+}
+
+// ==================== Transform ====================
+
+/// 2D affine transform matrix.
+#[derive(Debug, Clone, Copy)]
+pub struct Transform2D {
     pub a: f32,
     pub b: f32,
     pub c: f32,
@@ -78,13 +200,13 @@ pub struct Transform {
     pub f: f32,
 }
 
-impl Default for Transform {
+impl Default for Transform2D {
     fn default() -> Self {
         Self::identity()
     }
 }
 
-impl Transform {
+impl Transform2D {
     /// Create identity transform.
     pub fn identity() -> Self {
         Self {
@@ -94,38 +216,9 @@ impl Transform {
         }
     }
 
-    /// Create translation transform.
-    pub fn translate(tx: f32, ty: f32) -> Self {
-        Self {
-            a: 1.0, b: 0.0,
-            c: 0.0, d: 1.0,
-            e: tx, f: ty,
-        }
-    }
-
-    /// Create scale transform.
-    pub fn scale(sx: f32, sy: f32) -> Self {
-        Self {
-            a: sx, b: 0.0,
-            c: 0.0, d: sy,
-            e: 0.0, f: 0.0,
-        }
-    }
-
-    /// Create rotation transform (radians).
-    pub fn rotate(angle: f32) -> Self {
-        let cos = angle.cos();
-        let sin = angle.sin();
-        Self {
-            a: cos, b: sin,
-            c: -sin, d: cos,
-            e: 0.0, f: 0.0,
-        }
-    }
-
     /// Multiply two transforms.
-    pub fn multiply(&self, other: &Transform) -> Self {
-        Transform {
+    pub fn multiply(&self, other: &Transform2D) -> Self {
+        Transform2D {
             a: self.a * other.a + self.c * other.b,
             b: self.b * other.a + self.d * other.b,
             c: self.a * other.c + self.c * other.d,
@@ -135,7 +228,36 @@ impl Transform {
         }
     }
 
-    /// Transform a point.
+    /// Translate.
+    pub fn translate(&self, tx: f32, ty: f32) -> Self {
+        self.multiply(&Transform2D {
+            a: 1.0, b: 0.0,
+            c: 0.0, d: 1.0,
+            e: tx, f: ty,
+        })
+    }
+
+    /// Scale.
+    pub fn scale(&self, sx: f32, sy: f32) -> Self {
+        self.multiply(&Transform2D {
+            a: sx, b: 0.0,
+            c: 0.0, d: sy,
+            e: 0.0, f: 0.0,
+        })
+    }
+
+    /// Rotate (radians).
+    pub fn rotate(&self, angle: f32) -> Self {
+        let cos = angle.cos();
+        let sin = angle.sin();
+        self.multiply(&Transform2D {
+            a: cos, b: sin,
+            c: -sin, d: cos,
+            e: 0.0, f: 0.0,
+        })
+    }
+
+    /// Apply transform to a point.
     pub fn apply(&self, x: f32, y: f32) -> (f32, f32) {
         (
             self.a * x + self.c * y + self.e,
@@ -150,7 +272,7 @@ impl Transform {
             return None;
         }
         let inv_det = 1.0 / det;
-        Some(Transform {
+        Some(Transform2D {
             a: self.d * inv_det,
             b: -self.b * inv_det,
             c: -self.c * inv_det,
@@ -159,238 +281,6 @@ impl Transform {
             f: (self.b * self.e - self.a * self.f) * inv_det,
         })
     }
-}
-
-// ==================== Paint Style ====================
-
-/// Fill or stroke style.
-#[derive(Debug, Clone)]
-pub enum PaintStyle {
-    /// Solid color.
-    Color(Color),
-    /// Linear gradient.
-    LinearGradient(LinearGradient),
-    /// Radial gradient.
-    RadialGradient(RadialGradient),
-    /// Pattern.
-    Pattern(Pattern),
-}
-
-impl Default for PaintStyle {
-    fn default() -> Self {
-        PaintStyle::Color(Color::BLACK)
-    }
-}
-
-impl PaintStyle {
-    /// Get solid color if applicable.
-    pub fn as_color(&self) -> Option<Color> {
-        match self {
-            PaintStyle::Color(c) => Some(*c),
-            _ => None,
-        }
-    }
-
-    /// Create from CSS color string.
-    pub fn from_color_string(s: &str) -> Self {
-        if let Some(color) = parse_color(s) {
-            PaintStyle::Color(color)
-        } else {
-            PaintStyle::Color(Color::BLACK)
-        }
-    }
-}
-
-/// Linear gradient.
-#[derive(Debug, Clone)]
-pub struct LinearGradient {
-    pub x0: f32,
-    pub y0: f32,
-    pub x1: f32,
-    pub y1: f32,
-    pub stops: Vec<GradientStop>,
-}
-
-impl LinearGradient {
-    pub fn new(x0: f32, y0: f32, x1: f32, y1: f32) -> Self {
-        Self {
-            x0, y0, x1, y1,
-            stops: Vec::new(),
-        }
-    }
-
-    pub fn add_color_stop(&mut self, offset: f32, color: Color) {
-        self.stops.push(GradientStop {
-            offset: offset.clamp(0.0, 1.0),
-            color,
-        });
-        self.stops.sort_by(|a, b| a.offset.partial_cmp(&b.offset).unwrap());
-    }
-
-    /// Get color at position (0.0 to 1.0).
-    pub fn color_at(&self, t: f32) -> Color {
-        if self.stops.is_empty() {
-            return Color::TRANSPARENT;
-        }
-        if self.stops.len() == 1 || t <= 0.0 {
-            return self.stops[0].color;
-        }
-        if t >= 1.0 {
-            return self.stops.last().unwrap().color;
-        }
-
-        // Find bracketing stops
-        for i in 0..self.stops.len() - 1 {
-            if t >= self.stops[i].offset && t <= self.stops[i + 1].offset {
-                let range = self.stops[i + 1].offset - self.stops[i].offset;
-                let local_t = if range > 0.0 {
-                    (t - self.stops[i].offset) / range
-                } else {
-                    0.0
-                };
-                return interpolate_color(&self.stops[i].color, &self.stops[i + 1].color, local_t);
-            }
-        }
-
-        self.stops.last().unwrap().color
-    }
-}
-
-/// Radial gradient.
-#[derive(Debug, Clone)]
-pub struct RadialGradient {
-    pub x0: f32,
-    pub y0: f32,
-    pub r0: f32,
-    pub x1: f32,
-    pub y1: f32,
-    pub r1: f32,
-    pub stops: Vec<GradientStop>,
-}
-
-impl RadialGradient {
-    pub fn new(x0: f32, y0: f32, r0: f32, x1: f32, y1: f32, r1: f32) -> Self {
-        Self {
-            x0, y0, r0, x1, y1, r1,
-            stops: Vec::new(),
-        }
-    }
-
-    pub fn add_color_stop(&mut self, offset: f32, color: Color) {
-        self.stops.push(GradientStop {
-            offset: offset.clamp(0.0, 1.0),
-            color,
-        });
-        self.stops.sort_by(|a, b| a.offset.partial_cmp(&b.offset).unwrap());
-    }
-}
-
-/// Gradient color stop.
-#[derive(Debug, Clone)]
-pub struct GradientStop {
-    pub offset: f32,
-    pub color: Color,
-}
-
-/// Pattern fill.
-#[derive(Debug, Clone)]
-pub struct Pattern {
-    pub image_id: u64,
-    pub repetition: PatternRepetition,
-}
-
-/// Pattern repetition mode.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum PatternRepetition {
-    #[default]
-    Repeat,
-    RepeatX,
-    RepeatY,
-    NoRepeat,
-}
-
-// ==================== Line Style ====================
-
-/// Line cap style.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum LineCap {
-    #[default]
-    Butt,
-    Round,
-    Square,
-}
-
-/// Line join style.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum LineJoin {
-    #[default]
-    Miter,
-    Round,
-    Bevel,
-}
-
-// ==================== Text Style ====================
-
-/// Text alignment.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum TextAlign {
-    #[default]
-    Start,
-    End,
-    Left,
-    Right,
-    Center,
-}
-
-/// Text baseline.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum TextBaseline {
-    Top,
-    Hanging,
-    Middle,
-    #[default]
-    Alphabetic,
-    Ideographic,
-    Bottom,
-}
-
-/// Text direction.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum TextDirection {
-    #[default]
-    Ltr,
-    Rtl,
-    Inherit,
-}
-
-// ==================== Compositing ====================
-
-/// Global composite operation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum CompositeOperation {
-    #[default]
-    SourceOver,
-    SourceIn,
-    SourceOut,
-    SourceAtop,
-    DestinationOver,
-    DestinationIn,
-    DestinationOut,
-    DestinationAtop,
-    Lighter,
-    Copy,
-    Xor,
-    Multiply,
-    Screen,
-    Overlay,
-    Darken,
-    Lighten,
-    ColorDodge,
-    ColorBurn,
-    HardLight,
-    SoftLight,
-    Difference,
-    Exclusion,
 }
 
 // ==================== Path ====================
@@ -409,14 +299,14 @@ pub enum PathCommand {
     ClosePath,
 }
 
-/// A 2D path.
+/// A canvas path.
 #[derive(Debug, Clone, Default)]
 pub struct Path2D {
     commands: Vec<PathCommand>,
-    start_x: f32,
-    start_y: f32,
     current_x: f32,
     current_y: f32,
+    start_x: f32,
+    start_y: f32,
 }
 
 impl Path2D {
@@ -425,81 +315,73 @@ impl Path2D {
         Self::default()
     }
 
-    /// Move to a point.
+    /// Begin a new sub-path.
     pub fn move_to(&mut self, x: f32, y: f32) {
         self.commands.push(PathCommand::MoveTo(x, y));
-        self.start_x = x;
-        self.start_y = y;
         self.current_x = x;
         self.current_y = y;
+        self.start_x = x;
+        self.start_y = y;
     }
 
-    /// Draw a line to a point.
+    /// Add a line to the path.
     pub fn line_to(&mut self, x: f32, y: f32) {
         self.commands.push(PathCommand::LineTo(x, y));
         self.current_x = x;
         self.current_y = y;
     }
 
-    /// Draw a quadratic bezier curve.
+    /// Add a quadratic curve.
     pub fn quadratic_curve_to(&mut self, cpx: f32, cpy: f32, x: f32, y: f32) {
         self.commands.push(PathCommand::QuadraticCurveTo(cpx, cpy, x, y));
         self.current_x = x;
         self.current_y = y;
     }
 
-    /// Draw a cubic bezier curve.
+    /// Add a bezier curve.
     pub fn bezier_curve_to(&mut self, cp1x: f32, cp1y: f32, cp2x: f32, cp2y: f32, x: f32, y: f32) {
         self.commands.push(PathCommand::BezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y));
         self.current_x = x;
         self.current_y = y;
     }
 
-    /// Draw an arc to a point.
+    /// Add an arc using tangent points.
     pub fn arc_to(&mut self, x1: f32, y1: f32, x2: f32, y2: f32, radius: f32) {
         self.commands.push(PathCommand::ArcTo(x1, y1, x2, y2, radius));
-        // Update current position (simplified)
-        self.current_x = x2;
-        self.current_y = y2;
+        // Current position updated based on arc calculation
     }
 
-    /// Draw an arc.
-    pub fn arc(&mut self, x: f32, y: f32, radius: f32, start_angle: f32, end_angle: f32, counterclockwise: bool) {
-        self.commands.push(PathCommand::Arc(x, y, radius, start_angle, end_angle, counterclockwise));
-        // Update current position
+    /// Add an arc.
+    pub fn arc(&mut self, x: f32, y: f32, radius: f32, start_angle: f32, end_angle: f32, ccw: bool) {
+        self.commands.push(PathCommand::Arc(x, y, radius, start_angle, end_angle, ccw));
         self.current_x = x + radius * end_angle.cos();
         self.current_y = y + radius * end_angle.sin();
     }
 
-    /// Draw an ellipse.
-    pub fn ellipse(&mut self, x: f32, y: f32, radius_x: f32, radius_y: f32, rotation: f32, start_angle: f32, end_angle: f32, counterclockwise: bool) {
-        self.commands.push(PathCommand::Ellipse(x, y, radius_x, radius_y, rotation, start_angle, end_angle, counterclockwise));
+    /// Add an ellipse.
+    pub fn ellipse(&mut self, x: f32, y: f32, rx: f32, ry: f32, rotation: f32, start_angle: f32, end_angle: f32, ccw: bool) {
+        self.commands.push(PathCommand::Ellipse(x, y, rx, ry, rotation, start_angle, end_angle, ccw));
     }
 
-    /// Draw a rectangle.
-    pub fn rect(&mut self, x: f32, y: f32, width: f32, height: f32) {
-        self.commands.push(PathCommand::Rect(x, y, width, height));
+    /// Add a rectangle.
+    pub fn rect(&mut self, x: f32, y: f32, w: f32, h: f32) {
+        self.commands.push(PathCommand::Rect(x, y, w, h));
     }
 
-    /// Close the current subpath.
+    /// Close the current sub-path.
     pub fn close_path(&mut self) {
         self.commands.push(PathCommand::ClosePath);
         self.current_x = self.start_x;
         self.current_y = self.start_y;
     }
 
-    /// Get the commands.
+    /// Get commands.
     pub fn commands(&self) -> &[PathCommand] {
         &self.commands
     }
 
-    /// Check if path is empty.
-    pub fn is_empty(&self) -> bool {
-        self.commands.is_empty()
-    }
-
     /// Convert to line segments for rendering.
-    pub fn to_segments(&self) -> Vec<Vec<(f32, f32)>> {
+    pub fn to_line_segments(&self) -> Vec<Vec<(f32, f32)>> {
         let mut segments = Vec::new();
         let mut current_segment = Vec::new();
         let mut current_x = 0.0_f32;
@@ -525,12 +407,7 @@ impl Path2D {
                     current_segment.push((current_x, current_y));
                 }
                 PathCommand::QuadraticCurveTo(cpx, cpy, x, y) => {
-                    let points = quadratic_bezier_points(
-                        (current_x, current_y),
-                        (*cpx, *cpy),
-                        (*x, *y),
-                        20,
-                    );
+                    let points = quad_bezier_points((current_x, current_y), (*cpx, *cpy), (*x, *y), 20);
                     current_segment.extend(points);
                     current_x = *x;
                     current_y = *y;
@@ -541,7 +418,7 @@ impl Path2D {
                         (*cp1x, *cp1y),
                         (*cp2x, *cp2y),
                         (*x, *y),
-                        20,
+                        20
                     );
                     current_segment.extend(points);
                     current_x = *x;
@@ -549,28 +426,19 @@ impl Path2D {
                 }
                 PathCommand::Arc(cx, cy, r, start, end, ccw) => {
                     let points = arc_points(*cx, *cy, *r, *start, *end, *ccw, 32);
-                    if !points.is_empty() {
-                        if current_segment.is_empty() {
-                            current_segment.push(points[0]);
-                        }
-                        current_segment.extend(&points[1..]);
-                        if let Some(&(x, y)) = points.last() {
-                            current_x = x;
-                            current_y = y;
-                        }
-                    }
+                    current_segment.extend(points);
+                    current_x = cx + r * end.cos();
+                    current_y = cy + r * end.sin();
                 }
                 PathCommand::Rect(x, y, w, h) => {
                     if !current_segment.is_empty() {
                         segments.push(std::mem::take(&mut current_segment));
                     }
-                    current_segment = vec![
-                        (*x, *y),
-                        (*x + *w, *y),
-                        (*x + *w, *y + *h),
-                        (*x, *y + *h),
-                        (*x, *y),
-                    ];
+                    current_segment.push((*x, *y));
+                    current_segment.push((x + w, *y));
+                    current_segment.push((x + w, y + h));
+                    current_segment.push((*x, y + h));
+                    current_segment.push((*x, *y));
                     segments.push(std::mem::take(&mut current_segment));
                     current_x = *x;
                     current_y = *y;
@@ -578,12 +446,14 @@ impl Path2D {
                     start_y = *y;
                 }
                 PathCommand::ClosePath => {
-                    if !current_segment.is_empty() {
+                    if current_x != start_x || current_y != start_y {
                         current_segment.push((start_x, start_y));
-                        segments.push(std::mem::take(&mut current_segment));
                     }
                     current_x = start_x;
                     current_y = start_y;
+                    if !current_segment.is_empty() {
+                        segments.push(std::mem::take(&mut current_segment));
+                    }
                 }
                 _ => {}
             }
@@ -597,84 +467,77 @@ impl Path2D {
     }
 }
 
-// ==================== Image Data ====================
+// ==================== Canvas State ====================
 
-/// Raw pixel data.
-#[derive(Debug, Clone)]
-pub struct ImageData {
-    pub width: u32,
-    pub height: u32,
-    pub data: Vec<u8>, // RGBA format
+/// Line cap style.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LineCap {
+    #[default]
+    Butt,
+    Round,
+    Square,
 }
 
-impl ImageData {
-    /// Create new image data with all pixels transparent black.
-    pub fn new(width: u32, height: u32) -> Self {
-        let size = (width * height * 4) as usize;
-        Self {
-            width,
-            height,
-            data: vec![0; size],
-        }
-    }
-
-    /// Create from existing data.
-    pub fn from_data(width: u32, height: u32, data: Vec<u8>) -> Result<Self, CanvasError> {
-        if data.len() != (width * height * 4) as usize {
-            return Err(CanvasError::InvalidImageData);
-        }
-        Ok(Self { width, height, data })
-    }
-
-    /// Get pixel at (x, y).
-    pub fn get_pixel(&self, x: u32, y: u32) -> Option<Color> {
-        if x >= self.width || y >= self.height {
-            return None;
-        }
-        let idx = ((y * self.width + x) * 4) as usize;
-        Some(Color {
-            r: self.data[idx],
-            g: self.data[idx + 1],
-            b: self.data[idx + 2],
-            a: self.data[idx + 3] as f32 / 255.0,
-        })
-    }
-
-    /// Set pixel at (x, y).
-    pub fn set_pixel(&mut self, x: u32, y: u32, color: Color) {
-        if x >= self.width || y >= self.height {
-            return;
-        }
-        let idx = ((y * self.width + x) * 4) as usize;
-        self.data[idx] = color.r;
-        self.data[idx + 1] = color.g;
-        self.data[idx + 2] = color.b;
-        self.data[idx + 3] = (color.a * 255.0) as u8;
-    }
-
-    /// Fill with a color.
-    pub fn fill(&mut self, color: Color) {
-        for y in 0..self.height {
-            for x in 0..self.width {
-                self.set_pixel(x, y, color);
-            }
-        }
-    }
-
-    /// Clear to transparent black.
-    pub fn clear(&mut self) {
-        self.data.fill(0);
-    }
+/// Line join style.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum LineJoin {
+    #[default]
+    Miter,
+    Round,
+    Bevel,
 }
 
-// ==================== Context State ====================
+/// Text alignment.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TextAlign {
+    #[default]
+    Start,
+    End,
+    Left,
+    Right,
+    Center,
+}
 
-/// Canvas context state (for save/restore).
+/// Text baseline.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum TextBaseline {
+    Top,
+    Hanging,
+    Middle,
+    #[default]
+    Alphabetic,
+    Ideographic,
+    Bottom,
+}
+
+/// Compositing operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CompositeOperation {
+    #[default]
+    SourceOver,
+    SourceIn,
+    SourceOut,
+    SourceAtop,
+    DestinationOver,
+    DestinationIn,
+    DestinationOut,
+    DestinationAtop,
+    Lighter,
+    Copy,
+    Xor,
+    Multiply,
+    Screen,
+    Overlay,
+    Darken,
+    Lighten,
+}
+
+/// Canvas drawing state.
 #[derive(Debug, Clone)]
-pub struct ContextState {
-    pub transform: Transform,
-    pub fill_style: PaintStyle,
-    pub stroke_style: PaintStyle,
+pub struct CanvasState {
+    pub transform: Transform2D,
+    pub fill_style: CanvasStyle,
+    pub stroke_style: CanvasStyle,
     pub line_width: f32,
     pub line_cap: LineCap,
     pub line_join: LineJoin,
@@ -684,23 +547,21 @@ pub struct ContextState {
     pub font: String,
     pub text_align: TextAlign,
     pub text_baseline: TextBaseline,
-    pub direction: TextDirection,
     pub global_alpha: f32,
     pub global_composite_operation: CompositeOperation,
     pub shadow_blur: f32,
     pub shadow_color: Color,
     pub shadow_offset_x: f32,
     pub shadow_offset_y: f32,
-    pub image_smoothing_enabled: bool,
-    pub clipping_region: Option<Path2D>,
+    pub clip_path: Option<Path2D>,
 }
 
-impl Default for ContextState {
+impl Default for CanvasState {
     fn default() -> Self {
         Self {
-            transform: Transform::identity(),
-            fill_style: PaintStyle::Color(Color::BLACK),
-            stroke_style: PaintStyle::Color(Color::BLACK),
+            transform: Transform2D::identity(),
+            fill_style: CanvasStyle::Color(Color::BLACK),
+            stroke_style: CanvasStyle::Color(Color::BLACK),
             line_width: 1.0,
             line_cap: LineCap::Butt,
             line_join: LineJoin::Miter,
@@ -710,234 +571,226 @@ impl Default for ContextState {
             font: "10px sans-serif".to_string(),
             text_align: TextAlign::Start,
             text_baseline: TextBaseline::Alphabetic,
-            direction: TextDirection::Ltr,
             global_alpha: 1.0,
             global_composite_operation: CompositeOperation::SourceOver,
             shadow_blur: 0.0,
             shadow_color: Color::TRANSPARENT,
             shadow_offset_x: 0.0,
             shadow_offset_y: 0.0,
-            image_smoothing_enabled: true,
-            clipping_region: None,
+            clip_path: None,
         }
     }
 }
 
-// ==================== Draw Command ====================
+// ==================== ImageData ====================
 
-/// A canvas drawing command.
+/// Canvas image data for pixel manipulation.
 #[derive(Debug, Clone)]
-pub enum DrawCommand {
-    /// Fill a rectangle.
-    FillRect {
-        x: f32,
-        y: f32,
-        width: f32,
-        height: f32,
-        color: Color,
-        transform: Transform,
-    },
-    /// Stroke a rectangle.
-    StrokeRect {
-        x: f32,
-        y: f32,
-        width: f32,
-        height: f32,
-        color: Color,
-        line_width: f32,
-        transform: Transform,
-    },
-    /// Clear a rectangle.
-    ClearRect {
-        x: f32,
-        y: f32,
-        width: f32,
-        height: f32,
-        transform: Transform,
-    },
-    /// Fill a path.
-    FillPath {
-        segments: Vec<Vec<(f32, f32)>>,
-        color: Color,
-        transform: Transform,
-    },
-    /// Stroke a path.
-    StrokePath {
-        segments: Vec<Vec<(f32, f32)>>,
-        color: Color,
-        line_width: f32,
-        line_cap: LineCap,
-        line_join: LineJoin,
-        transform: Transform,
-    },
-    /// Fill text.
-    FillText {
-        text: String,
-        x: f32,
-        y: f32,
-        color: Color,
-        font: String,
-        transform: Transform,
-    },
-    /// Stroke text.
-    StrokeText {
-        text: String,
-        x: f32,
-        y: f32,
-        color: Color,
-        line_width: f32,
-        font: String,
-        transform: Transform,
-    },
-    /// Draw an image.
-    DrawImage {
-        image_id: u64,
-        sx: f32,
-        sy: f32,
-        sw: f32,
-        sh: f32,
-        dx: f32,
-        dy: f32,
-        dw: f32,
-        dh: f32,
-        transform: Transform,
-    },
-    /// Put image data directly.
-    PutImageData {
-        data: ImageData,
-        x: i32,
-        y: i32,
-    },
+pub struct ImageData {
+    pub width: u32,
+    pub height: u32,
+    pub data: Vec<u8>, // RGBA format
 }
 
-// ==================== Canvas Context ====================
+impl ImageData {
+    /// Create new image data.
+    pub fn new(width: u32, height: u32) -> Self {
+        let len = (width * height * 4) as usize;
+        Self {
+            width,
+            height,
+            data: vec![0; len],
+        }
+    }
 
-/// The 2D rendering context.
+    /// Create from existing data.
+    pub fn from_data(width: u32, height: u32, data: Vec<u8>) -> Result<Self, CanvasError> {
+        let expected_len = (width * height * 4) as usize;
+        if data.len() != expected_len {
+            return Err(CanvasError::InvalidArgument(format!(
+                "Data length {} doesn't match expected {}",
+                data.len(), expected_len
+            )));
+        }
+        Ok(Self { width, height, data })
+    }
+
+    /// Get pixel at (x, y).
+    pub fn get_pixel(&self, x: u32, y: u32) -> Option<(u8, u8, u8, u8)> {
+        if x >= self.width || y >= self.height {
+            return None;
+        }
+        let idx = ((y * self.width + x) * 4) as usize;
+        Some((self.data[idx], self.data[idx + 1], self.data[idx + 2], self.data[idx + 3]))
+    }
+
+    /// Set pixel at (x, y).
+    pub fn set_pixel(&mut self, x: u32, y: u32, r: u8, g: u8, b: u8, a: u8) {
+        if x < self.width && y < self.height {
+            let idx = ((y * self.width + x) * 4) as usize;
+            self.data[idx] = r;
+            self.data[idx + 1] = g;
+            self.data[idx + 2] = b;
+            self.data[idx + 3] = a;
+        }
+    }
+}
+
+// ==================== Text Metrics ====================
+
+/// Text measurement result.
+#[derive(Debug, Clone, Default)]
+pub struct TextMetrics {
+    pub width: f32,
+    pub actual_bounding_box_left: f32,
+    pub actual_bounding_box_right: f32,
+    pub font_bounding_box_ascent: f32,
+    pub font_bounding_box_descent: f32,
+    pub actual_bounding_box_ascent: f32,
+    pub actual_bounding_box_descent: f32,
+    pub em_height_ascent: f32,
+    pub em_height_descent: f32,
+    pub hanging_baseline: f32,
+    pub alphabetic_baseline: f32,
+    pub ideographic_baseline: f32,
+}
+
+// ==================== Drawing Commands ====================
+
+/// A recorded drawing command.
+#[derive(Debug, Clone)]
+pub enum DrawCommand {
+    FillRect { x: f32, y: f32, w: f32, h: f32, style: CanvasStyle, transform: Transform2D },
+    StrokeRect { x: f32, y: f32, w: f32, h: f32, style: CanvasStyle, line_width: f32, transform: Transform2D },
+    ClearRect { x: f32, y: f32, w: f32, h: f32, transform: Transform2D },
+    FillPath { segments: Vec<Vec<(f32, f32)>>, style: CanvasStyle, transform: Transform2D },
+    StrokePath { segments: Vec<Vec<(f32, f32)>>, style: CanvasStyle, line_width: f32, transform: Transform2D },
+    FillText { text: String, x: f32, y: f32, style: CanvasStyle, font: String, transform: Transform2D },
+    StrokeText { text: String, x: f32, y: f32, style: CanvasStyle, font: String, line_width: f32, transform: Transform2D },
+    DrawImage { image_id: String, sx: f32, sy: f32, sw: f32, sh: f32, dx: f32, dy: f32, dw: f32, dh: f32, transform: Transform2D },
+    PutImageData { data: ImageData, x: i32, y: i32 },
+}
+
+// ==================== Canvas Rendering Context ====================
+
+/// CanvasRenderingContext2D implementation.
 #[derive(Debug)]
 pub struct CanvasRenderingContext2D {
-    /// Canvas ID.
-    pub id: CanvasId,
     /// Canvas width.
     pub width: u32,
     /// Canvas height.
     pub height: u32,
     /// Current state.
-    state: ContextState,
-    /// State stack for save/restore.
-    state_stack: Vec<ContextState>,
+    pub state: CanvasState,
+    /// State stack.
+    state_stack: VecDeque<CanvasState>,
     /// Current path.
     path: Path2D,
-    /// Accumulated draw commands.
+    /// Recorded draw commands.
     commands: Vec<DrawCommand>,
-    /// Backing pixel buffer (optional, for getImageData).
-    image_data: Option<ImageData>,
+    /// Pixel buffer (optional, for getImageData).
+    pixel_buffer: Option<ImageData>,
 }
 
 impl CanvasRenderingContext2D {
-    /// Create a new 2D context.
+    /// Create a new context.
     pub fn new(width: u32, height: u32) -> Self {
         Self {
-            id: CanvasId::new(),
             width,
             height,
-            state: ContextState::default(),
-            state_stack: Vec::new(),
+            state: CanvasState::default(),
+            state_stack: VecDeque::new(),
             path: Path2D::new(),
             commands: Vec::new(),
-            image_data: None,
+            pixel_buffer: None,
         }
     }
 
-    /// Resize the canvas.
-    pub fn resize(&mut self, width: u32, height: u32) {
-        self.width = width;
-        self.height = height;
-        self.image_data = None;
-        self.commands.clear();
-    }
+    // ==================== State Management ====================
 
-    // ==================== State ====================
-
-    /// Save the current state.
+    /// Save current state.
     pub fn save(&mut self) {
-        self.state_stack.push(self.state.clone());
+        self.state_stack.push_back(self.state.clone());
     }
 
-    /// Restore the last saved state.
+    /// Restore previous state.
     pub fn restore(&mut self) {
-        if let Some(state) = self.state_stack.pop() {
+        if let Some(state) = self.state_stack.pop_back() {
             self.state = state;
         }
     }
 
-    // ==================== Transforms ====================
-
-    /// Get the current transform.
-    pub fn get_transform(&self) -> Transform {
-        self.state.transform
+    /// Reset the context.
+    pub fn reset(&mut self) {
+        self.state = CanvasState::default();
+        self.state_stack.clear();
+        self.path = Path2D::new();
+        self.commands.clear();
     }
 
-    /// Set the transform.
-    pub fn set_transform(&mut self, a: f32, b: f32, c: f32, d: f32, e: f32, f: f32) {
-        self.state.transform = Transform { a, b, c, d, e, f };
+    // ==================== Transform ====================
+
+    /// Scale the transform.
+    pub fn scale(&mut self, x: f32, y: f32) {
+        self.state.transform = self.state.transform.scale(x, y);
     }
 
-    /// Reset transform to identity.
-    pub fn reset_transform(&mut self) {
-        self.state.transform = Transform::identity();
+    /// Rotate the transform.
+    pub fn rotate(&mut self, angle: f32) {
+        self.state.transform = self.state.transform.rotate(angle);
+    }
+
+    /// Translate the transform.
+    pub fn translate(&mut self, x: f32, y: f32) {
+        self.state.transform = self.state.transform.translate(x, y);
     }
 
     /// Apply a transform.
     pub fn transform(&mut self, a: f32, b: f32, c: f32, d: f32, e: f32, f: f32) {
-        let m = Transform { a, b, c, d, e, f };
-        self.state.transform = self.state.transform.multiply(&m);
+        let new_transform = Transform2D { a, b, c, d, e, f };
+        self.state.transform = self.state.transform.multiply(&new_transform);
     }
 
-    /// Translate.
-    pub fn translate(&mut self, x: f32, y: f32) {
-        self.state.transform = self.state.transform.multiply(&Transform::translate(x, y));
+    /// Set the transform (replace current).
+    pub fn set_transform(&mut self, a: f32, b: f32, c: f32, d: f32, e: f32, f: f32) {
+        self.state.transform = Transform2D { a, b, c, d, e, f };
     }
 
-    /// Rotate.
-    pub fn rotate(&mut self, angle: f32) {
-        self.state.transform = self.state.transform.multiply(&Transform::rotate(angle));
+    /// Reset to identity transform.
+    pub fn reset_transform(&mut self) {
+        self.state.transform = Transform2D::identity();
     }
 
-    /// Scale.
-    pub fn scale(&mut self, x: f32, y: f32) {
-        self.state.transform = self.state.transform.multiply(&Transform::scale(x, y));
+    /// Get current transform.
+    pub fn get_transform(&self) -> Transform2D {
+        self.state.transform
     }
 
-    // ==================== Style Getters/Setters ====================
+    // ==================== Style Properties ====================
 
-    /// Set fill style from color.
-    pub fn set_fill_style_color(&mut self, color: Color) {
-        self.state.fill_style = PaintStyle::Color(color);
+    /// Set fill style from color string.
+    pub fn set_fill_style_color(&mut self, color: &str) {
+        self.state.fill_style = CanvasStyle::from_color_string(color);
     }
 
-    /// Set fill style from string.
-    pub fn set_fill_style(&mut self, style: &str) {
-        self.state.fill_style = PaintStyle::from_color_string(style);
+    /// Set fill style.
+    pub fn set_fill_style(&mut self, style: CanvasStyle) {
+        self.state.fill_style = style;
     }
 
-    /// Set stroke style from color.
-    pub fn set_stroke_style_color(&mut self, color: Color) {
-        self.state.stroke_style = PaintStyle::Color(color);
+    /// Set stroke style from color string.
+    pub fn set_stroke_style_color(&mut self, color: &str) {
+        self.state.stroke_style = CanvasStyle::from_color_string(color);
     }
 
-    /// Set stroke style from string.
-    pub fn set_stroke_style(&mut self, style: &str) {
-        self.state.stroke_style = PaintStyle::from_color_string(style);
+    /// Set stroke style.
+    pub fn set_stroke_style(&mut self, style: CanvasStyle) {
+        self.state.stroke_style = style;
     }
 
     /// Set line width.
     pub fn set_line_width(&mut self, width: f32) {
         self.state.line_width = width.max(0.0);
-    }
-
-    /// Get line width.
-    pub fn line_width(&self) -> f32 {
-        self.state.line_width
     }
 
     /// Set line cap.
@@ -956,8 +809,8 @@ impl CanvasRenderingContext2D {
     }
 
     /// Set line dash.
-    pub fn set_line_dash(&mut self, dash: Vec<f32>) {
-        self.state.line_dash = dash;
+    pub fn set_line_dash(&mut self, segments: Vec<f32>) {
+        self.state.line_dash = segments;
     }
 
     /// Get line dash.
@@ -968,16 +821,6 @@ impl CanvasRenderingContext2D {
     /// Set line dash offset.
     pub fn set_line_dash_offset(&mut self, offset: f32) {
         self.state.line_dash_offset = offset;
-    }
-
-    /// Set global alpha.
-    pub fn set_global_alpha(&mut self, alpha: f32) {
-        self.state.global_alpha = alpha.clamp(0.0, 1.0);
-    }
-
-    /// Get global alpha.
-    pub fn global_alpha(&self) -> f32 {
-        self.state.global_alpha
     }
 
     /// Set font.
@@ -995,20 +838,48 @@ impl CanvasRenderingContext2D {
         self.state.text_baseline = baseline;
     }
 
+    /// Set global alpha.
+    pub fn set_global_alpha(&mut self, alpha: f32) {
+        self.state.global_alpha = alpha.clamp(0.0, 1.0);
+    }
+
+    /// Set global composite operation.
+    pub fn set_global_composite_operation(&mut self, op: CompositeOperation) {
+        self.state.global_composite_operation = op;
+    }
+
     /// Set shadow blur.
     pub fn set_shadow_blur(&mut self, blur: f32) {
         self.state.shadow_blur = blur.max(0.0);
     }
 
     /// Set shadow color.
-    pub fn set_shadow_color(&mut self, color: Color) {
-        self.state.shadow_color = color;
+    pub fn set_shadow_color(&mut self, color: &str) {
+        if let Some(c) = parse_canvas_color(color) {
+            self.state.shadow_color = c;
+        }
     }
 
-    /// Set shadow offset.
-    pub fn set_shadow_offset(&mut self, x: f32, y: f32) {
+    /// Set shadow offset X.
+    pub fn set_shadow_offset_x(&mut self, x: f32) {
         self.state.shadow_offset_x = x;
+    }
+
+    /// Set shadow offset Y.
+    pub fn set_shadow_offset_y(&mut self, y: f32) {
         self.state.shadow_offset_y = y;
+    }
+
+    // ==================== Gradients & Patterns ====================
+
+    /// Create a linear gradient.
+    pub fn create_linear_gradient(&self, x0: f32, y0: f32, x1: f32, y1: f32) -> LinearGradient {
+        LinearGradient::new(x0, y0, x1, y1)
+    }
+
+    /// Create a radial gradient.
+    pub fn create_radial_gradient(&self, x0: f32, y0: f32, r0: f32, x1: f32, y1: f32, r1: f32) -> RadialGradient {
+        RadialGradient::new(x0, y0, r0, x1, y1, r1)
     }
 
     // ==================== Path Methods ====================
@@ -1018,22 +889,22 @@ impl CanvasRenderingContext2D {
         self.path = Path2D::new();
     }
 
-    /// Move to a point.
+    /// Move to.
     pub fn move_to(&mut self, x: f32, y: f32) {
         self.path.move_to(x, y);
     }
 
-    /// Line to a point.
+    /// Line to.
     pub fn line_to(&mut self, x: f32, y: f32) {
         self.path.line_to(x, y);
     }
 
-    /// Quadratic curve.
+    /// Quadratic curve to.
     pub fn quadratic_curve_to(&mut self, cpx: f32, cpy: f32, x: f32, y: f32) {
         self.path.quadratic_curve_to(cpx, cpy, x, y);
     }
 
-    /// Bezier curve.
+    /// Bezier curve to.
     pub fn bezier_curve_to(&mut self, cp1x: f32, cp1y: f32, cp2x: f32, cp2y: f32, x: f32, y: f32) {
         self.path.bezier_curve_to(cp1x, cp1y, cp2x, cp2y, x, y);
     }
@@ -1053,120 +924,107 @@ impl CanvasRenderingContext2D {
         self.path.ellipse(x, y, rx, ry, rotation, start_angle, end_angle, counterclockwise);
     }
 
-    /// Add rectangle to path.
-    pub fn rect(&mut self, x: f32, y: f32, width: f32, height: f32) {
-        self.path.rect(x, y, width, height);
+    /// Rect.
+    pub fn rect(&mut self, x: f32, y: f32, w: f32, h: f32) {
+        self.path.rect(x, y, w, h);
     }
 
-    /// Close the current subpath.
+    /// Close path.
     pub fn close_path(&mut self) {
         self.path.close_path();
     }
 
-    // ==================== Drawing Methods ====================
-
-    /// Fill the current path.
-    pub fn fill(&mut self) {
-        if self.path.is_empty() {
-            return;
-        }
-
-        let color = self.state.fill_style.as_color().unwrap_or(Color::BLACK);
-        let color = Color {
-            a: color.a * self.state.global_alpha,
-            ..color
-        };
-
-        self.commands.push(DrawCommand::FillPath {
-            segments: self.path.to_segments(),
-            color,
-            transform: self.state.transform,
-        });
-    }
-
-    /// Stroke the current path.
-    pub fn stroke(&mut self) {
-        if self.path.is_empty() {
-            return;
-        }
-
-        let color = self.state.stroke_style.as_color().unwrap_or(Color::BLACK);
-        let color = Color {
-            a: color.a * self.state.global_alpha,
-            ..color
-        };
-
-        self.commands.push(DrawCommand::StrokePath {
-            segments: self.path.to_segments(),
-            color,
-            line_width: self.state.line_width,
-            line_cap: self.state.line_cap,
-            line_join: self.state.line_join,
-            transform: self.state.transform,
-        });
-    }
+    // ==================== Drawing Rects ====================
 
     /// Fill a rectangle.
-    pub fn fill_rect(&mut self, x: f32, y: f32, width: f32, height: f32) {
-        let color = self.state.fill_style.as_color().unwrap_or(Color::BLACK);
-        let color = Color {
-            a: color.a * self.state.global_alpha,
-            ..color
-        };
-
+    pub fn fill_rect(&mut self, x: f32, y: f32, w: f32, h: f32) {
         self.commands.push(DrawCommand::FillRect {
-            x,
-            y,
-            width,
-            height,
-            color,
+            x, y, w, h,
+            style: self.state.fill_style.clone(),
             transform: self.state.transform,
         });
     }
 
     /// Stroke a rectangle.
-    pub fn stroke_rect(&mut self, x: f32, y: f32, width: f32, height: f32) {
-        let color = self.state.stroke_style.as_color().unwrap_or(Color::BLACK);
-        let color = Color {
-            a: color.a * self.state.global_alpha,
-            ..color
-        };
-
+    pub fn stroke_rect(&mut self, x: f32, y: f32, w: f32, h: f32) {
         self.commands.push(DrawCommand::StrokeRect {
-            x,
-            y,
-            width,
-            height,
-            color,
+            x, y, w, h,
+            style: self.state.stroke_style.clone(),
             line_width: self.state.line_width,
             transform: self.state.transform,
         });
     }
 
     /// Clear a rectangle.
-    pub fn clear_rect(&mut self, x: f32, y: f32, width: f32, height: f32) {
+    pub fn clear_rect(&mut self, x: f32, y: f32, w: f32, h: f32) {
         self.commands.push(DrawCommand::ClearRect {
-            x,
-            y,
-            width,
-            height,
+            x, y, w, h,
             transform: self.state.transform,
         });
     }
 
+    // ==================== Drawing Paths ====================
+
+    /// Fill the current path.
+    pub fn fill(&mut self) {
+        let segments = self.path.to_line_segments();
+        self.commands.push(DrawCommand::FillPath {
+            segments,
+            style: self.state.fill_style.clone(),
+            transform: self.state.transform,
+        });
+    }
+
+    /// Stroke the current path.
+    pub fn stroke(&mut self) {
+        let segments = self.path.to_line_segments();
+        self.commands.push(DrawCommand::StrokePath {
+            segments,
+            style: self.state.stroke_style.clone(),
+            line_width: self.state.line_width,
+            transform: self.state.transform,
+        });
+    }
+
+    /// Clip to current path.
+    pub fn clip(&mut self) {
+        self.state.clip_path = Some(self.path.clone());
+    }
+
+    /// Check if point is in path.
+    pub fn is_point_in_path(&self, x: f32, y: f32) -> bool {
+        // Simple bounding box check for now
+        let segments = self.path.to_line_segments();
+        for segment in &segments {
+            if segment.len() < 3 {
+                continue;
+            }
+            // Point-in-polygon test using ray casting
+            let mut inside = false;
+            let mut j = segment.len() - 1;
+            for i in 0..segment.len() {
+                let (xi, yi) = segment[i];
+                let (xj, yj) = segment[j];
+                if ((yi > y) != (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi) {
+                    inside = !inside;
+                }
+                j = i;
+            }
+            if inside {
+                return true;
+            }
+        }
+        false
+    }
+
+    // ==================== Text ====================
+
     /// Fill text.
     pub fn fill_text(&mut self, text: &str, x: f32, y: f32) {
-        let color = self.state.fill_style.as_color().unwrap_or(Color::BLACK);
-        let color = Color {
-            a: color.a * self.state.global_alpha,
-            ..color
-        };
-
         self.commands.push(DrawCommand::FillText {
             text: text.to_string(),
-            x,
-            y,
-            color,
+            x, y,
+            style: self.state.fill_style.clone(),
             font: self.state.font.clone(),
             transform: self.state.transform,
         });
@@ -1174,228 +1032,123 @@ impl CanvasRenderingContext2D {
 
     /// Stroke text.
     pub fn stroke_text(&mut self, text: &str, x: f32, y: f32) {
-        let color = self.state.stroke_style.as_color().unwrap_or(Color::BLACK);
-        let color = Color {
-            a: color.a * self.state.global_alpha,
-            ..color
-        };
-
         self.commands.push(DrawCommand::StrokeText {
             text: text.to_string(),
-            x,
-            y,
-            color,
-            line_width: self.state.line_width,
+            x, y,
+            style: self.state.stroke_style.clone(),
             font: self.state.font.clone(),
+            line_width: self.state.line_width,
             transform: self.state.transform,
         });
     }
 
-    /// Draw an image.
-    pub fn draw_image(&mut self, image_id: u64, dx: f32, dy: f32) {
+    /// Measure text.
+    pub fn measure_text(&self, text: &str) -> TextMetrics {
+        // Simplified: estimate based on font size
+        let font_size = parse_font_size(&self.state.font).unwrap_or(10.0);
+        let width = text.len() as f32 * font_size * 0.6;
+
+        TextMetrics {
+            width,
+            actual_bounding_box_left: 0.0,
+            actual_bounding_box_right: width,
+            font_bounding_box_ascent: font_size * 0.8,
+            font_bounding_box_descent: font_size * 0.2,
+            actual_bounding_box_ascent: font_size * 0.8,
+            actual_bounding_box_descent: font_size * 0.2,
+            em_height_ascent: font_size * 0.8,
+            em_height_descent: font_size * 0.2,
+            hanging_baseline: font_size * 0.1,
+            alphabetic_baseline: 0.0,
+            ideographic_baseline: -font_size * 0.1,
+        }
+    }
+
+    // ==================== Images ====================
+
+    /// Draw image.
+    pub fn draw_image(&mut self, image_id: &str, dx: f32, dy: f32) {
         self.commands.push(DrawCommand::DrawImage {
-            image_id,
-            sx: 0.0,
-            sy: 0.0,
-            sw: 0.0, // 0 means use full image
-            sh: 0.0,
-            dx,
-            dy,
-            dw: 0.0,
-            dh: 0.0,
+            image_id: image_id.to_string(),
+            sx: 0.0, sy: 0.0, sw: 0.0, sh: 0.0,
+            dx, dy, dw: 0.0, dh: 0.0,
             transform: self.state.transform,
         });
     }
 
-    /// Draw an image with size.
-    pub fn draw_image_scaled(&mut self, image_id: u64, dx: f32, dy: f32, dw: f32, dh: f32) {
+    /// Draw image with size.
+    pub fn draw_image_sized(&mut self, image_id: &str, dx: f32, dy: f32, dw: f32, dh: f32) {
         self.commands.push(DrawCommand::DrawImage {
-            image_id,
-            sx: 0.0,
-            sy: 0.0,
-            sw: 0.0,
-            sh: 0.0,
-            dx,
-            dy,
-            dw,
-            dh,
+            image_id: image_id.to_string(),
+            sx: 0.0, sy: 0.0, sw: 0.0, sh: 0.0,
+            dx, dy, dw, dh,
             transform: self.state.transform,
         });
     }
 
-    /// Draw an image with source and destination rects.
-    pub fn draw_image_full(
-        &mut self,
-        image_id: u64,
-        sx: f32,
-        sy: f32,
-        sw: f32,
-        sh: f32,
-        dx: f32,
-        dy: f32,
-        dw: f32,
-        dh: f32,
-    ) {
+    /// Draw image with source and destination.
+    pub fn draw_image_full(&mut self, image_id: &str, sx: f32, sy: f32, sw: f32, sh: f32, dx: f32, dy: f32, dw: f32, dh: f32) {
         self.commands.push(DrawCommand::DrawImage {
-            image_id,
-            sx,
-            sy,
-            sw,
-            sh,
-            dx,
-            dy,
-            dw,
-            dh,
+            image_id: image_id.to_string(),
+            sx, sy, sw, sh,
+            dx, dy, dw, dh,
             transform: self.state.transform,
         });
     }
 
-    // ==================== Image Data ====================
+    // ==================== Pixel Manipulation ====================
 
-    /// Create new image data.
+    /// Create image data.
     pub fn create_image_data(&self, width: u32, height: u32) -> ImageData {
         ImageData::new(width, height)
     }
 
-    /// Get image data for a region.
-    pub fn get_image_data(&self, _x: i32, _y: i32, width: u32, height: u32) -> ImageData {
-        // In a real implementation, this would read from the pixel buffer
-        // For now, return empty image data
+    /// Get image data from canvas.
+    pub fn get_image_data(&self, x: i32, y: i32, width: u32, height: u32) -> ImageData {
+        // Return from pixel buffer if available
+        if let Some(ref buffer) = self.pixel_buffer {
+            let mut data = ImageData::new(width, height);
+            for dy in 0..height {
+                for dx in 0..width {
+                    let sx = (x + dx as i32) as u32;
+                    let sy = (y + dy as i32) as u32;
+                    if let Some((r, g, b, a)) = buffer.get_pixel(sx, sy) {
+                        data.set_pixel(dx, dy, r, g, b, a);
+                    }
+                }
+            }
+            return data;
+        }
         ImageData::new(width, height)
     }
 
-    /// Put image data.
+    /// Put image data to canvas.
     pub fn put_image_data(&mut self, data: ImageData, x: i32, y: i32) {
         self.commands.push(DrawCommand::PutImageData { data, x, y });
     }
 
-    // ==================== Gradients ====================
+    // ==================== Commands ====================
 
-    /// Create a linear gradient.
-    pub fn create_linear_gradient(&self, x0: f32, y0: f32, x1: f32, y1: f32) -> LinearGradient {
-        LinearGradient::new(x0, y0, x1, y1)
+    /// Get recorded draw commands.
+    pub fn get_commands(&self) -> &[DrawCommand] {
+        &self.commands
     }
 
-    /// Create a radial gradient.
-    pub fn create_radial_gradient(&self, x0: f32, y0: f32, r0: f32, x1: f32, y1: f32, r1: f32) -> RadialGradient {
-        RadialGradient::new(x0, y0, r0, x1, y1, r1)
-    }
-
-    /// Set fill style to gradient.
-    pub fn set_fill_style_gradient(&mut self, gradient: LinearGradient) {
-        self.state.fill_style = PaintStyle::LinearGradient(gradient);
-    }
-
-    // ==================== Output ====================
-
-    /// Get draw commands and clear them.
+    /// Take recorded draw commands.
     pub fn take_commands(&mut self) -> Vec<DrawCommand> {
         std::mem::take(&mut self.commands)
     }
 
-    /// Get draw commands without clearing.
-    pub fn commands(&self) -> &[DrawCommand] {
-        &self.commands
-    }
-
-    /// Clear all draw commands.
+    /// Clear commands.
     pub fn clear_commands(&mut self) {
         self.commands.clear();
-    }
-
-    // ==================== Hit Testing ====================
-
-    /// Check if a point is in the current path.
-    pub fn is_point_in_path(&self, x: f32, y: f32) -> bool {
-        // Transform point to path space
-        if let Some(inv) = self.state.transform.inverse() {
-            let (px, py) = inv.apply(x, y);
-            // Use winding number algorithm
-            point_in_path(&self.path, px, py)
-        } else {
-            false
-        }
-    }
-
-    /// Check if a point is on the current stroke.
-    pub fn is_point_in_stroke(&self, x: f32, y: f32) -> bool {
-        if let Some(inv) = self.state.transform.inverse() {
-            let (px, py) = inv.apply(x, y);
-            point_on_stroke(&self.path, px, py, self.state.line_width)
-        } else {
-            false
-        }
     }
 }
 
 // ==================== Helper Functions ====================
 
-/// Generate points along a quadratic bezier curve.
-fn quadratic_bezier_points(p0: (f32, f32), p1: (f32, f32), p2: (f32, f32), segments: usize) -> Vec<(f32, f32)> {
-    let mut points = Vec::with_capacity(segments);
-    
-    for i in 1..=segments {
-        let t = i as f32 / segments as f32;
-        let mt = 1.0 - t;
-
-        let x = mt * mt * p0.0 + 2.0 * mt * t * p1.0 + t * t * p2.0;
-        let y = mt * mt * p0.1 + 2.0 * mt * t * p1.1 + t * t * p2.1;
-
-        points.push((x, y));
-    }
-
-    points
-}
-
-/// Generate points along a cubic bezier curve.
-fn cubic_bezier_points(p0: (f32, f32), p1: (f32, f32), p2: (f32, f32), p3: (f32, f32), segments: usize) -> Vec<(f32, f32)> {
-    let mut points = Vec::with_capacity(segments);
-    
-    for i in 1..=segments {
-        let t = i as f32 / segments as f32;
-        let t2 = t * t;
-        let t3 = t2 * t;
-        let mt = 1.0 - t;
-        let mt2 = mt * mt;
-        let mt3 = mt2 * mt;
-
-        let x = mt3 * p0.0 + 3.0 * mt2 * t * p1.0 + 3.0 * mt * t2 * p2.0 + t3 * p3.0;
-        let y = mt3 * p0.1 + 3.0 * mt2 * t * p1.1 + 3.0 * mt * t2 * p2.1 + t3 * p3.1;
-
-        points.push((x, y));
-    }
-
-    points
-}
-
-/// Generate points along an arc.
-fn arc_points(cx: f32, cy: f32, r: f32, start: f32, end: f32, ccw: bool, segments: u32) -> Vec<(f32, f32)> {
-    let mut points = Vec::new();
-    
-    let mut angle_diff = end - start;
-    if ccw {
-        while angle_diff > 0.0 {
-            angle_diff -= 2.0 * PI;
-        }
-    } else {
-        while angle_diff < 0.0 {
-            angle_diff += 2.0 * PI;
-        }
-    }
-
-    let num_segments = ((angle_diff.abs() / (2.0 * PI) * segments as f32).ceil() as u32).max(1);
-    let step = angle_diff / num_segments as f32;
-
-    for i in 0..=num_segments {
-        let angle = start + step * i as f32;
-        points.push((cx + r * angle.cos(), cy + r * angle.sin()));
-    }
-
-    points
-}
-
-/// Parse a color string.
-fn parse_color(s: &str) -> Option<Color> {
+/// Parse canvas color string.
+fn parse_canvas_color(s: &str) -> Option<Color> {
     let s = s.trim().to_lowercase();
 
     // Hex colors
@@ -1452,15 +1205,36 @@ fn parse_color(s: &str) -> Option<Color> {
         "cyan" => Some(Color::from_rgb(0, 255, 255)),
         "magenta" => Some(Color::from_rgb(255, 0, 255)),
         "gray" | "grey" => Some(Color::from_rgb(128, 128, 128)),
+        "orange" => Some(Color::from_rgb(255, 165, 0)),
+        "purple" => Some(Color::from_rgb(128, 0, 128)),
         "transparent" => Some(Color::TRANSPARENT),
         _ => None,
     }
 }
 
+/// Parse font size from CSS font string.
+fn parse_font_size(font: &str) -> Option<f32> {
+    for part in font.split_whitespace() {
+        if part.ends_with("px") {
+            return part.trim_end_matches("px").parse().ok();
+        }
+        if part.ends_with("pt") {
+            let pt: f32 = part.trim_end_matches("pt").parse().ok()?;
+            return Some(pt * 1.333);
+        }
+        if part.ends_with("em") {
+            let em: f32 = part.trim_end_matches("em").parse().ok()?;
+            return Some(em * 16.0);
+        }
+    }
+    None
+}
+
 /// Interpolate between two colors.
 fn interpolate_color(a: &Color, b: &Color, t: f32) -> Color {
-    let lerp = |a: u8, b: u8, t: f32| ((a as f32) + ((b as f32) - (a as f32)) * t).round() as u8;
-    
+    let lerp = |a: u8, b: u8, t: f32| -> u8 {
+        ((a as f32) + (b as f32 - a as f32) * t).round() as u8
+    };
     Color {
         r: lerp(a.r, b.r, t),
         g: lerp(a.g, b.g, t),
@@ -1469,118 +1243,60 @@ fn interpolate_color(a: &Color, b: &Color, t: f32) -> Color {
     }
 }
 
-/// Check if point is inside path using winding number.
-fn point_in_path(path: &Path2D, x: f32, y: f32) -> bool {
-    let segments = path.to_segments();
-    let mut winding = 0;
-
-    for segment in &segments {
-        if segment.len() < 2 {
-            continue;
-        }
-
-        for i in 0..segment.len() - 1 {
-            let (x1, y1) = segment[i];
-            let (x2, y2) = segment[i + 1];
-
-            if y1 <= y {
-                if y2 > y {
-                    let vt = (y - y1) / (y2 - y1);
-                    if x < x1 + vt * (x2 - x1) {
-                        winding += 1;
-                    }
-                }
-            } else if y2 <= y {
-                let vt = (y - y1) / (y2 - y1);
-                if x < x1 + vt * (x2 - x1) {
-                    winding -= 1;
-                }
-            }
-        }
+/// Generate points along a quadratic bezier curve.
+fn quad_bezier_points(p0: (f32, f32), p1: (f32, f32), p2: (f32, f32), segments: usize) -> Vec<(f32, f32)> {
+    let mut points = Vec::with_capacity(segments);
+    for i in 1..=segments {
+        let t = i as f32 / segments as f32;
+        let mt = 1.0 - t;
+        let x = mt * mt * p0.0 + 2.0 * mt * t * p1.0 + t * t * p2.0;
+        let y = mt * mt * p0.1 + 2.0 * mt * t * p1.1 + t * t * p2.1;
+        points.push((x, y));
     }
-
-    winding != 0
+    points
 }
 
-/// Check if point is on stroke.
-fn point_on_stroke(path: &Path2D, x: f32, y: f32, line_width: f32) -> bool {
-    let segments = path.to_segments();
-    let half_width = line_width / 2.0;
+/// Generate points along a cubic bezier curve.
+fn cubic_bezier_points(p0: (f32, f32), p1: (f32, f32), p2: (f32, f32), p3: (f32, f32), segments: usize) -> Vec<(f32, f32)> {
+    let mut points = Vec::with_capacity(segments);
+    for i in 1..=segments {
+        let t = i as f32 / segments as f32;
+        let t2 = t * t;
+        let t3 = t2 * t;
+        let mt = 1.0 - t;
+        let mt2 = mt * mt;
+        let mt3 = mt2 * mt;
+        let x = mt3 * p0.0 + 3.0 * mt2 * t * p1.0 + 3.0 * mt * t2 * p2.0 + t3 * p3.0;
+        let y = mt3 * p0.1 + 3.0 * mt2 * t * p1.1 + 3.0 * mt * t2 * p2.1 + t3 * p3.1;
+        points.push((x, y));
+    }
+    points
+}
 
-    for segment in &segments {
-        if segment.len() < 2 {
-            continue;
+/// Generate points along an arc.
+fn arc_points(cx: f32, cy: f32, r: f32, start: f32, end: f32, ccw: bool, segments: u32) -> Vec<(f32, f32)> {
+    let mut points = Vec::new();
+    let mut angle_diff = end - start;
+    
+    if ccw {
+        if angle_diff > 0.0 {
+            angle_diff -= 2.0 * PI;
         }
-
-        for i in 0..segment.len() - 1 {
-            let (x1, y1) = segment[i];
-            let (x2, y2) = segment[i + 1];
-
-            // Distance from point to line segment
-            let dx = x2 - x1;
-            let dy = y2 - y1;
-            let len_sq = dx * dx + dy * dy;
-
-            if len_sq == 0.0 {
-                // Point segment
-                let dist = ((x - x1).powi(2) + (y - y1).powi(2)).sqrt();
-                if dist <= half_width {
-                    return true;
-                }
-            } else {
-                let t = ((x - x1) * dx + (y - y1) * dy) / len_sq;
-                let t = t.clamp(0.0, 1.0);
-                let px = x1 + t * dx;
-                let py = y1 + t * dy;
-                let dist = ((x - px).powi(2) + (y - py).powi(2)).sqrt();
-                if dist <= half_width {
-                    return true;
-                }
-            }
-        }
+    } else if angle_diff < 0.0 {
+        angle_diff += 2.0 * PI;
     }
 
-    false
+    let step = angle_diff / segments as f32;
+    for i in 0..=segments {
+        let angle = start + step * i as f32;
+        points.push((cx + r * angle.cos(), cy + r * angle.sin()));
+    }
+    points
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn test_transform_identity() {
-        let t = Transform::identity();
-        let (x, y) = t.apply(10.0, 20.0);
-        assert_eq!(x, 10.0);
-        assert_eq!(y, 20.0);
-    }
-
-    #[test]
-    fn test_transform_translate() {
-        let t = Transform::translate(5.0, 10.0);
-        let (x, y) = t.apply(10.0, 20.0);
-        assert_eq!(x, 15.0);
-        assert_eq!(y, 30.0);
-    }
-
-    #[test]
-    fn test_transform_scale() {
-        let t = Transform::scale(2.0, 3.0);
-        let (x, y) = t.apply(10.0, 20.0);
-        assert_eq!(x, 20.0);
-        assert_eq!(y, 60.0);
-    }
-
-    #[test]
-    fn test_transform_inverse() {
-        let t = Transform::translate(10.0, 20.0);
-        let inv = t.inverse().unwrap();
-        let composed = t.multiply(&inv);
-        assert!((composed.a - 1.0).abs() < 0.001);
-        assert!((composed.d - 1.0).abs() < 0.001);
-        assert!((composed.e).abs() < 0.001);
-        assert!((composed.f).abs() < 0.001);
-    }
 
     #[test]
     fn test_context_creation() {
@@ -1590,34 +1306,43 @@ mod tests {
     }
 
     #[test]
-    fn test_context_save_restore() {
+    fn test_state_save_restore() {
         let mut ctx = CanvasRenderingContext2D::new(100, 100);
         ctx.set_line_width(5.0);
         ctx.save();
         ctx.set_line_width(10.0);
-        assert_eq!(ctx.line_width(), 10.0);
+        assert_eq!(ctx.state.line_width, 10.0);
         ctx.restore();
-        assert_eq!(ctx.line_width(), 5.0);
+        assert_eq!(ctx.state.line_width, 5.0);
     }
 
     #[test]
-    fn test_path_creation() {
-        let mut path = Path2D::new();
-        path.move_to(0.0, 0.0);
-        path.line_to(100.0, 100.0);
-        path.close_path();
-        assert_eq!(path.commands().len(), 3);
+    fn test_transform() {
+        let mut ctx = CanvasRenderingContext2D::new(100, 100);
+        ctx.translate(10.0, 20.0);
+        let t = ctx.get_transform();
+        assert_eq!(t.e, 10.0);
+        assert_eq!(t.f, 20.0);
     }
 
     #[test]
-    fn test_path_to_segments() {
+    fn test_transform_scale() {
+        let mut ctx = CanvasRenderingContext2D::new(100, 100);
+        ctx.scale(2.0, 3.0);
+        let t = ctx.get_transform();
+        assert_eq!(t.a, 2.0);
+        assert_eq!(t.d, 3.0);
+    }
+
+    #[test]
+    fn test_path_building() {
         let mut path = Path2D::new();
         path.move_to(0.0, 0.0);
         path.line_to(100.0, 0.0);
         path.line_to(100.0, 100.0);
         path.close_path();
-        
-        let segments = path.to_segments();
+
+        let segments = path.to_line_segments();
         assert_eq!(segments.len(), 1);
         assert_eq!(segments[0].len(), 4);
     }
@@ -1626,49 +1351,68 @@ mod tests {
     fn test_fill_rect() {
         let mut ctx = CanvasRenderingContext2D::new(100, 100);
         ctx.fill_rect(10.0, 10.0, 50.0, 50.0);
-        assert_eq!(ctx.commands().len(), 1);
+        assert_eq!(ctx.get_commands().len(), 1);
+    }
+
+    #[test]
+    fn test_path_with_arc() {
+        let mut ctx = CanvasRenderingContext2D::new(100, 100);
+        ctx.begin_path();
+        ctx.arc(50.0, 50.0, 40.0, 0.0, 2.0 * PI, false);
+        ctx.fill();
+        assert_eq!(ctx.get_commands().len(), 1);
     }
 
     #[test]
     fn test_image_data() {
         let mut data = ImageData::new(10, 10);
-        data.set_pixel(5, 5, Color::from_rgb(255, 0, 0));
+        data.set_pixel(5, 5, 255, 0, 0, 255);
         let pixel = data.get_pixel(5, 5).unwrap();
-        assert_eq!(pixel.r, 255);
-        assert_eq!(pixel.g, 0);
-        assert_eq!(pixel.b, 0);
+        assert_eq!(pixel, (255, 0, 0, 255));
+    }
+
+    #[test]
+    fn test_linear_gradient() {
+        let mut grad = LinearGradient::new(0.0, 0.0, 100.0, 0.0);
+        grad.add_color_stop(0.0, Color::from_rgb(255, 0, 0));
+        grad.add_color_stop(1.0, Color::from_rgb(0, 0, 255));
+
+        let c = grad.sample(0.5);
+        assert_eq!(c.r, 128);
+        assert_eq!(c.b, 128);
     }
 
     #[test]
     fn test_parse_color() {
-        assert!(matches!(parse_color("#ff0000"), Some(c) if c.r == 255 && c.g == 0 && c.b == 0));
-        assert!(matches!(parse_color("#f00"), Some(c) if c.r == 255 && c.g == 0 && c.b == 0));
-        assert!(matches!(parse_color("red"), Some(c) if c.r == 255 && c.g == 0 && c.b == 0));
-        assert!(matches!(parse_color("rgb(0, 255, 0)"), Some(c) if c.g == 255));
+        let c = parse_canvas_color("#ff0000").unwrap();
+        assert_eq!(c.r, 255);
+        assert_eq!(c.g, 0);
+        assert_eq!(c.b, 0);
+
+        let c = parse_canvas_color("rgb(0, 255, 0)").unwrap();
+        assert_eq!(c.g, 255);
+
+        let c = parse_canvas_color("blue").unwrap();
+        assert_eq!(c.b, 255);
     }
 
     #[test]
-    fn test_gradient() {
-        let mut grad = LinearGradient::new(0.0, 0.0, 100.0, 0.0);
-        grad.add_color_stop(0.0, Color::from_rgb(255, 0, 0));
-        grad.add_color_stop(1.0, Color::from_rgb(0, 0, 255));
-        
-        let mid = grad.color_at(0.5);
-        assert!(mid.r > 100 && mid.r < 150);
-        assert!(mid.b > 100 && mid.b < 150);
+    fn test_text_measure() {
+        let ctx = CanvasRenderingContext2D::new(100, 100);
+        let metrics = ctx.measure_text("Hello");
+        assert!(metrics.width > 0.0);
     }
 
     #[test]
     fn test_point_in_path() {
-        let mut path = Path2D::new();
-        path.move_to(0.0, 0.0);
-        path.line_to(100.0, 0.0);
-        path.line_to(100.0, 100.0);
-        path.line_to(0.0, 100.0);
-        path.close_path();
-
-        assert!(point_in_path(&path, 50.0, 50.0));
-        assert!(!point_in_path(&path, 150.0, 50.0));
+        let mut ctx = CanvasRenderingContext2D::new(100, 100);
+        ctx.begin_path();
+        ctx.rect(10.0, 10.0, 50.0, 50.0);
+        
+        // Point inside
+        assert!(ctx.is_point_in_path(25.0, 25.0));
+        // Point outside
+        assert!(!ctx.is_point_in_path(5.0, 5.0));
     }
 }
 

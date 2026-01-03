@@ -9,9 +9,11 @@ license = "MIT"
 [dependencies]
 # RustKit crates
 rustkit-css = { path = "../rustkit-css" }
+rustkit-dom = { path = "../rustkit-dom" }
 
 # Core
 thiserror = "1.0"
+tracing = "0.1"
 
 [dev-dependencies]
-
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

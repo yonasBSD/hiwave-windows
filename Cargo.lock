@@ -4924,7 +4924,10 @@ name = "rustkit-canvas"
 version = "0.1.0"
 dependencies = [
  "rustkit-css",
+ "rustkit-dom",
  "thiserror 1.0.69",
+ "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]
@@ -5116,6 +5119,13 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "windows 0.58.0",
+]
+
+[[package]]
+name = "rustkit-webgl"
+version = "0.1.0"
+dependencies = [
+ "thiserror 1.0.69",
 ]
 
 [[package]]
