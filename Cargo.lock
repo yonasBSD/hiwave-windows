@@ -4920,6 +4920,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustkit-canvas"
+version = "0.1.0"
+dependencies = [
+ "rustkit-css",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "rustkit-common"
 version = "0.1.0"
 dependencies = [

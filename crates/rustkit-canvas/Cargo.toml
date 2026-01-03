@@ -1,0 +1,17 @@
+[package]
+name = "rustkit-canvas"
+version = "0.1.0"
+edition = "2021"
+description = "HTML5 Canvas 2D API for RustKit browser engine"
+authors = ["HiWave Team"]
+license = "MIT"
+
+[dependencies]
+# RustKit crates
+rustkit-css = { path = "../rustkit-css" }
+
+# Core
+thiserror = "1.0"
+
+[dev-dependencies]
+

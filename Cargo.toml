@@ -20,6 +20,7 @@ members = [
     "crates/rustkit-image",
     "crates/rustkit-animation",
     "crates/rustkit-svg",
+    "crates/rustkit-canvas",
     "crates/rustkit-engine",
     "crates/rustkit-common",
     "crates/rustkit-test",
