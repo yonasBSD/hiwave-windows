@@ -337,14 +337,53 @@ impl Compositor {
         &self.device
     }
 
+    /// Get the device as Arc.
+    pub fn device_arc(&self) -> Arc<wgpu::Device> {
+        Arc::clone(&self.device)
+    }
+
     /// Get the queue.
     pub fn queue(&self) -> &wgpu::Queue {
         &self.queue
     }
 
+    /// Get the queue as Arc.
+    pub fn queue_arc(&self) -> Arc<wgpu::Queue> {
+        Arc::clone(&self.queue)
+    }
+
+    /// Get the surface format.
+    pub fn surface_format(&self) -> wgpu::TextureFormat {
+        wgpu::TextureFormat::Bgra8UnormSrgb
+    }
+
     /// Get GPU adapter info.
     pub fn adapter_info(&self) -> wgpu::AdapterInfo {
         self.adapter.get_info()
+    }
+
+    /// Get surface texture for rendering.
+    /// Returns the texture and presents it when dropped.
+    pub fn get_surface_texture(
+        &self,
+        view_id: ViewId,
+    ) -> Result<(wgpu::SurfaceTexture, wgpu::TextureView), CompositorError> {
+        let surfaces = self.surfaces.read().unwrap();
+        let state = surfaces
+            .get(&view_id)
+            .ok_or(CompositorError::SurfaceNotFound(view_id))?;
+
+        let output = state.get_current_texture()?;
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
+        Ok((output, view))
+    }
+
+    /// Present a surface texture.
+    pub fn present(&self, output: wgpu::SurfaceTexture) {
+        output.present();
     }
 }
 

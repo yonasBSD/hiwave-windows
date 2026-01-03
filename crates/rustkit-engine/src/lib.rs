@@ -24,6 +24,7 @@ use rustkit_image::ImageManager;
 use rustkit_js::JsRuntime;
 use rustkit_layout::{BoxType, Dimensions, DisplayList, LayoutBox, Rect};
 use rustkit_net::{LoaderConfig, NetError, Request, ResourceLoader};
+use rustkit_renderer::Renderer;
 use rustkit_viewhost::{Bounds, ViewHost, ViewId};
 use thiserror::Error;
 use tokio::sync::mpsc;
@@ -180,6 +181,7 @@ pub struct Engine {
     config: EngineConfig,
     viewhost: ViewHost,
     compositor: Compositor,
+    renderer: Option<Renderer>,
     loader: Arc<ResourceLoader>,
     image_manager: Arc<ImageManager>,
     views: HashMap<EngineViewId, ViewState>,
@@ -210,18 +212,26 @@ impl Engine {
         // Initialize ImageManager
         let image_manager = Arc::new(ImageManager::new());
 
+        // Initialize Renderer
+        let renderer = Renderer::new(
+            compositor.device_arc(),
+            compositor.queue_arc(),
+            compositor.surface_format(),
+        ).map_err(|e| EngineError::RenderError(e.to_string()))?;
+
         // Event channel
         let (event_tx, event_rx) = mpsc::unbounded_channel();
 
         info!(
             adapter = ?compositor.adapter_info().name,
-            "Engine initialized"
+            "Engine initialized with GPU renderer"
         );
 
         Ok(Self {
             config,
             viewhost,
             compositor,
+            renderer: Some(renderer),
             loader,
             image_manager,
             views: HashMap::new(),
@@ -506,14 +516,35 @@ impl Engine {
     /// Render a view.
     fn render(&mut self, id: EngineViewId) -> Result<(), EngineError> {
         let view = self.views.get(&id).ok_or(EngineError::ViewNotFound(id))?;
+        let viewhost_id = view.viewhost_id;
+        let display_list = view.display_list.as_ref();
 
         trace!(?id, "Rendering view");
 
-        // For now, just render background
-        // Full rendering would iterate display list
-        self.compositor
-            .render_solid_color(view.viewhost_id, self.config.background_color)
+        // Get surface texture
+        let (output, texture_view) = self.compositor
+            .get_surface_texture(viewhost_id)
             .map_err(|e| EngineError::RenderError(e.to_string()))?;
+
+        // Render using display list if available, otherwise just clear to background
+        if let (Some(renderer), Some(display_list)) = (&mut self.renderer, display_list) {
+            renderer.execute(&display_list.commands, &texture_view)
+                .map_err(|e| EngineError::RenderError(e.to_string()))?;
+        } else if let Some(renderer) = &mut self.renderer {
+            // No display list, render empty (will clear to white)
+            renderer.execute(&[], &texture_view)
+                .map_err(|e| EngineError::RenderError(e.to_string()))?;
+        } else {
+            // Fallback to compositor solid color (shouldn't normally happen)
+            drop(output); // Release the texture
+            self.compositor
+                .render_solid_color(viewhost_id, self.config.background_color)
+                .map_err(|e| EngineError::RenderError(e.to_string()))?;
+            return Ok(());
+        }
+
+        // Present
+        self.compositor.present(output);
 
         Ok(())
     }

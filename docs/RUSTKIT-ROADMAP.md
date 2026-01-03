@@ -4,7 +4,7 @@
 
 RustKit is a Rust-native browser engine designed to replace WebKit's WinCairo port for the HiWave browser. This roadmap outlines the development phases beyond the initial MVP implementation.
 
-**Current Status:** Phase 25 Complete - Ready for Phase 26 (Audio/Video)
+**Current Status:** Phase 25.5 Complete (GPU Renderer) - Ready for Phase 26 (Audio/Video)
 **Branch:** `master`
 
 ---
@@ -39,6 +39,7 @@ RustKit is a Rust-native browser engine designed to replace WebKit's WinCairo po
 | 23 | SVG Support | ✅ Complete | SVG parsing, paths, shapes, transforms |
 | 24 | Canvas 2D | ✅ Complete | CanvasRenderingContext2D, paths, gradients |
 | 25 | WebGL | ✅ Complete | WebGL 1.0 context, shaders, textures |
+| 25.5 | GPU Renderer | ✅ Complete | Display list execution, text, images |
 
 ---
 
@@ -329,6 +330,7 @@ rustkit-animation  # CSS animations and transitions
 rustkit-svg        # SVG parsing and rendering
 rustkit-canvas     # Canvas 2D API
 rustkit-webgl      # WebGL API
+rustkit-renderer   # GPU display list renderer
 rustkit-engine     # Orchestration, multi-view
 rustkit-test       # WPT harness
 rustkit-bench      # Benchmarks
