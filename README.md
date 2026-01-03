@@ -149,15 +149,18 @@ We have strong opinions about how browsing should work, but we offer three modes
   - ✅ Text rendering with DirectWrite
   - ✅ JavaScript (Boa engine)
   - ✅ Networking & downloads
-- ✅ **Independence Project - Bravo Phases**
+- ✅ **Independence Project - Bravo Phases Complete**
   - ✅ Bravo 3: `rustkit-codecs` (replaced `image` crate)
   - ✅ Bravo 4: `rustkit-http` (replaced `reqwest`)
-  - ✅ Bravo 6: `rustkit-html` (replaced `html5ever`)
-    - Full HTML5 tokenizer with all parsing modes
-    - Tree builder with table parsing & error recovery
+  - ✅ Bravo 6: `rustkit-html` (replaced `html5ever`) — **COMPLETE**
+    - Full HTML5 tokenizer with 40+ states
+    - Tree builder with 23 insertion modes
+    - Table parsing with foster parenting
     - Adoption Agency Algorithm for misnested formatting
     - Fragment parsing for innerHTML support
-    - Quirks mode detection
+    - Quirks mode detection (HTML5, HTML4.01, XHTML)
+    - ~200 named HTML entities
+    - Select, Template, Frameset mode support
 - 🔄 Event handling (Phase 14)
 - 🔄 Forms & input (Phase 15)
 
@@ -176,6 +179,7 @@ We have strong opinions about how browsing should work, but we offer three modes
 - [ ] HiWave Sync (cross-device)
 - [ ] Reader Mode
 - [ ] Mobile companion
+- [ ] Bravo 5: `rustkit-gpu` (replace wgpu)
 
 See [docs/RUSTKIT-ROADMAP.md](docs/RUSTKIT-ROADMAP.md) for the complete engine roadmap.
 
@@ -249,10 +253,33 @@ Built with:
 - **Brave's adblock-rust** — Ad blocking engine
 - **Vanilla JS** — No framework bloat in the UI
 
-**RustKit-owned subsystems** (no external dependencies):
-- `rustkit-html` — HTML5 parser (replaced html5ever)
-- `rustkit-http` — HTTP client (replaced reqwest)
-- `rustkit-codecs` — Image decoders (replaced image crate)
+### Dependency Independence
+
+**RustKit-owned subsystems** (replaced major external dependencies):
+| Subsystem | Replaced | Lines of Code |
+|-----------|----------|---------------|
+| `rustkit-html` | html5ever | HTML5 parser with 40+ tokenizer states, 23 tree builder modes |
+| `rustkit-http` | reqwest | HTTP/1.1 client with native-tls |
+| `rustkit-codecs` | image crate | PNG/JPEG/GIF/WebP decoders |
+
+**Remaining External Dependencies:**
+
+| Category | Dependency | Purpose | Future Plans |
+|----------|------------|---------|--------------|
+| **JavaScript** | `boa_engine` | JS execution | Keep (excellent Rust-native engine) |
+| **Graphics** | `wgpu` | GPU compositing | Bravo 5: `rustkit-gpu` |
+| **Windowing** | `wry`/`tao` | Browser chrome UI | Keep (cross-platform) |
+| **Platform** | `windows` | Win32 API bindings | Keep (required) |
+| **Text** | DirectWrite | Text shaping/rendering | Keep (OS-provided) |
+| **TLS** | `native-tls` | HTTPS encryption | Keep (uses OS crypto) |
+| **Ad Block** | `adblock` | Filter list engine | Keep (Brave's engine) |
+| **Storage** | `rusqlite` | SQLite database | Keep (standard) |
+| **Audio** | `rodio` | Media playback | Evaluate |
+| **Async** | `tokio` | Async runtime | Keep (standard) |
+
+**Utilities** (small, stable crates): `serde`, `url`, `thiserror`, `tracing`, `chrono`, `hashbrown`
+
+**Image codec backends** (used by rustkit-codecs): `png`, `jpeg-decoder`, `gif` — these provide the actual decoding algorithms
 
 ### RustKit Engine
 
