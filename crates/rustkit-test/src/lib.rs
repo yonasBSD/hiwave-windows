@@ -29,6 +29,7 @@ pub mod layout;
 pub mod navigation;
 pub mod parse;
 pub mod reftest;
+pub mod security;
 pub mod style;
 
 pub use layout::LayoutTestRunner;

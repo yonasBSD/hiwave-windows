@@ -5065,6 +5065,7 @@ dependencies = [
  "rustkit-dom",
  "rustkit-js",
  "rustkit-layout",
+ "rustkit-net",
  "serde",
  "serde_json",
  "similar",

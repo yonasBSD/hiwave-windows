@@ -26,9 +26,15 @@ use url::Url;
 
 pub mod download;
 pub mod intercept;
+pub mod security;
 
 pub use download::{Download, DownloadEvent, DownloadId, DownloadManager, DownloadState};
 pub use intercept::{InterceptAction, InterceptHandler, RequestInterceptor};
+pub use security::{
+    check_mixed_content, ContentSecurityPolicy, CookieAttributes, CorsChecker, CorsResult,
+    CspDirective, CspSource, HashAlgorithm, MixedContentResult, MixedContentType, Origin,
+    ReferrerPolicy, SameSite, SandboxFlags, SecurityContext, SecurityError,
+};
 
 /// Errors that can occur in networking.
 #[derive(Error, Debug)]
