@@ -5259,6 +5259,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustkit-idb"
+version = "0.1.0"
+dependencies = [
+ "hashbrown 0.14.5",
+ "rustkit-common",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "rustkit-image"
 version = "0.1.0"
 dependencies = [
