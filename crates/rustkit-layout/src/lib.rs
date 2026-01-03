@@ -1133,6 +1133,26 @@ pub enum DisplayCommand {
     PushStackingContext { z_index: i32, rect: Rect },
     /// End stacking context.
     PopStackingContext,
+
+    // SVG-specific commands
+    /// Fill a rectangle with solid color.
+    FillRect { rect: Rect, color: Color },
+    /// Stroke a rectangle.
+    StrokeRect { rect: Rect, color: Color, width: f32 },
+    /// Fill a circle.
+    FillCircle { cx: f32, cy: f32, radius: f32, color: Color },
+    /// Stroke a circle.
+    StrokeCircle { cx: f32, cy: f32, radius: f32, color: Color, width: f32 },
+    /// Fill an ellipse.
+    FillEllipse { rect: Rect, color: Color },
+    /// Draw a line.
+    Line { x1: f32, y1: f32, x2: f32, y2: f32, color: Color, width: f32 },
+    /// Draw a polyline (connected line segments).
+    Polyline { points: Vec<(f32, f32)>, color: Color, width: f32 },
+    /// Fill a polygon.
+    FillPolygon { points: Vec<(f32, f32)>, color: Color },
+    /// Stroke a polygon.
+    StrokePolygon { points: Vec<(f32, f32)>, color: Color, width: f32 },
 }
 
 /// Text decoration style for display commands.

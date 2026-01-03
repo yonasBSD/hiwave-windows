@@ -5067,6 +5067,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustkit-svg"
+version = "0.1.0"
+dependencies = [
+ "rustkit-css",
+ "rustkit-dom",
+ "rustkit-layout",
+ "thiserror 1.0.69",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "rustkit-test"
 version = "0.1.0"
 dependencies = [
