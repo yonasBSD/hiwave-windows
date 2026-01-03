@@ -43,6 +43,424 @@ New: Phase 28 (IndexedDB) ←── Phase 27 (Service Workers)
 
 ---
 
+## Phase 14 Dependency Deep Dive
+
+Phase 14 (Events) is the **critical foundation** for phases 21-30. Every interactive feature depends on the event system. This section details the specific components and how they flow into advanced features.
+
+### Phase 14 Component Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         PHASE 14: EVENT HANDLING                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│  ┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐      │
+│  │   HIT TESTING    │    │  EVENT DISPATCH  │    │  FOCUS MANAGER   │      │
+│  │                  │    │                  │    │                  │      │
+│  │ • Point-in-box   │    │ • Capture phase  │    │ • Tab navigation │      │
+│  │ • Z-index aware  │    │ • Target phase   │    │ • Focus ring     │      │
+│  │ • Ancestor chain │    │ • Bubble phase   │    │ • Active element │      │
+│  │ • Local coords   │    │ • preventDefault │    │ • Focus trapping │      │
+│  └────────┬─────────┘    └────────┬─────────┘    └────────┬─────────┘      │
+│           │                       │                       │                 │
+│           └───────────────────────┼───────────────────────┘                 │
+│                                   │                                          │
+│  ┌────────────────────────────────┴────────────────────────────────────┐    │
+│  │                        EVENT TYPES                                   │    │
+│  ├──────────────┬──────────────┬──────────────┬──────────────────────┤    │
+│  │    MOUSE     │   KEYBOARD   │    FOCUS     │       INPUT          │    │
+│  │              │              │              │                      │    │
+│  │ • click      │ • keydown    │ • focus      │ • input              │    │
+│  │ • dblclick   │ • keyup      │ • blur       │ • change             │    │
+│  │ • mousedown  │ • keypress   │ • focusin    │ • beforeinput        │    │
+│  │ • mouseup    │              │ • focusout   │                      │    │
+│  │ • mousemove  │              │              │                      │    │
+│  │ • mouseenter │              │              │                      │    │
+│  │ • mouseleave │              │              │                      │    │
+│  │ • contextmenu│              │              │                      │    │
+│  └──────────────┴──────────────┴──────────────┴──────────────────────┘    │
+│                                                                              │
+│  ┌──────────────────┐    ┌──────────────────┐    ┌──────────────────┐      │
+│  │  POINTER EVENTS  │    │  TOUCH EVENTS    │    │  WHEEL EVENTS    │      │
+│  │  (Modern API)    │    │  (Mobile)        │    │  (Scrolling)     │      │
+│  └──────────────────┘    └──────────────────┘    └──────────────────┘      │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Current Implementation Status (Phase 14)
+
+Based on the codebase analysis, the following Phase 14 components are **already implemented**:
+
+#### ✅ Completed
+
+| Component | Location | Status |
+|-----------|----------|--------|
+| **Hit Testing** | `rustkit-layout/src/lib.rs` | Complete |
+| Hit test with z-index | `LayoutBox::hit_test()` | ✅ |
+| Hit test all overlapping | `LayoutBox::hit_test_all()` | ✅ |
+| Ancestor chain tracking | `HitTestResult::ancestors` | ✅ |
+| Local coordinate calculation | `local_x`, `local_y` | ✅ |
+| Content/padding/border detection | `is_in_content()`, etc. | ✅ |
+| **Event Data Structures** | `rustkit-bindings/src/lib.rs` | Complete |
+| MouseEventBindingData | All properties | ✅ |
+| KeyboardEventBindingData | key, code, modifiers | ✅ |
+| FocusEventBindingData | relatedTarget | ✅ |
+| InputEventBindingData | data, inputType | ✅ |
+| **Event Dispatch** | `rustkit-bindings/src/lib.rs` | Partial |
+| dispatch_event() | Basic dispatch | ✅ |
+| dispatch_event_with_data() | With event data | ✅ |
+| preventDefault() | Supported | ✅ |
+| stopPropagation() | Supported | ✅ |
+| **JS Form Elements** | `rustkit-bindings/src/lib.rs` | Complete |
+| HTMLInputElement prototype | value, selection, validation | ✅ |
+| HTMLTextAreaElement prototype | rows, cols, textLength | ✅ |
+| HTMLFormElement prototype | submit, reset, checkValidity | ✅ |
+
+#### 🔄 In Progress / Partial
+
+| Component | Status | Missing |
+|-----------|--------|---------|
+| **Event Bubbling** | Partial | Full capture/bubble phases |
+| **Focus Manager** | Partial | Tab order calculation, focus ring |
+| **Pointer Events** | Not started | Full PointerEvent API |
+| **Touch Events** | Not started | Multi-touch support |
+| **Platform Integration** | Partial | Win32 message handling |
+
+### Phase 14 → Phase 21-30 Dependency Flow
+
+```
+                    ┌─────────────────────────────────────────────┐
+                    │              PHASE 14 (Events)              │
+                    │                                             │
+                    │  Hit Testing ─────────────────────────────┐ │
+                    │  Event Dispatch ──────────────────────────┤ │
+                    │  Focus Management ────────────────────────┤ │
+                    │  Mouse/Keyboard/Touch ────────────────────┤ │
+                    └─────────────────────────────────────────┬─┘
+                                                              │
+        ┌─────────────────────────────────────────────────────┼─────────────────────────────────────────────┐
+        │                                                     │                                             │
+        ▼                                                     ▼                                             ▼
+┌───────────────┐                                    ┌───────────────┐                              ┌───────────────┐
+│   PHASE 21    │                                    │   PHASE 22    │                              │   PHASE 24    │
+│   CSS Grid    │                                    │  Animations   │                              │  Canvas 2D    │
+├───────────────┤                                    ├───────────────┤                              ├───────────────┤
+│ Needs from 14:│                                    │ Needs from 14:│                              │ Needs from 14:│
+│               │                                    │               │                              │               │
+│ • Resize obs. │                                    │ • RAF timing  │                              │ • Mouse events│
+│ • Layout inv. │                                    │ • Hover state │                              │ • isPointIn*  │
+│               │                                    │ • Transition  │                              │ • Touch coords│
+│               │                                    │   triggers    │                              │ • Keyboard    │
+│               │                                    │ • Focus for   │                              │   for games   │
+│               │                                    │   animation   │                              │               │
+└───────────────┘                                    └───────┬───────┘                              └───────┬───────┘
+                                                             │                                              │
+                                                             ▼                                              ▼
+                                                    ┌───────────────┐                              ┌───────────────┐
+                                                    │   PHASE 23    │                              │   PHASE 26    │
+                                                    │     SVG       │                              │    WebGL      │
+                                                    ├───────────────┤                              ├───────────────┤
+                                                    │ Needs from 14:│                              │ Needs from 14:│
+                                                    │               │                              │               │
+                                                    │ • SVG mouse   │                              │ • Mouse for   │
+                                                    │   events      │                              │   camera      │
+                                                    │ • Click on    │                              │ • Keyboard    │
+                                                    │   SVG elements│                              │   for controls│
+                                                    │ • Hover for   │                              │ • Pointer lock│
+                                                    │   :hover CSS  │                              │ • Touch for   │
+                                                    │ • SMIL trigger│                              │   mobile 3D   │
+                                                    └───────────────┘                              └───────────────┘
+
+┌───────────────┐     ┌───────────────┐     ┌───────────────┐     ┌───────────────┐
+│   PHASE 25    │     │   PHASE 29    │     │   PHASE 30    │     │   PHASE 27    │
+│  Audio/Video  │     │    WebRTC     │     │ Accessibility │     │Service Workers│
+├───────────────┤     ├───────────────┤     ├───────────────┤     ├───────────────┤
+│ Needs from 14:│     │ Needs from 14:│     │ Needs from 14:│     │ Needs from 14:│
+│               │     │               │     │               │     │               │
+│ • Click for   │     │ • getUserMedia│     │ • Focus mgmt  │     │ • Fetch event │
+│   play/pause  │     │   permissions │     │ • Keyboard    │     │   interception│
+│ • Keyboard    │     │ • UI for call │     │   navigation  │     │ • Message     │
+│   shortcuts   │     │   controls    │     │ • Screen      │     │   events      │
+│ • Drag for    │     │               │     │   reader      │     │               │
+│   seeking     │     │               │     │   events      │     │               │
+│ • Touch for   │     │               │     │ • ARIA live   │     │               │
+│   mobile      │     │               │     │   regions     │     │               │
+└───────────────┘     └───────────────┘     └───────────────┘     └───────────────┘
+```
+
+### Detailed Component Dependencies
+
+#### 14.1 Hit Testing → Advanced Phases
+
+| Phase | What It Needs | Why |
+|-------|---------------|-----|
+| **21 (Grid)** | Layout invalidation triggers | Grid items may change on interaction |
+| **22 (Animations)** | Hover state detection | `:hover` triggers CSS transitions |
+| **23 (SVG)** | SVG-specific hit testing | SVG shapes need path-based hit detection |
+| **24 (Canvas)** | `isPointInPath()`, `isPointInStroke()` | Canvas hit regions |
+| **25 (Media)** | Click coordinates on video | Seek bar interaction |
+| **26 (WebGL)** | Raycasting setup | 3D object picking |
+| **30 (A11y)** | Accessible hit targets | Minimum touch target sizes |
+
+```rust
+// Current hit testing (rustkit-layout)
+pub struct HitTestResult {
+    pub box_type: BoxType,
+    pub border_box: Rect,
+    pub content_box: Rect,
+    pub padding_box: Rect,
+    pub local_x: f32,           // ← Used by Canvas for isPointIn*
+    pub local_y: f32,
+    pub depth: u32,             // ← Used for z-ordering
+    pub ancestors: Vec<HitTestAncestor>, // ← Used for event bubbling
+    pub z_index: i32,           // ← Used by Animations for stacking
+    pub position: Position,
+    pub is_scrollable: bool,    // ← Used by Scrolling
+}
+```
+
+#### 14.2 Mouse Events → Advanced Phases
+
+| Phase | Required Mouse Events | Purpose |
+|-------|----------------------|---------|
+| **22 (Animations)** | `mouseenter`, `mouseleave` | Trigger `:hover` transitions |
+| **23 (SVG)** | All mouse events on SVG elements | Interactive diagrams |
+| **24 (Canvas)** | `mousemove` with high frequency | Drawing, games |
+| **25 (Media)** | `click`, `drag` | Play controls, seeking |
+| **26 (WebGL)** | `mousedown`, `mousemove`, `mouseup` | Camera rotation, object manipulation |
+| **29 (WebRTC)** | `click` | Mute/unmute, hang up buttons |
+| **30 (A11y)** | All (for alternative input) | Mouse emulation from assistive tech |
+
+```rust
+// Current mouse event data (rustkit-bindings)
+pub struct MouseEventBindingData {
+    pub client_x: f64,   // ← Canvas/WebGL use for drawing
+    pub client_y: f64,
+    pub screen_x: f64,   // ← WebRTC UI positioning
+    pub screen_y: f64,
+    pub offset_x: f64,   // ← Animations use for hover bounds
+    pub offset_y: f64,
+    pub button: i16,     // ← Media controls (left click only)
+    pub buttons: u16,    // ← WebGL multi-button camera
+    pub ctrl_key: bool,  // ← Canvas shortcuts (Ctrl+Z)
+    pub alt_key: bool,
+    pub shift_key: bool, // ← Constrained drawing
+    pub meta_key: bool,
+}
+```
+
+#### 14.3 Keyboard Events → Advanced Phases
+
+| Phase | Required Keyboard Events | Purpose |
+|-------|-------------------------|---------|
+| **22 (Animations)** | `keydown` | Trigger animations on key press |
+| **24 (Canvas)** | `keydown`, `keyup` | Game controls (WASD, arrows) |
+| **25 (Media)** | `keydown` | Space=play/pause, arrows=seek |
+| **26 (WebGL)** | `keydown`, `keyup` (continuous) | FPS controls, camera movement |
+| **30 (A11y)** | All keyboard events | Full keyboard navigation |
+
+```rust
+// Current keyboard event data (rustkit-bindings)
+pub struct KeyboardEventBindingData {
+    pub key: String,     // ← "ArrowUp", "a", "Enter"
+    pub code: String,    // ← "KeyA" (physical key)
+    pub repeat: bool,    // ← WebGL continuous movement
+    pub ctrl_key: bool,  // ← Canvas undo (Ctrl+Z)
+    pub alt_key: bool,   // ← Accessibility shortcuts
+    pub shift_key: bool,
+    pub meta_key: bool,
+    pub location: u32,   // ← Distinguish left/right Shift
+}
+```
+
+#### 14.4 Focus Management → Advanced Phases
+
+| Phase | Focus Requirements | Purpose |
+|-------|-------------------|---------|
+| **22 (Animations)** | Focus state | `:focus` animations |
+| **24 (Canvas)** | Canvas focus for keyboard | Receive keyboard in canvas games |
+| **25 (Media)** | Focus on controls | Keyboard media control |
+| **26 (WebGL)** | Pointer lock requires focus | FPS games |
+| **29 (WebRTC)** | Focus on call UI | Keyboard shortcuts in calls |
+| **30 (A11y)** | **Critical** | Tab navigation, focus indicators |
+
+```
+Focus Flow for Accessibility (Phase 30):
+
+User presses Tab
+       │
+       ▼
+┌──────────────────────┐
+│   Focus Manager      │
+│   (Phase 14)         │
+├──────────────────────┤
+│ 1. Find next         │
+│    focusable element │
+│ 2. Check tabindex    │
+│ 3. Skip disabled     │
+│ 4. Handle focus trap │
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│   Update DOM         │
+│   activeElement      │
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│   Fire focus events  │
+│   blur → focus       │
+└──────────┬───────────┘
+           │
+           ▼
+┌──────────────────────┐
+│   Update A11y Tree   │ ← Phase 30 depends on this
+│   (Notify screen     │
+│    reader)           │
+└──────────────────────┘
+```
+
+#### 14.5 Event Dispatch → Advanced Phases
+
+| Phase | Dispatch Requirements | Purpose |
+|-------|----------------------|---------|
+| **22 (Animations)** | `transitionend`, `animationend` | Know when animations complete |
+| **23 (SVG)** | Events on SVG DOM nodes | Interactive SVG |
+| **24 (Canvas)** | Events on canvas element | Input handling |
+| **25 (Media)** | Custom media events | `play`, `pause`, `ended`, etc. |
+| **27 (SW)** | `fetch` event in worker | Request interception |
+| **28 (IDB)** | `success`, `error`, `upgradeneeded` | Async database operations |
+| **29 (WebRTC)** | `track`, `icecandidate`, etc. | Connection state |
+| **30 (A11y)** | Synthetic events from AT | Assistive tech triggers clicks |
+
+```rust
+// Event dispatch flow (current implementation)
+pub fn dispatch_event_with_data(
+    &self,
+    node_id: NodeId,
+    event_type: &str,
+    event_data: Option<&EventData>,
+) -> Result<bool, BindingError> {
+    // 1. Create JS Event object
+    let event_js = Self::create_event_object(event_type, event_data);
+
+    // 2. Execute in JS context
+    runtime.evaluate_script(&event_js)?;
+
+    // 3. Call listeners
+    for callback in listeners {
+        runtime.evaluate_script(&format!(
+            "(function(e) {{ {} }})(__rustkit_event)",
+            callback
+        ))?;
+    }
+
+    // 4. Check preventDefault
+    let prevented = runtime.evaluate_script("__rustkit_event.defaultPrevented")?;
+
+    Ok(!was_prevented)  // ← Return false if default prevented
+}
+```
+
+### What's Still Needed in Phase 14 for Phases 21-30
+
+#### Critical Missing Components
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    PHASE 14 COMPLETION CHECKLIST                    │
+├─────────────────────────────────────────────────────────────────────┤
+│                                                                     │
+│  FOR PHASE 22 (Animations):                                         │
+│  ☐ requestAnimationFrame callback system                            │
+│  ☐ Hover state tracking (enter/leave detection)                     │
+│  ☐ Transition event dispatch (transitionend, etc.)                  │
+│                                                                     │
+│  FOR PHASE 23 (SVG):                                                │
+│  ☐ SVG element hit testing (path-based, not box-based)              │
+│  ☐ SVG coordinate space transformation                              │
+│                                                                     │
+│  FOR PHASE 24 (Canvas) & PHASE 26 (WebGL):                          │
+│  ☐ High-frequency mousemove (throttled appropriately)               │
+│  ☐ Pointer lock API (for FPS games)                                 │
+│  ☐ Touch events with multi-touch support                            │
+│  ☐ Gamepad API (optional but common for games)                      │
+│                                                                     │
+│  FOR PHASE 25 (Media):                                              │
+│  ☐ Drag events for seek bar                                         │
+│  ☐ Fullscreen API event integration                                 │
+│                                                                     │
+│  FOR PHASE 27 (Service Workers):                                    │
+│  ☐ MessageEvent for postMessage                                     │
+│  ☐ ExtendableEvent for SW lifecycle                                 │
+│                                                                     │
+│  FOR PHASE 30 (Accessibility):                                      │
+│  ☐ Full keyboard navigation (Tab/Shift+Tab)                         │
+│  ☐ Arrow key navigation within widgets                              │
+│  ☐ Focus visible indicator (:focus-visible)                         │
+│  ☐ Synthetic event dispatch (from screen readers)                   │
+│                                                                     │
+└─────────────────────────────────────────────────────────────────────┘
+```
+
+### Platform Integration Requirements
+
+```
+┌───────────────────────────────────────────────────────────────────────────┐
+│                    WINDOWS PLATFORM INTEGRATION                           │
+├───────────────────────────────────────────────────────────────────────────┤
+│                                                                           │
+│  Win32 Messages → Phase 14 Events → Phase 21-30 Features                  │
+│                                                                           │
+│  ┌──────────────────┐     ┌─────────────────┐     ┌──────────────────┐   │
+│  │ WM_MOUSEMOVE     │────▶│ MouseEvent      │────▶│ Canvas drawing   │   │
+│  │ WM_LBUTTONDOWN   │     │                 │     │ WebGL camera     │   │
+│  │ WM_LBUTTONUP     │     │                 │     │ Animation hover  │   │
+│  └──────────────────┘     └─────────────────┘     └──────────────────┘   │
+│                                                                           │
+│  ┌──────────────────┐     ┌─────────────────┐     ┌──────────────────┐   │
+│  │ WM_KEYDOWN       │────▶│ KeyboardEvent   │────▶│ Game controls    │   │
+│  │ WM_KEYUP         │     │                 │     │ Media shortcuts  │   │
+│  │ WM_CHAR          │     │                 │     │ A11y navigation  │   │
+│  └──────────────────┘     └─────────────────┘     └──────────────────┘   │
+│                                                                           │
+│  ┌──────────────────┐     ┌─────────────────┐     ┌──────────────────┐   │
+│  │ WM_TOUCH         │────▶│ TouchEvent      │────▶│ Mobile Canvas    │   │
+│  │ WM_POINTER*      │     │ PointerEvent    │     │ Mobile WebGL     │   │
+│  └──────────────────┘     └─────────────────┘     └──────────────────┘   │
+│                                                                           │
+│  ┌──────────────────┐     ┌─────────────────┐     ┌──────────────────┐   │
+│  │ WM_MOUSEWHEEL    │────▶│ WheelEvent      │────▶│ Scroll containers│   │
+│  │ WM_MOUSEHWHEEL   │     │                 │     │ Zoom controls    │   │
+│  └──────────────────┘     └─────────────────┘     └──────────────────┘   │
+│                                                                           │
+│  ┌──────────────────┐     ┌─────────────────┐     ┌──────────────────┐   │
+│  │ WM_IME_*         │────▶│ CompositionEvent│────▶│ Text input       │   │
+│  │ (IME messages)   │     │                 │     │ International    │   │
+│  └──────────────────┘     └─────────────────┘     └──────────────────┘   │
+│                                                                           │
+└───────────────────────────────────────────────────────────────────────────┘
+```
+
+### Validation: Can Phase X Start Without Full Phase 14?
+
+| Phase | Can Start Early? | Minimum Phase 14 Requirements |
+|-------|------------------|------------------------------|
+| **21 (Grid)** | ✅ Yes | None (layout-only) |
+| **22 (Animations)** | ⚠️ Partial | RAF, hover detection |
+| **23 (SVG)** | ⚠️ Partial | Basic mouse events |
+| **24 (Canvas)** | ⚠️ Partial | Mouse events, some touch |
+| **25 (Media)** | ⚠️ Partial | Click, keyboard shortcuts |
+| **26 (WebGL)** | ⚠️ Partial | Mouse, keyboard |
+| **27 (SW)** | ❌ No | Message events, fetch events |
+| **28 (IDB)** | ✅ Yes | None (async API) |
+| **29 (WebRTC)** | ❌ No | getUserMedia permissions UI |
+| **30 (A11y)** | ❌ No | Full keyboard + focus management |
+
+---
+
 ## Phase 21: CSS Grid Layout
 
 ### Overview

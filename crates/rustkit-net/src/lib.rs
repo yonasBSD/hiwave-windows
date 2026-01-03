@@ -149,6 +149,152 @@ pub enum CredentialsMode {
     Include,
 }
 
+/// Redirect handling mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RedirectMode {
+    /// Follow redirects automatically (default).
+    #[default]
+    Follow,
+    /// Don't follow redirects, return redirect response.
+    Manual,
+    /// Error on redirect.
+    Error,
+}
+
+/// HTTP redirect status codes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RedirectType {
+    /// 301 Moved Permanently - permanent redirect, may change method to GET.
+    MovedPermanently,
+    /// 302 Found - temporary redirect, may change method to GET.
+    Found,
+    /// 303 See Other - redirect to GET.
+    SeeOther,
+    /// 307 Temporary Redirect - preserve method.
+    TemporaryRedirect,
+    /// 308 Permanent Redirect - preserve method.
+    PermanentRedirect,
+}
+
+impl RedirectType {
+    /// Parse from HTTP status code.
+    pub fn from_status(status: StatusCode) -> Option<Self> {
+        match status.as_u16() {
+            301 => Some(RedirectType::MovedPermanently),
+            302 => Some(RedirectType::Found),
+            303 => Some(RedirectType::SeeOther),
+            307 => Some(RedirectType::TemporaryRedirect),
+            308 => Some(RedirectType::PermanentRedirect),
+            _ => None,
+        }
+    }
+
+    /// Check if this redirect preserves the HTTP method.
+    pub fn preserves_method(self) -> bool {
+        matches!(
+            self,
+            RedirectType::TemporaryRedirect | RedirectType::PermanentRedirect
+        )
+    }
+
+    /// Check if this is a permanent redirect.
+    pub fn is_permanent(self) -> bool {
+        matches!(
+            self,
+            RedirectType::MovedPermanently | RedirectType::PermanentRedirect
+        )
+    }
+
+    /// Get the HTTP status code.
+    pub fn status_code(self) -> u16 {
+        match self {
+            RedirectType::MovedPermanently => 301,
+            RedirectType::Found => 302,
+            RedirectType::SeeOther => 303,
+            RedirectType::TemporaryRedirect => 307,
+            RedirectType::PermanentRedirect => 308,
+        }
+    }
+}
+
+/// Information about a redirect.
+#[derive(Debug, Clone)]
+pub struct RedirectInfo {
+    /// The original request URL.
+    pub from_url: Url,
+    /// The redirect target URL.
+    pub to_url: Url,
+    /// The redirect type.
+    pub redirect_type: RedirectType,
+    /// Whether the method was changed (e.g., POST -> GET).
+    pub method_changed: bool,
+}
+
+/// Redirect chain for tracking multiple redirects.
+#[derive(Debug, Clone, Default)]
+pub struct RedirectChain {
+    /// List of redirects in order.
+    pub redirects: Vec<RedirectInfo>,
+    /// Maximum allowed redirects.
+    pub max_redirects: usize,
+}
+
+impl RedirectChain {
+    /// Create a new redirect chain with default max (20).
+    pub fn new() -> Self {
+        Self {
+            redirects: Vec::new(),
+            max_redirects: 20,
+        }
+    }
+
+    /// Create with custom max redirects.
+    pub fn with_max(max: usize) -> Self {
+        Self {
+            redirects: Vec::new(),
+            max_redirects: max,
+        }
+    }
+
+    /// Add a redirect to the chain.
+    pub fn add(&mut self, info: RedirectInfo) -> Result<(), NetError> {
+        if self.redirects.len() >= self.max_redirects {
+            return Err(NetError::RequestFailed(format!(
+                "Too many redirects (max {})",
+                self.max_redirects
+            )));
+        }
+
+        // Check for redirect loop
+        if self.redirects.iter().any(|r| r.to_url == info.to_url) {
+            return Err(NetError::RequestFailed("Redirect loop detected".into()));
+        }
+
+        self.redirects.push(info);
+        Ok(())
+    }
+
+    /// Get the number of redirects.
+    pub fn count(&self) -> usize {
+        self.redirects.len()
+    }
+
+    /// Check if there were any redirects.
+    pub fn was_redirected(&self) -> bool {
+        !self.redirects.is_empty()
+    }
+
+    /// Get the original URL (before any redirects).
+    pub fn original_url(&self) -> Option<&Url> {
+        self.redirects.first().map(|r| &r.from_url)
+    }
+
+    /// Get the final URL (after all redirects).
+    pub fn final_url(&self) -> Option<&Url> {
+        self.redirects.last().map(|r| &r.to_url)
+    }
+}
+
 /// HTTP response.
 #[derive(Debug)]
 pub struct Response {

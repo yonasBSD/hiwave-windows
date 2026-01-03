@@ -21,6 +21,9 @@ tracing = "0.1"
 # URL handling
 url = "2.5"
 
+# System info
+num_cpus = "1.16"
+
 [dev-dependencies]
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 

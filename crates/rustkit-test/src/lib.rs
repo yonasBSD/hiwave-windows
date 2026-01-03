@@ -26,6 +26,7 @@ use tracing::{debug, info};
 
 pub mod events;
 pub mod layout;
+pub mod navigation;
 pub mod parse;
 pub mod reftest;
 pub mod style;

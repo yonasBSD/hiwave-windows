@@ -174,9 +174,78 @@ impl Default for Location {
     }
 }
 
+/// History object (window.history).
+#[derive(Debug, Clone, Default)]
+pub struct JsHistory {
+    /// Number of entries in the session history.
+    pub length: usize,
+    /// Scroll restoration mode.
+    pub scroll_restoration: String,
+    /// Current state (serialized).
+    pub state: Option<String>,
+}
+
+impl JsHistory {
+    /// Create a new History with default values.
+    pub fn new() -> Self {
+        Self {
+            length: 1,
+            scroll_restoration: "auto".to_string(),
+            state: None,
+        }
+    }
+
+    /// Update from history state.
+    pub fn update(&mut self, length: usize, state: Option<String>) {
+        self.length = length;
+        self.state = state;
+    }
+}
+
+/// Navigator object (window.navigator).
+#[derive(Debug, Clone)]
+pub struct JsNavigator {
+    /// Browser name.
+    pub app_name: String,
+    /// Browser version.
+    pub app_version: String,
+    /// User agent string.
+    pub user_agent: String,
+    /// Platform.
+    pub platform: String,
+    /// Language.
+    pub language: String,
+    /// Languages in preference order.
+    pub languages: Vec<String>,
+    /// Online status.
+    pub online: bool,
+    /// Cookie enabled.
+    pub cookie_enabled: bool,
+    /// Hardware concurrency (CPU cores).
+    pub hardware_concurrency: usize,
+}
+
+impl Default for JsNavigator {
+    fn default() -> Self {
+        Self {
+            app_name: "RustKit".to_string(),
+            app_version: "1.0".to_string(),
+            user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) RustKit/1.0".to_string(),
+            platform: "Win32".to_string(),
+            language: "en-US".to_string(),
+            languages: vec!["en-US".to_string(), "en".to_string()],
+            online: true,
+            cookie_enabled: true,
+            hardware_concurrency: num_cpus::get(),
+        }
+    }
+}
+
 /// Window object state.
 pub struct WindowState {
     pub location: Location,
+    pub history: JsHistory,
+    pub navigator: JsNavigator,
     pub document: Option<Rc<Document>>,
     pub name: String,
     pub inner_width: f64,
@@ -190,6 +259,8 @@ impl Default for WindowState {
     fn default() -> Self {
         Self {
             location: Location::default(),
+            history: JsHistory::new(),
+            navigator: JsNavigator::default(),
             document: None,
             name: String::new(),
             inner_width: 800.0,

@@ -11,8 +11,13 @@
 //! 4. **Structured logging**: Full tracing support
 //! 5. **Platform-agnostic input**: Unified input event types
 
+pub mod history;
 pub mod input;
+pub mod lifecycle;
+
+pub use history::*;
 pub use input::*;
+pub use lifecycle::*;
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
