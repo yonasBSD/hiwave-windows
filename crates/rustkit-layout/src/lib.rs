@@ -14,13 +14,21 @@
 //! 7. **Stacking contexts**: Z-index based paint ordering
 //! 8. **Text rendering**: Font fallback, decorations, line height
 
+pub mod flex;
 pub mod forms;
 pub mod images;
+pub mod scroll;
 pub mod text;
 
 pub use forms::{
     calculate_caret_position, calculate_selection_rects, render_button, render_checkbox,
     render_input, render_radio, CaretInfo, InputLayout, InputState, SelectionInfo,
+};
+pub use flex::{layout_flex_container, Axis, FlexItem, FlexLine};
+pub use scroll::{
+    calculate_scroll_into_view, handle_wheel_event, is_scroll_container, render_scrollbars,
+    ScrollAlignment, Scrollbar, ScrollbarOrientation, ScrollMomentum, ScrollState, StickyOffsets,
+    StickyState, WheelDeltaMode,
 };
 pub use images::{
     calculate_intrinsic_size, calculate_placeholder_size, render_background_image,

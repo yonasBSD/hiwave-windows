@@ -116,7 +116,115 @@ pub enum Display {
     Inline,
     InlineBlock,
     Flex,
+    InlineFlex,
     None,
+}
+
+impl Display {
+    /// Check if this is a flex container.
+    pub fn is_flex(self) -> bool {
+        matches!(self, Display::Flex | Display::InlineFlex)
+    }
+}
+
+// ==================== Flexbox Types ====================
+
+/// Flex direction property.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FlexDirection {
+    #[default]
+    Row,
+    RowReverse,
+    Column,
+    ColumnReverse,
+}
+
+impl FlexDirection {
+    /// Check if this direction is reversed.
+    pub fn is_reverse(self) -> bool {
+        matches!(self, FlexDirection::RowReverse | FlexDirection::ColumnReverse)
+    }
+
+    /// Check if this is a row direction.
+    pub fn is_row(self) -> bool {
+        matches!(self, FlexDirection::Row | FlexDirection::RowReverse)
+    }
+
+    /// Check if this is a column direction.
+    pub fn is_column(self) -> bool {
+        matches!(self, FlexDirection::Column | FlexDirection::ColumnReverse)
+    }
+}
+
+/// Flex wrap property.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum FlexWrap {
+    #[default]
+    NoWrap,
+    Wrap,
+    WrapReverse,
+}
+
+/// Justify content property (main axis alignment).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum JustifyContent {
+    #[default]
+    FlexStart,
+    FlexEnd,
+    Center,
+    SpaceBetween,
+    SpaceAround,
+    SpaceEvenly,
+}
+
+/// Align items property (cross axis alignment for all items).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AlignItems {
+    #[default]
+    Stretch,
+    FlexStart,
+    FlexEnd,
+    Center,
+    Baseline,
+}
+
+/// Align content property (multi-line cross axis alignment).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AlignContent {
+    #[default]
+    Stretch,
+    FlexStart,
+    FlexEnd,
+    Center,
+    SpaceBetween,
+    SpaceAround,
+    SpaceEvenly,
+}
+
+/// Align self property (cross axis alignment for individual item).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AlignSelf {
+    #[default]
+    Auto,
+    FlexStart,
+    FlexEnd,
+    Center,
+    Baseline,
+    Stretch,
+}
+
+/// Flex basis property.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub enum FlexBasis {
+    /// Use the item's main size property (width or height).
+    #[default]
+    Auto,
+    /// Size based on content.
+    Content,
+    /// Explicit length.
+    Length(f32),
+    /// Percentage of container.
+    Percent(f32),
 }
 
 /// Position property values.
@@ -172,6 +280,54 @@ pub enum Overflow {
     Hidden,
     Scroll,
     Auto,
+    Clip,
+}
+
+impl Overflow {
+    /// Check if this overflow creates a scroll container.
+    pub fn is_scrollable(self) -> bool {
+        matches!(self, Overflow::Scroll | Overflow::Auto)
+    }
+
+    /// Check if content is clipped.
+    pub fn clips_content(self) -> bool {
+        !matches!(self, Overflow::Visible)
+    }
+}
+
+/// Scroll behavior for smooth scrolling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ScrollBehavior {
+    #[default]
+    Auto,
+    Smooth,
+}
+
+/// Overscroll behavior.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum OverscrollBehavior {
+    #[default]
+    Auto,
+    Contain,
+    None,
+}
+
+/// Scrollbar width.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ScrollbarWidth {
+    #[default]
+    Auto,
+    Thin,
+    None,
+}
+
+/// Scrollbar gutter.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ScrollbarGutter {
+    #[default]
+    Auto,
+    Stable,
+    BothEdges,
 }
 
 /// Text decoration line values.
@@ -382,6 +538,30 @@ pub struct ComputedStyle {
     pub opacity: f32,
     pub overflow_x: Overflow,
     pub overflow_y: Overflow,
+
+    // Flexbox Container
+    pub flex_direction: FlexDirection,
+    pub flex_wrap: FlexWrap,
+    pub justify_content: JustifyContent,
+    pub align_items: AlignItems,
+    pub align_content: AlignContent,
+    pub row_gap: Length,
+    pub column_gap: Length,
+
+    // Flexbox Item
+    pub order: i32,
+    pub flex_grow: f32,
+    pub flex_shrink: f32,
+    pub flex_basis: FlexBasis,
+    pub align_self: AlignSelf,
+
+    // Scrolling
+    pub scroll_behavior: ScrollBehavior,
+    pub overscroll_behavior_x: OverscrollBehavior,
+    pub overscroll_behavior_y: OverscrollBehavior,
+    pub scrollbar_width: ScrollbarWidth,
+    pub scrollbar_gutter: ScrollbarGutter,
+    pub scrollbar_color: Option<(Color, Color)>, // (thumb, track)
 }
 
 impl ComputedStyle {
@@ -397,6 +577,8 @@ impl ComputedStyle {
             text_decoration_line: TextDecorationLine::NONE,
             text_decoration_color: None,
             text_decoration_thickness: Length::Auto,
+            // Flexbox item defaults
+            flex_shrink: 1.0, // Default is 1, not 0
             ..Default::default()
         }
     }
