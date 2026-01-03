@@ -259,17 +259,17 @@ fn parse_size_value(size: &str, viewport_width: u32) -> u32 {
 }
 
 /// Create a placeholder image while loading
-pub fn create_placeholder(width: u32, height: u32, color: [u8; 4]) -> image::RgbaImage {
-    let mut img = image::RgbaImage::new(width, height);
+pub fn create_placeholder(width: u32, height: u32, color: [u8; 4]) -> rustkit_codecs::RgbaImage {
+    let mut img = rustkit_codecs::RgbaImage::new(width, height);
     for pixel in img.pixels_mut() {
-        *pixel = image::Rgba(color);
+        pixel.copy_from_slice(&color);
     }
     img
 }
 
 /// Detect broken image (e.g., invalid data)
 pub fn is_valid_image_data(bytes: &[u8]) -> bool {
-    image::guess_format(bytes).is_ok()
+    rustkit_codecs::detect_format(bytes).is_some()
 }
 
 #[cfg(test)]

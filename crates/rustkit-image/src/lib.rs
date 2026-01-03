@@ -14,7 +14,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::{Duration, Instant};
 
-use image::{DynamicImage, GenericImageView, ImageFormat, RgbaImage};
+use rustkit_codecs::{Decoded, ImageFormat, RgbaImage};
 use thiserror::Error;
 use tokio::sync::{mpsc, oneshot};
 use tracing::debug;
@@ -86,13 +86,14 @@ pub struct LoadedImage {
 
 impl LoadedImage {
     /// Create a new loaded image from decoded data
-    pub fn new(url: Url, image: DynamicImage) -> Self {
-        let (natural_width, natural_height) = image.dimensions();
+    pub fn new(url: Url, image: RgbaImage) -> Self {
+        let natural_width = image.width();
+        let natural_height = image.height();
         Self {
             url,
             natural_width,
             natural_height,
-            data: ImageData::Static(image.into_rgba8()),
+            data: ImageData::Static(image),
             decoded_at: Instant::now(),
             content_type: None,
             complete: true,
@@ -404,8 +405,12 @@ impl ImageManager {
     /// Decode image from bytes
     fn decode_bytes(&self, url: &Url, bytes: &[u8]) -> ImageResult<LoadedImage> {
         // Guess format from bytes
-        let format = image::guess_format(bytes)
-            .map_err(|e| ImageError::DecodeError(e.to_string()))?;
+        let format = rustkit_codecs::detect_format(bytes)
+            .unwrap_or(ImageFormat::Unknown);
+
+        if format == ImageFormat::Unknown {
+            return Err(ImageError::DecodeError("Unknown image format".into()));
+        }
 
         // Handle animated GIFs specially
         if format == ImageFormat::Gif {
@@ -413,11 +418,22 @@ impl ImageManager {
         }
 
         // Decode static image
-        let img = image::load_from_memory(bytes)
+        let decoded = rustkit_codecs::decode_any(bytes)
             .map_err(|e| ImageError::DecodeError(e.to_string()))?;
+        let img = match decoded {
+            Decoded::Static(img) => img,
+            Decoded::Animated(frames) => {
+                // Some formats may be treated as animated later; for now, take first frame.
+                frames
+                    .into_iter()
+                    .next()
+                    .map(|f| f.image)
+                    .ok_or_else(|| ImageError::DecodeError("Animated image had no frames".into()))?
+            }
+        };
 
         // Check dimensions
-        let (width, height) = img.dimensions();
+        let (width, height) = (img.width(), img.height());
         if width > self.max_dimensions.0 || height > self.max_dimensions.1 {
             return Err(ImageError::TooLarge { width, height });
         }
@@ -427,32 +443,21 @@ impl ImageManager {
 
     /// Decode an animated GIF
     fn decode_gif(&self, url: &Url, bytes: &[u8]) -> ImageResult<LoadedImage> {
-        use image::codecs::gif::GifDecoder;
-        use image::AnimationDecoder;
-
-        let decoder = GifDecoder::new(std::io::Cursor::new(bytes))
+        let decoded_frames = rustkit_codecs::decode_gif(bytes)
             .map_err(|e| ImageError::DecodeError(e.to_string()))?;
 
-        let frames_result: Result<Vec<_>, _> = decoder.into_frames().collect();
-        let raw_frames = frames_result.map_err(|e| ImageError::DecodeError(e.to_string()))?;
-
-        let mut frames = Vec::with_capacity(raw_frames.len());
-        for frame in raw_frames {
-            let delay = frame.delay().numer_denom_ms();
-            let delay_ms = (delay.0 * 1000) / delay.1;
-            let rgba = frame.into_buffer();
-
+        let mut frames = Vec::with_capacity(decoded_frames.len());
+        for f in decoded_frames {
             // Check dimensions
-            if rgba.width() > self.max_dimensions.0 || rgba.height() > self.max_dimensions.1 {
+            if f.image.width() > self.max_dimensions.0 || f.image.height() > self.max_dimensions.1 {
                 return Err(ImageError::TooLarge {
-                    width: rgba.width(),
-                    height: rgba.height(),
+                    width: f.image.width(),
+                    height: f.image.height(),
                 });
             }
-
             frames.push(AnimationFrame {
-                image: rgba,
-                delay_ms: delay_ms.max(10), // Minimum 10ms delay
+                image: f.image,
+                delay_ms: f.delay_ms.max(10),
             });
         }
 

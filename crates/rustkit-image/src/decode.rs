@@ -2,11 +2,11 @@
 //!
 //! Handles detection and decoding of various image formats.
 
-use image::ImageFormat;
+use rustkit_codecs::ImageFormat;
 
 /// Detect image format from bytes
 pub fn detect_format(bytes: &[u8]) -> Option<ImageFormat> {
-    image::guess_format(bytes).ok()
+    rustkit_codecs::detect_format(bytes)
 }
 
 /// Get MIME type for an image format
@@ -18,8 +18,6 @@ pub fn format_to_mime(format: ImageFormat) -> &'static str {
         ImageFormat::WebP => "image/webp",
         ImageFormat::Bmp => "image/bmp",
         ImageFormat::Ico => "image/x-icon",
-        ImageFormat::Tiff => "image/tiff",
-        ImageFormat::Avif => "image/avif",
         _ => "application/octet-stream",
     }
 }
@@ -33,8 +31,6 @@ pub fn format_to_extension(format: ImageFormat) -> &'static str {
         ImageFormat::WebP => "webp",
         ImageFormat::Bmp => "bmp",
         ImageFormat::Ico => "ico",
-        ImageFormat::Tiff => "tiff",
-        ImageFormat::Avif => "avif",
         _ => "bin",
     }
 }
@@ -48,8 +44,6 @@ pub fn mime_to_format(mime: &str) -> Option<ImageFormat> {
         "image/webp" => Some(ImageFormat::WebP),
         "image/bmp" => Some(ImageFormat::Bmp),
         "image/x-icon" | "image/vnd.microsoft.icon" => Some(ImageFormat::Ico),
-        "image/tiff" => Some(ImageFormat::Tiff),
-        "image/avif" => Some(ImageFormat::Avif),
         _ => None,
     }
 }

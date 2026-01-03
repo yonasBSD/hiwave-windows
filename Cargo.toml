@@ -15,6 +15,7 @@ members = [
     "crates/rustkit-css",
     "crates/rustkit-cssparser",
     "crates/rustkit-text",
+    "crates/rustkit-codecs",
     "crates/rustkit-layout",
     "crates/rustkit-js",
     "crates/rustkit-bindings",
@@ -84,7 +85,6 @@ reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"
 base64 = "0.22"
 urlencoding = "2.1"
 lru = "0.12"
-image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp", "bmp", "ico"] }
 dirs = "5.0"
 rfd = "0.15"
 
