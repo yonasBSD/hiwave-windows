@@ -23,6 +23,7 @@ members = [
     "crates/rustkit-canvas",
     "crates/rustkit-webgl",
     "crates/rustkit-renderer",
+    "crates/rustkit-media",
     "crates/rustkit-engine",
     "crates/rustkit-common",
     "crates/rustkit-test",
