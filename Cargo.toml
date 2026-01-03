@@ -24,6 +24,7 @@ members = [
     "crates/rustkit-webgl",
     "crates/rustkit-renderer",
     "crates/rustkit-media",
+    "crates/rustkit-sw",
     "crates/rustkit-engine",
     "crates/rustkit-common",
     "crates/rustkit-test",
