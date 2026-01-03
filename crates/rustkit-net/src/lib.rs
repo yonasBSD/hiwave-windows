@@ -18,7 +18,7 @@ use std::time::Duration;
 use bytes::Bytes;
 use http::{HeaderMap, HeaderName, HeaderValue, Method, StatusCode};
 use mime::Mime;
-use reqwest::Client;
+use rustkit_http::Client as HttpClient;
 use thiserror::Error;
 use tokio::sync::{mpsc, RwLock};
 use tracing::{debug, error, info, trace, warn};
@@ -58,7 +58,7 @@ pub enum NetError {
     IoError(#[from] std::io::Error),
 
     #[error("HTTP error: {0}")]
-    HttpError(#[from] reqwest::Error),
+    HttpError(#[from] rustkit_http::HttpError),
 }
 
 /// Unique identifier for a request.
@@ -413,7 +413,7 @@ impl Default for LoaderConfig {
 
 /// Resource loader for fetching URLs.
 pub struct ResourceLoader {
-    client: Client,
+    client: HttpClient,
     config: LoaderConfig,
     interceptor: Option<Arc<RwLock<RequestInterceptor>>>,
     download_manager: Arc<DownloadManager>,
@@ -422,10 +422,10 @@ pub struct ResourceLoader {
 impl ResourceLoader {
     /// Create a new resource loader.
     pub fn new(config: LoaderConfig) -> Result<Self, NetError> {
-        let client = Client::builder()
+        let client = HttpClient::builder()
             .user_agent(&config.user_agent)
             .timeout(config.default_timeout)
-            .redirect(reqwest::redirect::Policy::limited(config.max_redirects))
+            .redirect(true, config.max_redirects)
             .cookie_store(config.cookies_enabled)
             .build()
             .map_err(|e| NetError::RequestFailed(e.to_string()))?;
@@ -448,6 +448,11 @@ impl ResourceLoader {
     /// Get the download manager.
     pub fn download_manager(&self) -> Arc<DownloadManager> {
         Arc::clone(&self.download_manager)
+    }
+
+    /// Get a reference to the HTTP client.
+    pub fn client(&self) -> &HttpClient {
+        &self.client
     }
 
     /// Fetch a URL.
@@ -475,73 +480,59 @@ impl ResourceLoader {
             }
         }
 
-        // Build reqwest request
-        let mut req_builder = self
-            .client
-            .request(request.method.clone(), request.url.clone());
-
-        // Add headers
-        for (name, value) in request.headers.iter() {
-            req_builder = req_builder.header(name, value);
-        }
+        // Build headers for rustkit-http request
+        let mut headers = request.headers.clone();
 
         // Add Accept-Language
-        req_builder = req_builder.header("Accept-Language", &self.config.accept_language);
+        if let Ok(val) = HeaderValue::try_from(&self.config.accept_language) {
+            headers.insert(HeaderName::from_static("accept-language"), val);
+        }
 
         // Add referrer
         if let Some(ref referrer) = request.referrer {
-            req_builder = req_builder.header("Referer", referrer.as_str());
+            if let Ok(val) = HeaderValue::try_from(referrer.as_str()) {
+                headers.insert(HeaderName::from_static("referer"), val);
+            }
         }
 
-        // Add body
-        if let Some(body) = request.body {
-            req_builder = req_builder.body(body);
-        }
+        // Execute request using rustkit-http
+        let http_response = self
+            .client
+            .request(
+                request.method.clone(),
+                request.url.as_str(),
+                headers,
+                request.body.clone(),
+            )
+            .await?;
 
-        // Set timeout
-        if let Some(timeout) = request.timeout {
-            req_builder = req_builder.timeout(timeout);
-        }
-
-        // Execute request
-        let response = req_builder.send().await?;
-
-        let status = response.status();
-        let headers = response.headers().clone();
-        let url = response.url().clone();
+        let url = http_response.url.clone();
 
         // Parse content type
-        let content_type = headers
-            .get("content-type")
-            .and_then(|v| v.to_str().ok())
+        let content_type = http_response
+            .content_type()
             .and_then(|s| s.parse::<Mime>().ok());
 
         // Get content length
-        let content_length = headers
-            .get("content-length")
-            .and_then(|v| v.to_str().ok())
-            .and_then(|s| s.parse::<u64>().ok());
-
-        // Read body
-        let body = response.bytes().await?;
+        let content_length = http_response.content_length();
 
         trace!(
             url = %url,
-            status = %status,
+            status = %http_response.status,
             content_type = ?content_type,
             content_length = ?content_length,
-            body_len = body.len(),
+            body_len = http_response.body.len(),
             "Response received"
         );
 
         Ok(Response {
             request_id: request.id,
             url,
-            status,
-            headers,
+            status: http_response.status,
+            headers: http_response.headers,
             content_type,
             content_length,
-            body: ResponseBody::Full(body),
+            body: ResponseBody::Full(http_response.body),
         })
     }
 
@@ -553,7 +544,7 @@ impl ResourceLoader {
     ) -> Result<DownloadId, NetError> {
         let request = Request::get(url);
         self.download_manager
-            .start(request, destination, self.client.clone())
+            .start(request, destination, &self.client)
             .await
     }
 }

@@ -5,8 +5,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
-use futures::StreamExt;
-use reqwest::Client;
+use rustkit_http::Client as HttpClient;
 use tokio::fs::File;
 use tokio::io::AsyncWriteExt;
 use tokio::sync::{mpsc, RwLock};
@@ -163,7 +162,7 @@ impl DownloadManager {
         &self,
         request: Request,
         destination: PathBuf,
-        client: Client,
+        client: &HttpClient,
     ) -> Result<DownloadId, NetError> {
         let id = DownloadId::new();
         let url = request.url.to_string();
@@ -197,12 +196,13 @@ impl DownloadManager {
         let _downloads = Arc::new(RwLock::new(HashMap::<DownloadId, Download>::new()));
         let event_tx = self.event_tx.read().await.clone();
 
+        // For downloads, we use the streaming API
+        let url_str = request.url.to_string();
         tokio::spawn(async move {
-            let result = Self::download_file(
+            let result = Self::download_file_streaming(
                 id,
-                request,
+                &url_str,
                 destination.clone(),
-                client,
                 &mut cancel_rx,
                 event_tx.as_ref(),
             )
@@ -237,19 +237,24 @@ impl DownloadManager {
         Ok(id)
     }
 
-    /// Internal download implementation.
-    async fn download_file(
+    /// Internal download implementation using rustkit-http streaming.
+    async fn download_file_streaming(
         id: DownloadId,
-        request: Request,
+        url: &str,
         destination: PathBuf,
-        client: Client,
         cancel_rx: &mut mpsc::Receiver<()>,
         event_tx: Option<&mpsc::UnboundedSender<DownloadEvent>>,
     ) -> Result<(), NetError> {
-        // Send request
-        let response = client.get(request.url.clone()).send().await?;
+        // Create a new client for this download (streaming requires ownership)
+        let client = HttpClient::new().map_err(|e| NetError::RequestFailed(e.to_string()))?;
 
-        let total_size = response.content_length();
+        // Start streaming request
+        let mut response = client
+            .get_streaming(url)
+            .await
+            .map_err(|e| NetError::RequestFailed(e.to_string()))?;
+
+        let total_size = response.content_length;
 
         // Create parent directories
         if let Some(parent) = destination.parent() {
@@ -259,20 +264,28 @@ impl DownloadManager {
         // Create file
         let mut file = File::create(&destination).await?;
         let mut downloaded: u64 = 0;
-        let mut stream = response.bytes_stream();
+        let mut buf = vec![0u8; 8192]; // 8KB buffer
 
         let start_time = std::time::Instant::now();
 
-        while let Some(chunk_result) = tokio::select! {
-            chunk = stream.next() => chunk,
-            _ = cancel_rx.recv() => {
+        loop {
+            // Check for cancellation
+            if cancel_rx.try_recv().is_ok() {
                 debug!(id = id.raw(), "Download cancelled");
                 return Err(NetError::Cancelled);
             }
-        } {
-            let chunk = chunk_result?;
-            file.write_all(&chunk).await?;
-            downloaded += chunk.len() as u64;
+
+            let n = response
+                .chunk(&mut buf)
+                .await
+                .map_err(|e| NetError::RequestFailed(e.to_string()))?;
+
+            if n == 0 {
+                break;
+            }
+
+            file.write_all(&buf[..n]).await?;
+            downloaded += n as u64;
 
             // Calculate speed
             let elapsed = start_time.elapsed().as_secs_f64();
@@ -283,7 +296,7 @@ impl DownloadManager {
             };
 
             // Emit progress (throttled - every 100KB or so)
-            if downloaded % (100 * 1024) < chunk.len() as u64 {
+            if downloaded % (100 * 1024) < n as u64 {
                 if let Some(tx) = event_tx {
                     let _ = tx.send(DownloadEvent::Progress {
                         id,

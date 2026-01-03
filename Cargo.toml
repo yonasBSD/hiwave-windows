@@ -31,6 +31,7 @@ members = [
     "crates/rustkit-idb",
     "crates/rustkit-worker",
     "crates/rustkit-a11y",
+    "crates/rustkit-http",
     "crates/rustkit-engine",
     "crates/rustkit-common",
     "crates/rustkit-test",
@@ -81,7 +82,8 @@ rand = "0.8"
 # Utilities
 fuzzy-matcher = "0.3"
 url = "2.5"
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "blocking"] }
+# reqwest removed - replaced by rustkit-http
+rustkit-http = { path = "crates/rustkit-http" }
 base64 = "0.22"
 urlencoding = "2.1"
 lru = "0.12"

@@ -47,7 +47,7 @@ pub enum ImageError {
     InvalidUrl(String),
 
     #[error("Network error: {0}")]
-    NetworkError(#[from] reqwest::Error),
+    NetworkError(#[from] rustkit_http::HttpError),
 
     #[error("IO error: {0}")]
     IoError(#[from] std::io::Error),
@@ -285,7 +285,7 @@ pub struct ImageManager {
     cache: Arc<RwLock<ImageCache>>,
 
     /// HTTP client for fetching images
-    client: reqwest::Client,
+    client: rustkit_http::Client,
 
     /// Pending loads
     #[allow(clippy::type_complexity)]
@@ -309,10 +309,10 @@ impl ImageManager {
 
         Self {
             cache: Arc::new(RwLock::new(ImageCache::new(100))),
-            client: reqwest::Client::builder()
+            client: rustkit_http::Client::builder()
                 .timeout(Duration::from_secs(30))
                 .build()
-                .unwrap_or_default(),
+                .expect("Failed to create HTTP client"),
             pending: Arc::new(RwLock::new(HashMap::new())),
             request_tx,
             max_dimensions: (16384, 16384),
@@ -376,27 +376,21 @@ impl ImageManager {
             return self.decode_data_url(&url);
         }
 
-        // Fetch the image
-        let response = self.client.get(url.as_str()).send().await?;
+        // Fetch the image using rustkit-http
+        let response = self.client.get(url.as_str()).await?;
 
-        if !response.status().is_success() {
+        if !response.is_success() {
             return Err(ImageError::FetchError(format!(
                 "HTTP {} for {}",
-                response.status(),
+                response.status,
                 url
             )));
         }
 
-        let content_type = response
-            .headers()
-            .get("content-type")
-            .and_then(|v| v.to_str().ok())
-            .map(|s| s.to_string());
-
-        let bytes = response.bytes().await?;
+        let content_type = response.content_type().map(|s| s.to_string());
 
         // Decode the image
-        let mut loaded = self.decode_bytes(&url, &bytes)?;
+        let mut loaded = self.decode_bytes(&url, &response.body)?;
         loaded.content_type = content_type;
 
         Ok(Arc::new(loaded))
