@@ -119,6 +119,44 @@ pub trait TreeSink {
 
     /// Get the tag name of a node.
     fn get_tag_name(&self, node: Self::NodeId) -> Option<String>;
+
+    // ==================== Extended TreeSink Methods ====================
+
+    /// Called when a parse error is encountered.
+    /// The default implementation ignores errors.
+    fn parse_error(&mut self, _error: &str) {
+        // Default: ignore parse errors
+    }
+
+    /// Set the document quirks mode.
+    /// Called after DOCTYPE processing.
+    fn set_quirks_mode(&mut self, _mode: QuirksMode) {
+        // Default: ignore quirks mode
+    }
+
+    /// Get the template contents document fragment.
+    /// For template elements, returns the fragment that holds template contents.
+    fn template_contents(&self, _template: Self::NodeId) -> Option<Self::NodeId> {
+        // Default: templates not supported
+        None
+    }
+
+    /// Check if an element is a template element.
+    fn is_template_element(&self, node: Self::NodeId) -> bool {
+        self.get_tag_name(node).map_or(false, |n| n == "template")
+    }
+
+    /// Mark a script element as "already started" per HTML5 spec.
+    /// This prevents script execution on subsequent insertions.
+    fn mark_script_already_started(&mut self, _script: Self::NodeId) {
+        // Default: no-op
+    }
+
+    /// Get the encoding confidence (tentative, certain, irrelevant).
+    /// Returns "irrelevant" by default.
+    fn get_encoding_confidence(&self) -> &'static str {
+        "irrelevant"
+    }
 }
 
 /// Parse HTML from a string using the provided sink.
