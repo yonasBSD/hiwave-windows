@@ -27,6 +27,7 @@ members = [
     "crates/rustkit-sw",
     "crates/rustkit-idb",
     "crates/rustkit-worker",
+    "crates/rustkit-a11y",
     "crates/rustkit-engine",
     "crates/rustkit-common",
     "crates/rustkit-test",

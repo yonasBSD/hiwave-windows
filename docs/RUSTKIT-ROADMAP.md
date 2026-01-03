@@ -4,7 +4,7 @@
 
 RustKit is a Rust-native browser engine designed to replace WebKit's WinCairo port for the HiWave browser. This roadmap outlines the development phases beyond the initial MVP implementation.
 
-**Current Status:** Phase 28 Complete (IndexedDB) - Ready for Phase 29 (Web Workers)
+**Current Status:** Phase 29 Complete (Web Workers) - Ready for Phase 30 (Accessibility)
 **Branch:** `master`
 
 ---
@@ -43,6 +43,7 @@ RustKit is a Rust-native browser engine designed to replace WebKit's WinCairo po
 | 26 | Audio/Video | ✅ Complete | HTMLMediaElement, audio/video players |
 | 27 | Service Workers | ✅ Complete | Registration, lifecycle, Cache API |
 | 28 | IndexedDB | ✅ Complete | IDBFactory, object stores, transactions |
+| 29 | Web Workers | ✅ Complete | DedicatedWorker, SharedWorker, MessageChannel |
 
 ---
 
@@ -266,14 +267,15 @@ Media elements:
 
 ---
 
-### Phase 29: Web Workers
-**Priority:** Medium | **Est. Duration:** 2-3 weeks
+### Phase 29: Web Workers ✅
+**Status:** Complete
 
-- [ ] **Dedicated Workers** - new Worker()
-- [ ] **Message passing** - postMessage, onmessage
-- [ ] **Shared Workers** - SharedWorker (basic)
-- [ ] **Transferable objects** - ArrayBuffer transfer
-- [ ] **Worker lifecycle** - terminate
+- [x] **Dedicated Workers** - `new Worker(url)`
+- [x] **Shared Workers** - `new SharedWorker(url)`
+- [x] **Worker messaging** - postMessage, MessageChannel
+- [x] **Transferable objects** - ArrayBuffer transfer
+- [x] **Worker termination** - terminate()
+- [x] **WorkerGlobalScope** - self, navigator, importScripts
 
 ---
 
@@ -339,6 +341,7 @@ rustkit-renderer   # GPU display list renderer
 rustkit-media      # Audio/video playback
 rustkit-sw         # Service workers
 rustkit-idb        # IndexedDB
+rustkit-worker     # Web Workers
 rustkit-engine     # Orchestration, multi-view
 rustkit-test       # WPT harness
 rustkit-bench      # Benchmarks
