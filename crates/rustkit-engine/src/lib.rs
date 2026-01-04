@@ -16,8 +16,9 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 
 use rustkit_bindings::DomBindings;
-// Re-export IpcMessage for external use
+// Re-export types for external use
 pub use rustkit_bindings::IpcMessage;
+pub use rustkit_renderer::{RenderStats, ScreenshotMetadata};
 use rustkit_compositor::Compositor;
 use rustkit_core::{LoadEvent, NavigationRequest, NavigationStateMachine};
 use rustkit_css::ComputedStyle;
@@ -993,6 +994,66 @@ impl Engine {
                 trace!(?id, error = %e, "Failed to render view");
             }
         }
+    }
+
+    /// Get render statistics from the renderer.
+    pub fn get_render_stats(&self) -> RenderStats {
+        self.renderer
+            .as_ref()
+            .map(|r| r.get_render_stats())
+            .unwrap_or_default()
+    }
+
+    /// Capture a screenshot of a view to a PNG file.
+    ///
+    /// This renders the view to an offscreen texture and reads back the pixels.
+    pub fn capture_view_screenshot(
+        &mut self,
+        id: EngineViewId,
+        output_path: &std::path::Path,
+    ) -> Result<ScreenshotMetadata, EngineError> {
+        let view = self.views.get(&id).ok_or(EngineError::ViewNotFound(id))?;
+        let display_list = view.display_list.as_ref();
+        let viewhost_id = view.viewhost_id;
+
+        // Get view bounds for viewport
+        let bounds = self
+            .viewhost
+            .get_bounds(viewhost_id)
+            .map_err(|e| EngineError::ViewError(e.to_string()))?;
+
+        if bounds.width == 0 || bounds.height == 0 {
+            return Err(EngineError::RenderError(format!(
+                "Cannot capture screenshot of zero-sized view: {}x{}",
+                bounds.width, bounds.height
+            )));
+        }
+
+        if let Some(renderer) = &mut self.renderer {
+            // Update viewport size
+            renderer.set_viewport_size(bounds.width, bounds.height);
+            
+            // Get commands from display list or use empty
+            let commands = display_list
+                .map(|dl| dl.commands.as_slice())
+                .unwrap_or(&[]);
+            
+            // Capture to file
+            renderer
+                .execute_and_capture(commands, output_path)
+                .map_err(|e| EngineError::RenderError(e.to_string()))
+        } else {
+            Err(EngineError::RenderError("No renderer available".to_string()))
+        }
+    }
+
+    /// Get the native window handle (HWND) for a view.
+    #[cfg(windows)]
+    pub fn get_view_hwnd(&self, id: EngineViewId) -> Result<HWND, EngineError> {
+        let view = self.views.get(&id).ok_or(EngineError::ViewNotFound(id))?;
+        self.viewhost
+            .get_hwnd(view.viewhost_id)
+            .map_err(|e| EngineError::ViewError(e.to_string()))
     }
 
     /// Render a view (internal).

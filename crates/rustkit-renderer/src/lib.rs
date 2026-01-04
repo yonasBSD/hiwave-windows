@@ -51,9 +51,11 @@ use wgpu::util::DeviceExt;
 mod glyph;
 mod pipeline;
 mod shaders;
+pub mod screenshot;
 
 pub use glyph::*;
 pub use pipeline::*;
+pub use screenshot::*;
 
 // ==================== Errors ====================
 
@@ -74,6 +76,41 @@ pub enum RendererError {
 
     #[error("Surface error: {0}")]
     Surface(#[from] wgpu::SurfaceError),
+}
+
+// ==================== Render Statistics ====================
+
+/// Statistics about the last render pass.
+#[derive(Debug, Clone, Default)]
+pub struct RenderStats {
+    pub color_vertex_count: usize,
+    pub color_index_count: usize,
+    pub texture_vertex_count: usize,
+    pub texture_index_count: usize,
+    pub clip_stack_depth: usize,
+    pub stacking_context_depth: usize,
+}
+
+/// Generate a simple ISO8601-ish timestamp without external dependencies.
+fn chrono_lite_timestamp() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let duration = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = duration.as_secs();
+    // Simple conversion (approximate, doesn't handle leap seconds etc.)
+    let days = secs / 86400;
+    let years = 1970 + days / 365;
+    let remaining = (days % 365) as u32;
+    let month = remaining / 30 + 1;
+    let day = remaining % 30 + 1;
+    let hours = (secs % 86400) / 3600;
+    let minutes = (secs % 3600) / 60;
+    let seconds = secs % 60;
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+        years, month, day, hours, minutes, seconds
+    )
 }
 
 // ==================== Vertex Types ====================
@@ -281,6 +318,7 @@ impl TextureCache {
 pub struct Renderer {
     device: Arc<wgpu::Device>,
     queue: Arc<wgpu::Queue>,
+    surface_format: wgpu::TextureFormat,
 
     // Pipelines
     color_pipeline: wgpu::RenderPipeline,
@@ -404,6 +442,7 @@ impl Renderer {
         Ok(Self {
             device,
             queue,
+            surface_format,
             color_pipeline,
             texture_pipeline,
             uniform_buffer,
@@ -950,6 +989,87 @@ impl Renderer {
         Ok(())
     }
 
+    /// Execute a display list and capture the result to a PNG file.
+    ///
+    /// This renders to an offscreen texture and reads back the pixels.
+    pub fn execute_and_capture(
+        &mut self,
+        commands: &[DisplayCommand],
+        output_path: impl AsRef<std::path::Path>,
+    ) -> Result<screenshot::ScreenshotMetadata, RendererError> {
+        let (width, height) = self.viewport_size;
+        let capture_format = self.surface_format;
+        
+        // Create offscreen target
+        let (texture, view) = screenshot::create_offscreen_target(
+            &self.device,
+            width,
+            height,
+            capture_format,
+        );
+        
+        // Render to offscreen target
+        self.execute(commands, &view)?;
+        
+        // Create readback buffer
+        let readback = screenshot::GpuReadbackBuffer::new(&self.device, width, height);
+        
+        // Copy texture to readback buffer
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("Screenshot Copy Encoder"),
+        });
+        readback.copy_from_texture(&mut encoder, &texture);
+        self.queue.submit(std::iter::once(encoder.finish()));
+        
+        // Read back the data
+        let mut pixels = readback
+            .read_data_sync(&self.device)
+            .map_err(|e| RendererError::TextureUpload(e.to_string()))?;
+
+        // If the capture target is BGRA, swizzle to RGBA for PNG encoding.
+        match capture_format {
+            wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Bgra8UnormSrgb => {
+                for px in pixels.chunks_exact_mut(4) {
+                    px.swap(0, 2);
+                }
+            }
+            _ => {}
+        }
+        
+        // Save PNG
+        screenshot::save_png(&output_path, width, height, &pixels)
+            .map_err(|e| RendererError::TextureUpload(e.to_string()))?;
+        
+        // Create and save metadata
+        let metadata = screenshot::ScreenshotMetadata {
+            width,
+            height,
+            adapter: "Unknown".to_string(), // TODO: Get actual adapter name
+            format: format!("{:?}", capture_format),
+            timestamp: chrono_lite_timestamp(),
+            color_vertex_count: self.color_vertices.len(),
+            texture_vertex_count: self.texture_vertices.len(),
+        };
+        
+        let metadata_path = output_path.as_ref().with_extension("json");
+        screenshot::save_metadata(&metadata_path, &metadata)
+            .map_err(|e| RendererError::TextureUpload(e.to_string()))?;
+        
+        Ok(metadata)
+    }
+
+    /// Get render statistics for the last frame.
+    pub fn get_render_stats(&self) -> RenderStats {
+        RenderStats {
+            color_vertex_count: self.color_vertices.len(),
+            color_index_count: self.color_indices.len(),
+            texture_vertex_count: self.texture_vertices.len(),
+            texture_index_count: self.texture_indices.len(),
+            clip_stack_depth: self.clip_stack.len(),
+            stacking_context_depth: self.stacking_contexts.len(),
+        }
+    }
+
     /// Get access to the texture cache for external image loading.
     pub fn texture_cache(&mut self) -> &mut TextureCache {
         &mut self.texture_cache
@@ -958,6 +1078,11 @@ impl Renderer {
     /// Get access to the glyph cache.
     pub fn glyph_cache(&mut self) -> &mut GlyphCache {
         &mut self.glyph_cache
+    }
+
+    /// Dump the glyph atlas (CPU mirror) to a PNG for debugging.
+    pub fn dump_glyph_atlas_png(&self, path: impl AsRef<std::path::Path>) -> Result<(), RendererError> {
+        self.glyph_cache.dump_cpu_atlas_png(path)
     }
 }
 

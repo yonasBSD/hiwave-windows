@@ -10,6 +10,8 @@
 
 #[cfg(target_os = "windows")]
 mod win32;
+#[cfg(target_os = "windows")]
+pub mod screenshot_harness;
 
 #[cfg(target_os = "windows")]
 pub use win32::run_native;

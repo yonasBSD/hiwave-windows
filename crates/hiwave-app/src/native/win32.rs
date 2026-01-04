@@ -551,11 +551,231 @@ pub fn run_native() -> Result<(), String> {
     install_panic_hook();
     print_startup_banner();
 
+    // Check for screenshot test mode
+    if let Some(config) = super::screenshot_harness::parse_screenshot_args() {
+        info!("Running in screenshot test mode");
+        return run_screenshot_mode(config);
+    }
+
     let mut browser = NativeBrowser::new()?;
     browser.init()?;
     browser.run();
 
     info!("HiWave shutdown complete");
     Ok(())
+}
+
+/// Run in screenshot test mode.
+fn run_screenshot_mode(config: super::screenshot_harness::ScreenshotConfig) -> Result<(), String> {
+    use super::screenshot_harness::{get_test_scene_html, CaptureMetadata, GpuCaptureInfo, OsCaptureInfo, RenderStatsInfo};
+    use std::fs;
+    
+    info!(
+        output_dir = %config.output_dir.display(),
+        scene = ?config.scene,
+        url = ?config.url,
+        frames = config.wait_frames,
+        "Screenshot test configuration"
+    );
+    
+    // Create output directory
+    fs::create_dir_all(&config.output_dir)
+        .map_err(|e| format!("Failed to create output directory: {}", e))?;
+    
+    // Create browser instance
+    let mut browser = NativeBrowser::new()?;
+    browser.init()?;
+    
+    // Determine what content to load
+    let scene_name = if let Some(ref scene) = config.scene {
+        // Load test scene HTML
+        if let Some(html) = get_test_scene_html(scene) {
+            info!(scene, "Loading test scene");
+            if let Some(&content_id) = browser.views.get(&ViewType::Content) {
+                browser.engine.borrow_mut()
+                    .load_html(content_id, html)
+                    .map_err(|e| format!("Failed to load scene HTML: {}", e))?;
+            }
+            scene.clone()
+        } else {
+            return Err(format!("Unknown test scene: {}. Available: {:?}", 
+                scene, super::screenshot_harness::list_test_scenes()));
+        }
+    } else if let Some(ref url) = config.url {
+        info!(url, "Loading URL");
+        browser.navigate(url);
+        url.replace(['/', ':', '.'], "_")
+    } else {
+        // Default to about page
+        "about".to_string()
+    };
+    
+    // Wait for frames to render
+    info!(frames = config.wait_frames, "Rendering frames");
+    for frame in 0..config.wait_frames {
+        // Process messages and render
+        browser.viewhost.pump_messages();
+        browser.engine.borrow_mut().render_all_views();
+        browser.process_ipc_messages();
+        
+        debug!(frame, "Frame rendered");
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+    
+    // One more render pass to ensure content is ready
+    browser.viewhost.pump_messages();
+    browser.engine.borrow_mut().render_all_views();
+    
+    // Capture screenshots
+    let timestamp = chrono_lite_timestamp();
+    let mut gpu_captures: Vec<GpuCaptureInfo> = Vec::new();
+    let mut os_captures: Vec<OsCaptureInfo> = Vec::new();
+    
+    // Get render stats
+    let stats = browser.engine.borrow().get_render_stats();
+    let render_stats = Some(RenderStatsInfo {
+        color_vertex_count: stats.color_vertex_count,
+        texture_vertex_count: stats.texture_vertex_count,
+        color_index_count: stats.color_index_count,
+        texture_index_count: stats.texture_index_count,
+    });
+    
+    // GPU readback capture (per-view)
+    if config.gpu_capture {
+        for (view_type, &view_id) in browser.views.iter() {
+            let view_name = match view_type {
+                ViewType::Chrome => "chrome",
+                ViewType::Content => "content",
+                ViewType::Shelf => "shelf",
+            };
+            let gpu_path = config
+                .output_dir
+                .join(format!("{}_gpu_{}.png", scene_name, view_name));
+            info!(view = view_name, path = %gpu_path.display(), "Capturing GPU readback screenshot");
+
+            match browser.engine.borrow_mut().capture_view_screenshot(view_id, &gpu_path) {
+                Ok(metadata) => {
+                    info!(
+                        view = view_name,
+                        width = metadata.width,
+                        height = metadata.height,
+                        color_vertices = metadata.color_vertex_count,
+                        texture_vertices = metadata.texture_vertex_count,
+                        "GPU screenshot captured"
+                    );
+                    gpu_captures.push(GpuCaptureInfo {
+                        view: view_name.to_string(),
+                        path: gpu_path.to_string_lossy().to_string(),
+                        adapter: metadata.adapter,
+                        format: metadata.format,
+                    });
+                }
+                Err(e) => {
+                    error!(view = view_name, error = %e, "GPU screenshot capture failed");
+                }
+            }
+        }
+    }
+    
+    // OS window capture (main window + per-view child HWND)
+    if config.os_capture {
+        // Main window
+        let os_main_path = config.output_dir.join(format!("{}_os_main.png", scene_name));
+        info!(path = %os_main_path.display(), "Capturing OS window screenshot (main)");
+        if let Some(hwnd) = browser.viewhost.get_main_hwnd() {
+            match super::screenshot_harness::capture_os_window(hwnd, &os_main_path) {
+                Ok((width, height)) => {
+                    info!(width, height, "OS screenshot captured (main)");
+                    os_captures.push(OsCaptureInfo {
+                        view: "main".to_string(),
+                        path: os_main_path.to_string_lossy().to_string(),
+                        capture_method: "BitBlt".to_string(),
+                    });
+                }
+                Err(e) => {
+                    error!(error = %e, "OS screenshot capture failed (main)");
+                }
+            }
+        }
+
+        // Per-view child windows
+        for (view_type, &view_id) in browser.views.iter() {
+            let view_name = match view_type {
+                ViewType::Chrome => "chrome",
+                ViewType::Content => "content",
+                ViewType::Shelf => "shelf",
+            };
+            let os_path = config
+                .output_dir
+                .join(format!("{}_os_{}.png", scene_name, view_name));
+            info!(view = view_name, path = %os_path.display(), "Capturing OS window screenshot (view)");
+
+            let hwnd = match browser.engine.borrow().get_view_hwnd(view_id) {
+                Ok(h) => h,
+                Err(e) => {
+                    error!(view = view_name, error = %e, "Failed to get view HWND");
+                    continue;
+                }
+            };
+
+            match super::screenshot_harness::capture_os_window(hwnd, &os_path) {
+                Ok((width, height)) => {
+                    info!(view = view_name, width, height, "OS screenshot captured (view)");
+                    os_captures.push(OsCaptureInfo {
+                        view: view_name.to_string(),
+                        path: os_path.to_string_lossy().to_string(),
+                        capture_method: "BitBlt".to_string(),
+                    });
+                }
+                Err(e) => {
+                    error!(view = view_name, error = %e, "OS screenshot capture failed (view)");
+                }
+            }
+        }
+    }
+    
+    // Save metadata
+    let metadata = CaptureMetadata {
+        timestamp,
+        scene: scene_name.clone(),
+        width: browser.window_width,
+        height: browser.window_height,
+        wait_frames: config.wait_frames,
+        gpu_captures,
+        os_captures,
+        render_stats,
+    };
+    
+    let metadata_path = config.output_dir.join(format!("{}_metadata.json", scene_name));
+    let json = serde_json::to_string_pretty(&metadata)
+        .map_err(|e| format!("Failed to serialize metadata: {}", e))?;
+    fs::write(&metadata_path, json)
+        .map_err(|e| format!("Failed to write metadata: {}", e))?;
+    
+    info!(path = %metadata_path.display(), "Metadata written");
+    info!("Screenshot capture complete");
+    
+    Ok(())
+}
+
+/// Simple timestamp without chrono dependency.
+fn chrono_lite_timestamp() -> String {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let duration = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = duration.as_secs();
+    let days = secs / 86400;
+    let years = 1970 + days / 365;
+    let remaining = (days % 365) as u32;
+    let month = remaining / 30 + 1;
+    let day = remaining % 30 + 1;
+    let hours = (secs % 86400) / 3600;
+    let minutes = (secs % 3600) / 60;
+    let seconds = secs % 60;
+    format!(
+        "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+        years, month, day, hours, minutes, seconds
+    )
 }
 

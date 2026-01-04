@@ -37,6 +37,8 @@ members = [
     "crates/rustkit-common",
     "crates/rustkit-test",
     "crates/rustkit-bench",
+    # Tools
+    "tools/render-test",
 ]
 
 [workspace.package]

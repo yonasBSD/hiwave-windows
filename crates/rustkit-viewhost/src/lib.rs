@@ -27,6 +27,9 @@ pub mod macos;
 #[cfg(target_os = "linux")]
 pub mod linux;
 
+// Screenshot capture
+pub mod screenshot;
+
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};
 use thiserror::Error;
