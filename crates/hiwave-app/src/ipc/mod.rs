@@ -482,21 +482,21 @@ pub const JS_BRIDGE: &str = r#"
 
         // Register a handler for responses
         onResponse: (handler) => {
-            const id = zen._nextId++;
-            zen._handlers[id] = handler;
+            const id = hiwave._nextId++;
+            hiwave._handlers[id] = handler;
             return id;
         },
 
         // Remove a handler
         removeHandler: (id) => {
-            delete zen._handlers[id];
+            delete hiwave._handlers[id];
         }
     };
 
     // Listen for responses from Rust
-    window.addEventListener('zen-response', (event) => {
+    window.addEventListener('hiwave-response', (event) => {
         const response = event.detail;
-        Object.values(zen._handlers).forEach(handler => {
+        Object.values(hiwave._handlers).forEach(handler => {
             try {
                 handler(response);
             } catch (e) {
@@ -505,6 +505,6 @@ pub const JS_BRIDGE: &str = r#"
         });
     });
 
-    console.log('Zen IPC bridge initialized');
+    console.log('HiWave IPC bridge initialized');
 })();
 "#;

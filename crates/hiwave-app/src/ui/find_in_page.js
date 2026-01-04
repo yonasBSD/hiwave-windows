@@ -3,9 +3,9 @@
         return;
     }
 
-    const matchClass = 'zen-find-match';
+    const matchClass = 'hiwave-find-match';
     const activeClass = 'active';
-    const styleId = 'zen-find-style';
+    const styleId = 'hiwave-find-style';
     const skipTags = ['SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'TEXTAREA', 'INPUT'];
 
     function installStyle() {
@@ -111,7 +111,7 @@
         element.scrollIntoView({ block: 'center', behavior: 'auto' });
     }
 
-    const zenFind = {
+    const hiwaveFind = {
         matches: [],
         currentIndex: -1,
         lastQuery: '',
@@ -178,5 +178,5 @@
         },
     };
 
-    window.__hiwaveFind = zenFind;
+    window.__hiwaveFind = hiwaveFind;
 })();

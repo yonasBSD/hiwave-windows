@@ -14,7 +14,7 @@ use url::Url;
 
 const LEGACY_SALT: &[u8] = b"pureflow-salt";
 const SALT_LEN: usize = 16;
-const VERIFY_LABEL: &[u8] = b"zen-vault-verifier";
+const VERIFY_LABEL: &[u8] = b"hiwave-vault-verifier";
 const NONCE_LEN: usize = 12;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

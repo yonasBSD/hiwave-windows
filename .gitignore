@@ -39,11 +39,10 @@ deps/wincairo/*.pdb
 deps/wincairo/*
 !deps/wincairo/include
 
-# AI Orchestrator (local-first)
-.ai/artifacts/
-.ai/cache/
-.ai/reports/
-.ai/logs/
-.ai/*
+# AI Orchestrator data (local-only)
+.ai/
+
+# AI Orchestrator tool (proprietary - separate repo)
+tools/ai-orchestrator/
 
 
