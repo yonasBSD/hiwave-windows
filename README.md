@@ -36,7 +36,7 @@ Modern browsers are designed to keep you browsing. More tabs, more tracking, mor
 - **The Shelf** — Tabs you're not using decay and fade away, so you don't have to manually manage them
 - **Workspaces** — Separate contexts (work, personal, research) that don't bleed into each other
 - **Built-in Privacy** — Ad and tracker blocking with no extensions needed
-- **Three Modes** — Choose your level of automation: do it yourself, get suggestions, or let Zen handle it
+- **Three Modes** — Choose your level of automation: do it yourself, get suggestions, or let Flow handle it
 
 ---
 
@@ -46,7 +46,7 @@ Modern browsers are designed to keep you browsing. More tabs, more tracking, mor
 Park tabs for later without leaving them open. Shelved items show their age, naturally fading so forgotten pages don't haunt you forever.
 
 ### ⏰ Tab Decay
-Unused tabs gradually fade, giving you visual cues about what's actually important. In Zen mode, old tabs automatically shelve themselves.
+Unused tabs gradually fade, giving you visual cues about what's actually important. In Flow mode, old tabs automatically shelve themselves.
 
 ### 🛡️ Flow Shield
 Native ad and tracker blocking powered by Brave's engine. No extension required. Just fast, private browsing out of the box.
@@ -69,7 +69,7 @@ Power users rejoice. Everything is accessible via keyboard:
 |------|-----|--------------|
 | **Essentials** | Control freaks | Manual everything |
 | **Balanced** | Most people | Smart suggestions |
-| **Zen** | Trust the system | Full automation |
+| **Flow** | Trust the system | Full automation |
 
 ---
 
@@ -79,12 +79,12 @@ Power users rejoice. Everything is accessible via keyboard:
 
 | Platform | Download |
 |----------|----------|
-| Windows (x64) | [zen-windows-x64.zip](#) |
-| macOS (Intel) | [zen-macos-intel.dmg](#) |
-| macOS (Apple Silicon) | [zen-macos-arm64.dmg](#) |
-| Linux (x64) | [zen-linux-x64.AppImage](#) |
+| Windows (x64) | [hiwave-windows-x64.zip](#) |
+| macOS (Intel) | [hiwave-macos-intel.dmg](#) |
+| macOS (Apple Silicon) | [hiwave-macos-arm64.dmg](#) |
+| Linux (x64) | [hiwave-linux-x64.AppImage](#) |
 
-> **Note:** Zen is currently in alpha. Expect some rough edges!
+> **Note:** HiWave is currently in alpha. Expect some rough edges!
 
 ### Build from Source
 
@@ -206,20 +206,20 @@ cargo clippy                  # Lint
 
 ---
 
-## Support Zen's Development
+## Support HiWave's Development
 
 HiWave is **free and open source**. No ads, no tracking, no data selling.
 
-If Zen helps you focus better, consider supporting its development:
+If HiWave helps you focus better, consider supporting its development:
 
 <p align="center">
   <a href="https://github.com/sponsors/YOUR_USERNAME">
     <img src="https://img.shields.io/badge/sponsor-GitHub%20Sponsors-ea4aaa" alt="GitHub Sponsors" />
   </a>
-  <a href="https://ko-fi.com/YOUR_USERNAME">
+  <a href="https://ko-fi.com/hiwavebrowser">
     <img src="https://img.shields.io/badge/support-Ko--fi-ff5e5b" alt="Ko-fi" />
   </a>
-  <a href="https://opencollective.com/pureflow">
+  <a href="https://opencollective.com/hiwavebrowser">
     <img src="https://img.shields.io/badge/support-Open%20Collective-3385ff" alt="Open Collective" />
   </a>
 </p>
@@ -227,7 +227,7 @@ If Zen helps you focus better, consider supporting its development:
 Your support helps cover:
 - Development time
 - Infrastructure costs
-- Future features like Zen Sync
+- Future features like HiWave Sync
 
 ---
 
@@ -317,14 +317,14 @@ This means:
 - ✅ Free to use, modify, and distribute
 - ✅ Source code is open
 - ✅ You can build commercial products with it
-- ⚠️ Changes to Zen's files must be shared under MPL-2.0
+- ⚠️ Changes to HiWave's files must be shared under MPL-2.0
 
 ---
 
 ## FAQ
 
 **Q: Why not just use Firefox/Brave/Arc?**  
-A: They're great browsers! But none of them have The Shelf, tab decay, or our specific philosophy around reducing cognitive load. Zen is for people who want a browser that actively helps them browse *less*.
+A: They're great browsers! But none of them have The Shelf, tab decay, or our specific philosophy around reducing cognitive load. HiWave is for people who want a browser that actively helps them browse *less*.
 
 **Q: Is this production-ready?**  
 A: Not yet. We're in alpha. Use it as a secondary browser while we iron out the kinks.
@@ -333,7 +333,7 @@ A: Not yet. We're in alpha. Use it as a secondary browser while we iron out the 
 A: Eventually! Desktop is the priority for now.
 
 **Q: How do you make money?**  
-A: We don't yet. Future plans include optional Zen Sync (paid) and possibly search partnerships. We will never sell your data or show ads.
+A: We don't yet. Future plans include optional HiWave Sync (paid) and possibly search partnerships. We will never sell your data or show ads.
 
 ---
 
@@ -342,7 +342,7 @@ A: We don't yet. Future plans include optional Zen Sync (paid) and possibly sear
 </p>
 
 <p align="center">
-  <a href="https://zenbrowser.io">Website</a> •
-  <a href="https://github.com/YOUR_USERNAME/pureflow">GitHub</a> •
-  <a href="https://twitter.com/zenbrowser">Twitter</a>
+  <a href="https://www.hiwavebrowser.com">Website</a> •
+  <a href="https://github.com/hiwavebrowser/hiwave-windows">GitHub</a> •
+  <a href="https://twitter.com/hiwavebrowser">Twitter</a>
 </p>
