@@ -1,10 +1,15 @@
 //! # RustKit Text
 //!
-//! RustKit-owned access to fonts, metrics, and glyph indices.
+//! Cross-platform font access, metrics, and glyph indices for RustKit.
 //!
-//! Bravo 2 goal: remove the external `dwrote` crate usage by using DirectWrite via the `windows` crate.
+//! ## Platform Support
 //!
-//! Current scope:
+//! - **Windows**: DirectWrite (via `windows` crate)
+//! - **macOS**: Core Text (via `core-text` crate)
+//! - **Linux**: Fontconfig + FreeType
+//!
+//! ## Features
+//!
 //! - System font collection lookup by family name
 //! - Match a font by weight/stretch/style
 //! - Create font face
@@ -74,13 +79,21 @@ pub struct GlyphMetrics {
     pub advance_width: i32,
 }
 
+// Platform-specific implementations
 #[cfg(windows)]
 mod win;
 
 #[cfg(windows)]
 pub use win::{FontCollection, FontFace, FontFamily, Font};
 
-#[cfg(not(windows))]
+#[cfg(target_os = "macos")]
+pub mod macos;
+
+#[cfg(target_os = "linux")]
+pub mod linux;
+
+// Fallback for unsupported platforms
+#[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
 mod nowin {
     use super::*;
 

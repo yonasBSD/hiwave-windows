@@ -1,6 +1,12 @@
 //! # RustKit Accessibility
 //!
-//! Accessibility (A11y) implementation for the RustKit browser engine.
+//! Cross-platform accessibility (A11y) implementation for the RustKit browser engine.
+//!
+//! ## Platform Support
+//!
+//! - **Windows**: UI Automation (UIA)
+//! - **macOS**: NSAccessibility
+//! - **Linux**: AT-SPI2 (future)
 //!
 //! ## Features
 //!
@@ -8,7 +14,6 @@
 //! - **Accessibility Tree**: Parallel tree structure
 //! - **Focus Management**: Tab order, focus trap
 //! - **Live Regions**: aria-live announcements
-//! - **UI Automation**: Windows accessibility API
 //!
 //! ## Architecture
 //!
@@ -24,6 +29,10 @@
 //!     └── Events ───────────────►└── Live Regions
 //!                                         └── Announcements
 //! ```
+
+// Platform-specific backends
+#[cfg(target_os = "macos")]
+pub mod macos;
 
 use hashbrown::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
