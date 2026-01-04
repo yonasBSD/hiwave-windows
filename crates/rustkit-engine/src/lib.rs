@@ -631,8 +631,10 @@ impl Engine {
         );
 
         // Create containing block
+        // NOTE: content.height is used as a cursor for vertical positioning, so it starts at 0.
+        // The available viewport size is stored in the rect's width/height.
         let containing_block = Dimensions {
-            content: Rect::new(0.0, 0.0, bounds.width as f32, bounds.height as f32),
+            content: Rect::new(0.0, 0.0, bounds.width as f32, 0.0), // height=0 means cursor at top
             ..Default::default()
         };
 
@@ -649,11 +651,46 @@ impl Engine {
         // Generate display list
         let display_list = DisplayList::build(&root_box);
 
+        // Count command types for debugging
+        let mut solid_count = 0;
+        let mut text_count = 0;
+        let mut border_count = 0;
+        let mut other_count = 0;
+        for cmd in &display_list.commands {
+            match cmd {
+                rustkit_layout::DisplayCommand::SolidColor(_, _) => solid_count += 1,
+                rustkit_layout::DisplayCommand::Text { .. } => text_count += 1,
+                rustkit_layout::DisplayCommand::Border { .. } => border_count += 1,
+                _ => other_count += 1,
+            }
+        }
+        
         info!(
             ?id,
             num_commands = display_list.commands.len(),
+            solid_count,
+            text_count,
+            border_count,
+            other_count,
             "Layout: generated display list"
         );
+        
+        // Print first few text commands for debugging
+        for (i, cmd) in display_list.commands.iter().enumerate() {
+            if let rustkit_layout::DisplayCommand::Text { text, x, y, font_size, .. } = cmd {
+                if i < 5 {
+                    info!(
+                        ?id,
+                        index = i,
+                        text = %text,
+                        x = x,
+                        y = y,
+                        font_size = font_size,
+                        "Layout: text command"
+                    );
+                }
+            }
+        }
 
         // Store
         let view = self.views.get_mut(&id).unwrap();
