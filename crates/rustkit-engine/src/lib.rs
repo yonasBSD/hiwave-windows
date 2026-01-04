@@ -30,7 +30,7 @@ use rustkit_renderer::Renderer;
 use rustkit_viewhost::{Bounds, ViewHost, ViewId};
 use thiserror::Error;
 use tokio::sync::mpsc;
-use tracing::{debug, info, trace};
+use tracing::{debug, info, trace, warn};
 use url::Url;
 use windows::Win32::Foundation::HWND;
 
@@ -517,7 +517,11 @@ impl Engine {
             .get_mut(&id)
             .ok_or(EngineError::ViewNotFound(id))?;
 
-        info!(?id, len = html.len(), "Loading HTML content");
+        info!(?id, len = html.len(), "HTML: loading content");
+        
+        // Log first 100 chars of HTML for debugging
+        let preview: String = html.chars().take(100).collect();
+        info!(?id, preview = %preview, "HTML: preview");
 
         // Use a synthetic about:blank URL for inline content
         let url = Url::parse("about:blank").unwrap();
@@ -619,11 +623,11 @@ impl Engine {
             .get_bounds(view.viewhost_id)
             .map_err(|e| EngineError::ViewError(e.to_string()))?;
 
-        debug!(
+        info!(
             ?id,
             width = bounds.width,
             height = bounds.height,
-            "Performing layout"
+            "Layout: starting"
         );
 
         // Create containing block
@@ -635,16 +639,20 @@ impl Engine {
         // Build layout tree from DOM
         let mut root_box = self.build_layout_from_document(&document);
 
+        // Count children for debugging
+        let child_count = root_box.children.len();
+        info!(?id, child_count, "Layout: built tree from DOM");
+
         // Layout
         root_box.layout(&containing_block);
 
         // Generate display list
         let display_list = DisplayList::build(&root_box);
 
-        debug!(
+        info!(
             ?id,
             num_commands = display_list.commands.len(),
-            "Generated display list"
+            "Layout: generated display list"
         );
 
         // Store
@@ -665,14 +673,66 @@ impl Engine {
         root_style.background_color = rustkit_css::Color::WHITE;
         let mut root_box = LayoutBox::new(BoxType::Block, root_style);
 
+        // Debug: print root children to understand DOM structure
+        let root_children = document.root().children();
+        info!(
+            root_children = root_children.len(),
+            "DOM: document root children count"
+        );
+        for (i, child) in root_children.iter().take(5).enumerate() {
+            if let NodeType::Element { tag_name, .. } = &child.node_type {
+                info!(index = i, tag = %tag_name, "DOM: root child");
+                // Print grandchildren too
+                for (j, grandchild) in child.children().iter().take(3).enumerate() {
+                    if let NodeType::Element { tag_name, .. } = &grandchild.node_type {
+                        info!(index = j, tag = %tag_name, "DOM: grandchild of root");
+                    }
+                }
+            } else if let NodeType::DocumentType { name, .. } = &child.node_type {
+                info!(index = i, name = %name, "DOM: root child (doctype)");
+            }
+        }
+
         // Get the body element and build layout from it
         if let Some(body) = document.body() {
+            // Debug: count body's children
+            let body_children = body.children();
+            info!(
+                body_children = body_children.len(),
+                "DOM: body element found"
+            );
+            
+            // Debug: print first few children tags
+            for (i, child) in body_children.iter().take(5).enumerate() {
+                if let NodeType::Element { tag_name, .. } = &child.node_type {
+                    info!(index = i, tag = %tag_name, "DOM: body child");
+                } else if let NodeType::Text(text) = &child.node_type {
+                    let preview: String = text.chars().take(30).collect();
+                    info!(index = i, text = %preview, "DOM: body child (text)");
+                }
+            }
+            
             let body_box = self.build_layout_from_node(&body);
+            info!(
+                layout_children = body_box.children.len(),
+                "Layout: body box built"
+            );
             root_box.children.push(body_box);
         } else if let Some(html) = document.document_element() {
             // Fallback: use html element if no body
+            info!("DOM: no body found, using html element");
+            // Debug: print html's children
+            let html_children = html.children();
+            info!(html_children = html_children.len(), "DOM: html element children");
+            for (i, child) in html_children.iter().take(5).enumerate() {
+                if let NodeType::Element { tag_name, .. } = &child.node_type {
+                    info!(index = i, tag = %tag_name, "DOM: html child");
+                }
+            }
             let html_box = self.build_layout_from_node(&html);
             root_box.children.push(html_box);
+        } else {
+            warn!("DOM: no body or html element found");
         }
 
         root_box
@@ -710,14 +770,16 @@ impl Engine {
 
                 let mut layout_box = LayoutBox::new(box_type, style);
 
+                // Get DOM children for processing
+                let dom_children = node.children();
+                trace!(tag = %tag_name, dom_children = dom_children.len(), "Processing element");
+
                 // Process children
-                for child in node.children() {
+                for child in dom_children {
                     let child_box = self.build_layout_from_node(&child);
-                    // Only add non-empty boxes
-                    if !matches!(child_box.box_type, BoxType::Block) || !child_box.children.is_empty() 
-                        || matches!(child_box.box_type, BoxType::Text(_)) {
-                        layout_box.children.push(child_box);
-                    }
+                    // Add all boxes - don't filter based on children
+                    // The display list builder will handle empty boxes
+                    layout_box.children.push(child_box);
                 }
 
                 layout_box
@@ -904,6 +966,12 @@ impl Engine {
 
         trace!(?id, "Rendering view");
 
+        // Get view bounds for viewport
+        let bounds = self
+            .viewhost
+            .get_bounds(viewhost_id)
+            .map_err(|e| EngineError::ViewError(e.to_string()))?;
+
         // Get surface texture
         let (output, texture_view) = self.compositor
             .get_surface_texture(viewhost_id)
@@ -911,10 +979,13 @@ impl Engine {
 
         // Render using display list if available, otherwise just clear to background
         if let (Some(renderer), Some(display_list)) = (&mut self.renderer, display_list) {
+            // Update viewport size before rendering
+            renderer.set_viewport_size(bounds.width, bounds.height);
             renderer.execute(&display_list.commands, &texture_view)
                 .map_err(|e| EngineError::RenderError(e.to_string()))?;
         } else if let Some(renderer) = &mut self.renderer {
             // No display list, render empty (will clear to white)
+            renderer.set_viewport_size(bounds.width, bounds.height);
             renderer.execute(&[], &texture_view)
                 .map_err(|e| EngineError::RenderError(e.to_string()))?;
         } else {
