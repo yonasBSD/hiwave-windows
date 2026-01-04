@@ -137,17 +137,39 @@ hiwave-windows/
 │   ├── hiwave-vault/      # Password manager
 │   ├── hiwave-analytics/  # Local analytics
 │   │
-│   │  ## RustKit Browser Engine
+│   │  ## RustKit Browser Engine (Core)
 │   ├── rustkit-viewhost/   # Win32 window hosting
 │   ├── rustkit-compositor/ # GPU rendering (wgpu)
+│   ├── rustkit-renderer/   # Display list execution
 │   ├── rustkit-core/       # Task scheduling, navigation
-│   ├── rustkit-dom/        # HTML parsing, DOM tree (html5ever)
-│   ├── rustkit-css/        # CSS parsing, styling (cssparser)
-│   ├── rustkit-layout/     # Layout engine, text shaping
+│   ├── rustkit-engine/     # Multi-view orchestration
+│   │
+│   │  ## Independence Crates (replaced external deps)
+│   ├── rustkit-html/       # HTML5 parser (replaced html5ever)
+│   ├── rustkit-cssparser/  # CSS tokenizer (replaced cssparser)
+│   ├── rustkit-text/       # Text shaping (replaced dwrote)
+│   ├── rustkit-http/       # HTTP client (replaced reqwest)
+│   ├── rustkit-codecs/     # Image decoders (replaced image)
+│   │
+│   │  ## Web Platform
+│   ├── rustkit-dom/        # DOM tree, events, forms
+│   ├── rustkit-css/        # CSS styling, cascade
+│   ├── rustkit-layout/     # Layout engine (block, flex, grid)
 │   ├── rustkit-js/         # JavaScript (Boa engine)
 │   ├── rustkit-bindings/   # JS ↔ DOM bridge
-│   ├── rustkit-net/        # HTTP client (reqwest)
-│   ├── rustkit-engine/     # Multi-view orchestration
+│   ├── rustkit-net/        # Networking, fetch, downloads
+│   ├── rustkit-image/      # Image loading & caching
+│   ├── rustkit-animation/  # CSS animations & transitions
+│   ├── rustkit-svg/        # SVG parsing & rendering
+│   ├── rustkit-canvas/     # Canvas 2D API
+│   ├── rustkit-webgl/      # WebGL 1.0
+│   ├── rustkit-media/      # Audio/video playback
+│   ├── rustkit-sw/         # Service Workers
+│   ├── rustkit-idb/        # IndexedDB
+│   ├── rustkit-worker/     # Web Workers
+│   ├── rustkit-a11y/       # Accessibility
+│   │
+│   │  ## Testing & Benchmarks
 │   ├── rustkit-common/     # Error handling, logging
 │   ├── rustkit-test/       # WPT-style test harness
 │   └── rustkit-bench/      # Performance benchmarks

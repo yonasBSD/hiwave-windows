@@ -324,28 +324,40 @@ Media elements:
 ## Crate Structure
 
 ```
+# Core Engine
 rustkit-common     # Shared utilities, logging, retry
 rustkit-viewhost   # Win32 window hosting
-rustkit-compositor # GPU rendering
+rustkit-compositor # GPU rendering coordination
+rustkit-renderer   # GPU display list execution
 rustkit-core       # Task scheduling, navigation, history
-rustkit-dom        # HTML parsing, DOM tree, events
+rustkit-engine     # Orchestration, multi-view
+
+# Independence Crates (replaced external deps)
+rustkit-html       # HTML5 tokenizer & tree builder (replaced html5ever)
+rustkit-cssparser  # CSS tokenizer & values (replaced cssparser)
+rustkit-text       # DirectWrite text shaping (replaced dwrote)
+rustkit-http       # HTTP client (replaced reqwest)
+rustkit-codecs     # Image decoders (replaced image crate)
+
+# Web Platform
+rustkit-dom        # DOM tree, events, forms, images
 rustkit-css        # CSS parsing, style computation
 rustkit-layout     # Layout algorithms (block, flex, grid)
 rustkit-js         # JavaScript engine (Boa)
 rustkit-bindings   # JS ↔ DOM bridge, Web APIs
-rustkit-net        # HTTP, fetch, downloads, security
-rustkit-image      # Image decoding and caching
+rustkit-net        # Fetch, downloads, security
+rustkit-image      # Image loading and caching
 rustkit-animation  # CSS animations and transitions
 rustkit-svg        # SVG parsing and rendering
 rustkit-canvas     # Canvas 2D API
 rustkit-webgl      # WebGL API
-rustkit-renderer   # GPU display list renderer
 rustkit-media      # Audio/video playback
 rustkit-sw         # Service workers
 rustkit-idb        # IndexedDB
 rustkit-worker     # Web Workers
 rustkit-a11y       # Accessibility
-rustkit-engine     # Orchestration, multi-view
+
+# Testing & Benchmarks
 rustkit-test       # WPT harness
 rustkit-bench      # Benchmarks
 ```
@@ -354,17 +366,25 @@ rustkit-bench      # Benchmarks
 
 ## Key Dependencies
 
+### RustKit-Owned (Independence Project)
+
+| Crate | Replaced | Purpose |
+|-------|----------|---------|
+| `rustkit-html` | `html5ever` | HTML5 tokenizer & tree builder |
+| `rustkit-cssparser` | `cssparser` | CSS tokenizer & value parser |
+| `rustkit-text` | `dwrote` | DirectWrite text shaping |
+| `rustkit-http` | `reqwest` | HTTP/1.1 client with native-tls |
+| `rustkit-codecs` | `image` | PNG/JPEG/GIF/WebP decoders |
+
+### External Dependencies
+
 | Crate | Purpose |
 |-------|---------|
-| `html5ever` | HTML parsing |
-| `cssparser` | CSS parsing |
 | `selectors` | CSS selector matching |
 | `boa_engine` | JavaScript execution |
-| `wgpu` | GPU rendering |
-| `dwrote` | Text shaping (Windows) |
-| `reqwest` | HTTP client |
+| `wgpu` | GPU rendering ( Phase Bravo 5 planned) |
 | `tokio` | Async runtime |
-| `image` | Image decoding |
+| `native-tls` | TLS/SSL for HTTPS |
 
 ---
 
@@ -384,21 +404,26 @@ rustkit-bench      # Benchmarks
 |-------|-------|
 | rustkit-core | 27 |
 | rustkit-dom | 48 |
+| rustkit-html | 86 |
 | rustkit-css | 5 |
+| rustkit-cssparser | 8 |
 | rustkit-layout | 61 |
 | rustkit-js | 11 |
 | rustkit-bindings | 20 |
 | rustkit-net | (varies) |
+| rustkit-http | 12 |
 | rustkit-image | 17 |
+| rustkit-codecs | 15 |
+| rustkit-text | 6 |
 | rustkit-animation | 12 |
 | rustkit-svg | 12 |
 | rustkit-canvas | 12 |
 | rustkit-webgl | 10 |
 | rustkit-common | 13 |
-| rustkit-engine | 3 |
+| rustkit-engine | 7 |
 | rustkit-bench | 3 |
 | rustkit-test | (harness) |
-| **Total** | **250+** |
+| **Total** | **350+** |
 
 ---
 

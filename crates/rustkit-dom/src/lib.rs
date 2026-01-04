@@ -1,11 +1,11 @@
 //! # RustKit DOM
 //!
 //! DOM implementation for the RustKit browser engine.
-//! Uses html5ever for HTML parsing and constructs a traversable DOM tree.
+//! Uses `rustkit-html` (our own HTML5 parser) and constructs a traversable DOM tree.
 //!
 //! ## Design Goals
 //!
-//! 1. **Spec-compliant parsing**: html5ever implements the HTML5 parsing algorithm
+//! 1. **Spec-compliant parsing**: rustkit-html implements the HTML5 parsing algorithm
 //! 2. **Efficient tree structure**: Arena-based allocation for cache-friendly traversal
 //! 3. **Query support**: Element lookup by ID, class, tag name
 //! 4. **Mutation support**: Node insertion, removal, attribute modification

@@ -5,10 +5,18 @@ HTTP networking, request interception, and download management for the RustKit b
 ## Overview
 
 RustKit Net provides:
-- **Async HTTP**: Non-blocking network requests via reqwest
+- **Async HTTP**: Non-blocking network requests via `rustkit-http` (our own HTTP client)
 - **Request interception**: Filter, modify, or block requests
 - **Download management**: Progress tracking, pause, resume, cancel
 - **fetch() API**: JavaScript-compatible interface
+
+### Dependencies
+
+| Crate | Purpose |
+|-------|---------|
+| `rustkit-http` | HTTP/1.1 client with native-tls (replaced `reqwest`) |
+| `cookie_store` | Cookie management |
+| `tokio` | Async runtime |
 
 ## Architecture
 
@@ -16,8 +24,8 @@ RustKit Net provides:
 ┌─────────────────────────────────────────────────────────────┐
 │                     ResourceLoader                           │
 │  ┌─────────────────────────────────────────────────────┐    │
-│  │  reqwest::Client                                     │    │
-│  │  - HTTP/HTTPS support                                │    │
+│  │  rustkit_http::Client                                │    │
+│  │  - HTTP/1.1 with native-tls                          │    │
 │  │  - Connection pooling                                │    │
 │  │  - Cookie storage                                    │    │
 │  └─────────────────────────────────────────────────────┘    │

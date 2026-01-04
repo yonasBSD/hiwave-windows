@@ -21,7 +21,7 @@ pub use rustkit_bindings::IpcMessage;
 use rustkit_compositor::Compositor;
 use rustkit_core::{LoadEvent, NavigationRequest, NavigationStateMachine};
 use rustkit_css::ComputedStyle;
-use rustkit_dom::Document;
+use rustkit_dom::{Document, Node, NodeType};
 use rustkit_image::ImageManager;
 use rustkit_js::JsRuntime;
 use rustkit_layout::{BoxType, Dimensions, DisplayList, LayoutBox, Rect};
@@ -592,10 +592,11 @@ impl Engine {
     fn relayout(&mut self, id: EngineViewId) -> Result<(), EngineError> {
         let view = self.views.get(&id).ok_or(EngineError::ViewNotFound(id))?;
 
-        let _document = view
+        let document = view
             .document
             .as_ref()
-            .ok_or(EngineError::RenderError("No document".into()))?;
+            .ok_or(EngineError::RenderError("No document".into()))?
+            .clone();
 
         // Get view bounds
         let bounds = self
@@ -616,15 +617,20 @@ impl Engine {
             ..Default::default()
         };
 
-        // Build layout tree (simplified - just body)
-        let style = ComputedStyle::new();
-        let mut root_box = LayoutBox::new(BoxType::Block, style);
+        // Build layout tree from DOM
+        let mut root_box = self.build_layout_from_document(&document);
 
         // Layout
         root_box.layout(&containing_block);
 
         // Generate display list
         let display_list = DisplayList::build(&root_box);
+
+        debug!(
+            ?id,
+            num_commands = display_list.commands.len(),
+            "Generated display list"
+        );
 
         // Store
         let view = self.views.get_mut(&id).unwrap();
@@ -635,6 +641,229 @@ impl Engine {
         self.render(id)?;
 
         Ok(())
+    }
+
+    /// Build a layout tree from a DOM document.
+    fn build_layout_from_document(&self, document: &Document) -> LayoutBox {
+        // Create root layout box for the document
+        let mut root_style = ComputedStyle::new();
+        root_style.background_color = rustkit_css::Color::WHITE;
+        let mut root_box = LayoutBox::new(BoxType::Block, root_style);
+
+        // Get the body element and build layout from it
+        if let Some(body) = document.body() {
+            let body_box = self.build_layout_from_node(&body);
+            root_box.children.push(body_box);
+        } else if let Some(html) = document.document_element() {
+            // Fallback: use html element if no body
+            let html_box = self.build_layout_from_node(&html);
+            root_box.children.push(html_box);
+        }
+
+        root_box
+    }
+
+    /// Build a layout box from a DOM node.
+    fn build_layout_from_node(&self, node: &Rc<Node>) -> LayoutBox {
+        match &node.node_type {
+            NodeType::Element { tag_name, attributes, .. } => {
+                // Determine box type based on tag
+                let is_inline = matches!(
+                    tag_name.to_lowercase().as_str(),
+                    "a" | "span" | "strong" | "b" | "em" | "i" | "u" | "code" | "small" | "big" | "sub" | "sup" | "abbr" | "cite" | "q" | "mark" | "label"
+                );
+
+                // Skip rendering for certain elements
+                let is_hidden = matches!(
+                    tag_name.to_lowercase().as_str(),
+                    "head" | "title" | "meta" | "link" | "script" | "style" | "noscript"
+                );
+
+                if is_hidden {
+                    // Return an empty block for hidden elements
+                    return LayoutBox::new(BoxType::Block, ComputedStyle::new());
+                }
+
+                let box_type = if is_inline {
+                    BoxType::Inline
+                } else {
+                    BoxType::Block
+                };
+
+                // Create computed style based on element and attributes
+                let style = self.compute_style_for_element(tag_name, attributes);
+
+                let mut layout_box = LayoutBox::new(box_type, style);
+
+                // Process children
+                for child in node.children() {
+                    let child_box = self.build_layout_from_node(&child);
+                    // Only add non-empty boxes
+                    if !matches!(child_box.box_type, BoxType::Block) || !child_box.children.is_empty() 
+                        || matches!(child_box.box_type, BoxType::Text(_)) {
+                        layout_box.children.push(child_box);
+                    }
+                }
+
+                layout_box
+            }
+            NodeType::Text(text) => {
+                // Create text box for non-empty text
+                let trimmed = text.trim();
+                if trimmed.is_empty() {
+                    // Return minimal box for whitespace-only text
+                    LayoutBox::new(BoxType::Block, ComputedStyle::new())
+                } else {
+                    let mut style = ComputedStyle::new();
+                    style.color = rustkit_css::Color::BLACK;
+                    LayoutBox::new(BoxType::Text(trimmed.to_string()), style)
+                }
+            }
+            _ => {
+                // For other node types (Document, Comment, etc.), return empty box
+                LayoutBox::new(BoxType::Block, ComputedStyle::new())
+            }
+        }
+    }
+
+    /// Compute a basic style for an element based on its tag and attributes.
+    fn compute_style_for_element(
+        &self,
+        tag_name: &str,
+        attributes: &std::collections::HashMap<String, String>,
+    ) -> ComputedStyle {
+        let mut style = ComputedStyle::new();
+        style.color = rustkit_css::Color::BLACK;
+
+        // Apply tag-specific default styles
+        match tag_name.to_lowercase().as_str() {
+            "body" => {
+                style.background_color = rustkit_css::Color::WHITE;
+                style.margin_top = rustkit_css::Length::Px(8.0);
+                style.margin_right = rustkit_css::Length::Px(8.0);
+                style.margin_bottom = rustkit_css::Length::Px(8.0);
+                style.margin_left = rustkit_css::Length::Px(8.0);
+            }
+            "h1" => {
+                style.font_size = rustkit_css::Length::Px(32.0);
+                style.font_weight = rustkit_css::FontWeight::BOLD;
+                style.margin_top = rustkit_css::Length::Px(21.44);
+                style.margin_bottom = rustkit_css::Length::Px(21.44);
+            }
+            "h2" => {
+                style.font_size = rustkit_css::Length::Px(24.0);
+                style.font_weight = rustkit_css::FontWeight::BOLD;
+                style.margin_top = rustkit_css::Length::Px(19.92);
+                style.margin_bottom = rustkit_css::Length::Px(19.92);
+            }
+            "h3" => {
+                style.font_size = rustkit_css::Length::Px(18.72);
+                style.font_weight = rustkit_css::FontWeight::BOLD;
+                style.margin_top = rustkit_css::Length::Px(18.72);
+                style.margin_bottom = rustkit_css::Length::Px(18.72);
+            }
+            "p" => {
+                style.margin_top = rustkit_css::Length::Px(16.0);
+                style.margin_bottom = rustkit_css::Length::Px(16.0);
+            }
+            "div" => {
+                // Block element with no special styling
+            }
+            "a" => {
+                style.color = rustkit_css::Color::new(0, 0, 238, 1.0); // Blue
+            }
+            "strong" | "b" => {
+                style.font_weight = rustkit_css::FontWeight::BOLD;
+            }
+            "em" | "i" => {
+                style.font_style = rustkit_css::FontStyle::Italic;
+            }
+            "pre" | "code" => {
+                style.font_family = "monospace".to_string();
+            }
+            "ul" | "ol" => {
+                style.margin_top = rustkit_css::Length::Px(16.0);
+                style.margin_bottom = rustkit_css::Length::Px(16.0);
+                style.padding_left = rustkit_css::Length::Px(40.0);
+            }
+            "li" => {
+                // List items are blocks
+            }
+            "blockquote" => {
+                style.margin_top = rustkit_css::Length::Px(16.0);
+                style.margin_bottom = rustkit_css::Length::Px(16.0);
+                style.margin_left = rustkit_css::Length::Px(40.0);
+                style.margin_right = rustkit_css::Length::Px(40.0);
+            }
+            "hr" => {
+                style.border_top_width = rustkit_css::Length::Px(1.0);
+                style.border_top_color = rustkit_css::Color::new(128, 128, 128, 1.0);
+                style.margin_top = rustkit_css::Length::Px(8.0);
+                style.margin_bottom = rustkit_css::Length::Px(8.0);
+            }
+            _ => {}
+        }
+
+        // Parse inline style attribute if present
+        if let Some(style_attr) = attributes.get("style") {
+            self.apply_inline_style(&mut style, style_attr);
+        }
+
+        style
+    }
+
+    /// Apply inline style attribute to computed style.
+    fn apply_inline_style(&self, style: &mut ComputedStyle, style_attr: &str) {
+        for declaration in style_attr.split(';') {
+            let declaration = declaration.trim();
+            if declaration.is_empty() {
+                continue;
+            }
+            if let Some((property, value)) = declaration.split_once(':') {
+                let property = property.trim().to_lowercase();
+                let value = value.trim();
+
+                match property.as_str() {
+                    "color" => {
+                        if let Some(color) = parse_color(value) {
+                            style.color = color;
+                        }
+                    }
+                    "background-color" | "background" => {
+                        if let Some(color) = parse_color(value) {
+                            style.background_color = color;
+                        }
+                    }
+                    "font-size" => {
+                        if let Some(length) = parse_length(value) {
+                            style.font_size = length;
+                        }
+                    }
+                    "font-weight" => {
+                        if value == "bold" || value == "700" || value == "800" || value == "900" {
+                            style.font_weight = rustkit_css::FontWeight::BOLD;
+                        }
+                    }
+                    "margin" => {
+                        if let Some(length) = parse_length(value) {
+                            style.margin_top = length;
+                            style.margin_right = length;
+                            style.margin_bottom = length;
+                            style.margin_left = length;
+                        }
+                    }
+                    "padding" => {
+                        if let Some(length) = parse_length(value) {
+                            style.padding_top = length;
+                            style.padding_right = length;
+                            style.padding_bottom = length;
+                            style.padding_left = length;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
     }
 
     /// Render a view (public API for continuous rendering).
@@ -1102,6 +1331,110 @@ impl Default for EngineBuilder {
     }
 }
 
+/// Parse a color value from CSS.
+fn parse_color(value: &str) -> Option<rustkit_css::Color> {
+    let value = value.trim().to_lowercase();
+
+    // Named colors
+    match value.as_str() {
+        "black" => return Some(rustkit_css::Color::BLACK),
+        "white" => return Some(rustkit_css::Color::WHITE),
+        "red" => return Some(rustkit_css::Color::new(255, 0, 0, 1.0)),
+        "green" => return Some(rustkit_css::Color::new(0, 128, 0, 1.0)),
+        "blue" => return Some(rustkit_css::Color::new(0, 0, 255, 1.0)),
+        "yellow" => return Some(rustkit_css::Color::new(255, 255, 0, 1.0)),
+        "cyan" => return Some(rustkit_css::Color::new(0, 255, 255, 1.0)),
+        "magenta" => return Some(rustkit_css::Color::new(255, 0, 255, 1.0)),
+        "gray" | "grey" => return Some(rustkit_css::Color::new(128, 128, 128, 1.0)),
+        "transparent" => return Some(rustkit_css::Color::TRANSPARENT),
+        _ => {}
+    }
+
+    // Hex colors
+    if value.starts_with('#') {
+        let hex = &value[1..];
+        let (r, g, b) = match hex.len() {
+            3 => {
+                let r = u8::from_str_radix(&hex[0..1], 16).ok()? * 17;
+                let g = u8::from_str_radix(&hex[1..2], 16).ok()? * 17;
+                let b = u8::from_str_radix(&hex[2..3], 16).ok()? * 17;
+                (r, g, b)
+            }
+            6 => {
+                let r = u8::from_str_radix(&hex[0..2], 16).ok()?;
+                let g = u8::from_str_radix(&hex[2..4], 16).ok()?;
+                let b = u8::from_str_radix(&hex[4..6], 16).ok()?;
+                (r, g, b)
+            }
+            _ => return None,
+        };
+        return Some(rustkit_css::Color::from_rgb(r, g, b));
+    }
+
+    // rgb() and rgba()
+    if value.starts_with("rgb(") || value.starts_with("rgba(") {
+        let inner = value
+            .trim_start_matches("rgba(")
+            .trim_start_matches("rgb(")
+            .trim_end_matches(')');
+        let parts: Vec<&str> = inner.split(',').collect();
+        if parts.len() >= 3 {
+            let r: u8 = parts[0].trim().parse().ok()?;
+            let g: u8 = parts[1].trim().parse().ok()?;
+            let b: u8 = parts[2].trim().parse().ok()?;
+            let a: f32 = if parts.len() >= 4 {
+                parts[3].trim().parse().ok()?
+            } else {
+                1.0
+            };
+            return Some(rustkit_css::Color::new(r, g, b, a));
+        }
+    }
+
+    None
+}
+
+/// Parse a length value from CSS.
+fn parse_length(value: &str) -> Option<rustkit_css::Length> {
+    let value = value.trim();
+
+    if value == "0" || value == "auto" {
+        return Some(if value == "auto" {
+            rustkit_css::Length::Auto
+        } else {
+            rustkit_css::Length::Zero
+        });
+    }
+
+    if value.ends_with("px") {
+        let num: f32 = value.trim_end_matches("px").trim().parse().ok()?;
+        return Some(rustkit_css::Length::Px(num));
+    }
+
+    // Check "rem" before "em" since "rem" ends with "em"
+    if value.ends_with("rem") {
+        let num: f32 = value.trim_end_matches("rem").trim().parse().ok()?;
+        return Some(rustkit_css::Length::Rem(num));
+    }
+
+    if value.ends_with("em") {
+        let num: f32 = value.trim_end_matches("em").trim().parse().ok()?;
+        return Some(rustkit_css::Length::Em(num));
+    }
+
+    if value.ends_with('%') {
+        let num: f32 = value.trim_end_matches('%').trim().parse().ok()?;
+        return Some(rustkit_css::Length::Percent(num));
+    }
+
+    // Bare number (treat as pixels)
+    if let Ok(num) = value.parse::<f32>() {
+        return Some(rustkit_css::Length::Px(num));
+    }
+
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1128,5 +1461,130 @@ mod tests {
 
         assert_eq!(builder.config.user_agent, "Test/1.0");
         assert!(!builder.config.javascript_enabled);
+    }
+
+    #[test]
+    fn test_layout_tree_from_document() {
+        // Parse a simple HTML document
+        let html = r#"<!DOCTYPE html>
+            <html>
+            <head><title>Test</title></head>
+            <body>
+                <h1>Hello World</h1>
+                <p>This is a paragraph.</p>
+            </body>
+            </html>"#;
+        
+        let document = Document::parse_html(html).expect("Failed to parse HTML");
+        let document = Rc::new(document);
+        
+        // Verify document structure
+        assert!(document.body().is_some(), "Document should have a body");
+        
+        // Create a dummy engine using the new() constructor pattern
+        let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
+        let engine = Engine {
+            config: EngineConfig::default(),
+            views: HashMap::new(),
+            viewhost: ViewHost::new(),
+            compositor: Compositor::new().expect("Failed to create compositor"),
+            renderer: None,
+            loader: Arc::new(ResourceLoader::new(LoaderConfig::default()).expect("Failed to create loader")),
+            image_manager: Arc::new(ImageManager::new()),
+            event_tx,
+            event_rx: Some(event_rx),
+        };
+        
+        // Build layout tree from document
+        let layout = engine.build_layout_from_document(&document);
+        
+        // Verify layout tree is not empty
+        assert!(!layout.children.is_empty(), "Layout tree should have children from body");
+        
+        // The body should contain h1 and p elements
+        let body_box = &layout.children[0];
+        
+        // Count text boxes (h1 content "Hello World" and p content "This is a paragraph.")
+        fn count_text_boxes(layout_box: &LayoutBox) -> usize {
+            let mut count = if matches!(layout_box.box_type, BoxType::Text(_)) {
+                1
+            } else {
+                0
+            };
+            for child in &layout_box.children {
+                count += count_text_boxes(child);
+            }
+            count
+        }
+        
+        let text_count = count_text_boxes(body_box);
+        assert!(text_count >= 2, "Should have at least 2 text boxes (h1 and p content), got {}", text_count);
+    }
+
+    #[test]
+    fn test_display_list_generation() {
+        // Parse a document with styled content
+        let html = r#"<!DOCTYPE html>
+            <html>
+            <body style="background-color: white">
+                <h1>Title</h1>
+            </body>
+            </html>"#;
+        
+        let document = Document::parse_html(html).expect("Failed to parse HTML");
+        let document = Rc::new(document);
+        
+        let (event_tx, event_rx) = tokio::sync::mpsc::unbounded_channel();
+        let engine = Engine {
+            config: EngineConfig::default(),
+            views: HashMap::new(),
+            viewhost: ViewHost::new(),
+            compositor: Compositor::new().expect("Failed to create compositor"),
+            renderer: None,
+            loader: Arc::new(ResourceLoader::new(LoaderConfig::default()).expect("Failed to create loader")),
+            image_manager: Arc::new(ImageManager::new()),
+            event_tx,
+            event_rx: Some(event_rx),
+        };
+        
+        let mut layout = engine.build_layout_from_document(&document);
+        
+        // Perform layout with a containing block
+        let containing_block = Dimensions {
+            content: Rect::new(0.0, 0.0, 800.0, 600.0),
+            ..Default::default()
+        };
+        layout.layout(&containing_block);
+        
+        // Generate display list
+        let display_list = DisplayList::build(&layout);
+        
+        // Display list should have commands (at least background colors)
+        assert!(!display_list.commands.is_empty(), "Display list should have commands, got {:?}", display_list.commands);
+    }
+
+    #[test]
+    fn test_parse_color() {
+        // Test named colors
+        assert_eq!(parse_color("black"), Some(rustkit_css::Color::BLACK));
+        assert_eq!(parse_color("white"), Some(rustkit_css::Color::WHITE));
+        
+        // Test hex colors
+        assert_eq!(parse_color("#fff"), Some(rustkit_css::Color::from_rgb(255, 255, 255)));
+        assert_eq!(parse_color("#000000"), Some(rustkit_css::Color::from_rgb(0, 0, 0)));
+        assert_eq!(parse_color("#ff0000"), Some(rustkit_css::Color::from_rgb(255, 0, 0)));
+        
+        // Test rgb colors
+        assert_eq!(parse_color("rgb(255, 0, 0)"), Some(rustkit_css::Color::new(255, 0, 0, 1.0)));
+    }
+
+    #[test]
+    fn test_parse_length() {
+        assert_eq!(parse_length("0"), Some(rustkit_css::Length::Zero));
+        assert_eq!(parse_length("auto"), Some(rustkit_css::Length::Auto));
+        assert_eq!(parse_length("10px"), Some(rustkit_css::Length::Px(10.0)));
+        assert_eq!(parse_length("1.5em"), Some(rustkit_css::Length::Em(1.5)));
+        assert_eq!(parse_length("2rem"), Some(rustkit_css::Length::Rem(2.0)));
+        assert_eq!(parse_length("50%"), Some(rustkit_css::Length::Percent(50.0)));
     }
 }

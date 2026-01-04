@@ -7,8 +7,17 @@ The layout module implements block and inline layout algorithms with text shapin
 RustKit Layout provides:
 - **Block layout**: Stack boxes vertically (CSS block flow)
 - **Inline layout**: Flow content horizontally with wrapping
-- **Text shaping**: DirectWrite integration for accurate text measurement
+- **Flexbox layout**: CSS flexible box layout
+- **Grid layout**: CSS Grid layout
+- **Text shaping**: DirectWrite integration via `rustkit-text` (replaced `dwrote`)
 - **Display list**: Generate paint commands for rendering
+
+### Dependencies
+
+| Crate | Purpose |
+|-------|---------|
+| `rustkit-text` | DirectWrite text shaping (replaced `dwrote`) |
+| `rustkit-css` | Computed styles |
 
 ## Architecture
 

@@ -135,51 +135,55 @@ We have strong opinions about how browsing should work, but we offer three modes
 
 ## Roadmap
 
-### Now (Alpha) - RustKit Engine
+### ✅ Completed - RustKit Engine (Phases 0-30)
 - ✅ Core browsing (tabs, navigation, address bar)
 - ✅ The Shelf with decay visualization
 - ✅ Workspaces
 - ✅ Flow Shield (ad blocking)
 - ✅ Flow Vault (password manager)
 - ✅ Command palette
-- ✅ **RustKit browser engine** (Phases 0-13 complete)
-  - ✅ HTML parsing & DOM
-  - ✅ CSS parsing & styling
-  - ✅ Block/inline layout
-  - ✅ Text rendering with DirectWrite
-  - ✅ JavaScript (Boa engine)
-  - ✅ Networking & downloads
-- ✅ **Independence Project - Bravo Phases Complete**
+- ✅ **RustKit browser engine** (All 30 Phases Complete! 🎉)
+  - ✅ HTML parsing & DOM (rustkit-dom, rustkit-html)
+  - ✅ CSS parsing & styling (rustkit-css, rustkit-cssparser)
+  - ✅ Block/inline/flex/grid layout (rustkit-layout)
+  - ✅ Text rendering with DirectWrite (rustkit-text)
+  - ✅ JavaScript (Boa engine - rustkit-js)
+  - ✅ Networking & downloads (rustkit-http, rustkit-net)
+  - ✅ Event handling (mouse, keyboard, touch, pointer)
+  - ✅ Forms & input (text, buttons, validation)
+  - ✅ Images & media (PNG/JPEG/GIF/WebP via rustkit-codecs)
+  - ✅ Scrolling & overflow
+  - ✅ Navigation & History API
+  - ✅ Security (CSP, CORS, same-origin)
+  - ✅ CSS Animations & Transitions
+  - ✅ SVG support (rustkit-svg)
+  - ✅ Canvas 2D API (rustkit-canvas)
+  - ✅ WebGL 1.0 (rustkit-webgl)
+  - ✅ Audio/Video elements (rustkit-media)
+  - ✅ Service Workers (rustkit-sw)
+  - ✅ IndexedDB (rustkit-idb)
+  - ✅ Web Workers (rustkit-worker)
+  - ✅ Accessibility (rustkit-a11y)
+- ✅ **Independence Project - Bravo Phases**
+  - ✅ Bravo 1: `rustkit-cssparser` (replaced `cssparser`)
+  - ✅ Bravo 2: `rustkit-text` (replaced `dwrote`)
   - ✅ Bravo 3: `rustkit-codecs` (replaced `image` crate)
   - ✅ Bravo 4: `rustkit-http` (replaced `reqwest`)
-  - ✅ Bravo 6: `rustkit-html` (replaced `html5ever`) — **COMPLETE**
-    - Full HTML5 tokenizer with 40+ states
-    - Tree builder with 23 insertion modes
-    - Table parsing with foster parenting
-    - Adoption Agency Algorithm for misnested formatting
-    - Fragment parsing for innerHTML support
-    - Quirks mode detection (HTML5, HTML4.01, XHTML)
-    - ~200 named HTML entities
-    - Select, Template, Frameset mode support
-- 🔄 Event handling (Phase 14)
-- 🔄 Forms & input (Phase 15)
+  - ✅ Bravo 6: `rustkit-html` (replaced `html5ever`)
 
-### Next (Beta)
-- [ ] Images & media rendering
-- [ ] CSS Flexbox & Grid
-- [ ] Scrolling & overflow
-- [ ] Find in Page (Ctrl+F)
-- [ ] Bookmarks & history
-- [ ] Context menus
-- [ ] Import from Chrome/Firefox
+### Now (Beta)
+- 🔄 Find in Page (Ctrl+F)
+- 🔄 Bookmarks & history
+- 🔄 Context menus
+- 🔄 Import from Chrome/Firefox
 
 ### Future
-- [ ] WebGL & Canvas
-- [ ] Service Workers
+- [ ] Bravo 5: `rustkit-gpu` (replace wgpu)
 - [ ] HiWave Sync (cross-device)
 - [ ] Reader Mode
 - [ ] Mobile companion
-- [ ] Bravo 5: `rustkit-gpu` (replace wgpu)
+- [ ] WebRTC
+- [ ] WebAssembly
 
 See [docs/RUSTKIT-ROADMAP.md](docs/RUSTKIT-ROADMAP.md) for the complete engine roadmap.
 

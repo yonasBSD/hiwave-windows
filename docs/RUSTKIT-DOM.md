@@ -5,7 +5,12 @@ The DOM module provides HTML parsing and DOM tree manipulation for the RustKit b
 ## Overview
 
 RustKit DOM uses:
-- **html5ever**: Spec-compliant HTML5 parsing
+- **rustkit-html**: RustKit's own HTML5 parser (replaced html5ever)
+  - Full HTML5 tokenizer with 40+ states
+  - Tree builder with 23 insertion modes
+  - Adoption Agency Algorithm for misnested formatting
+  - Table parsing with foster parenting
+  - Fragment parsing for innerHTML
 - **Rc/RefCell**: Reference-counted nodes with interior mutability
 - **HashMap indexing**: Fast element lookup by ID
 

@@ -553,7 +553,7 @@
             <p>
                 <strong>HiWave is built from scratch on Rust with our own RustKit engine.</strong>
                 No Chromium. No Google code. No ad company calling the shots.
-                ~37,600 lines of custom browser engine code and growing.
+                ~45,000 lines of custom browser engine code and growing.
             </p>
         </div>
 
@@ -631,9 +631,9 @@
                 </div>
             </div>
             <p style="margin-top: 16px; color: var(--text-muted); font-size: 0.9rem;">
-                <strong style="color: var(--accent);">~37,600 lines</strong> of Rust powering HTML parsing, CSS styling, layout computation,
-                event handling, and GPU rendering. ~45-50% custom algorithms, built on proven foundations
-                (html5ever, wgpu, boa).
+                <strong style="color: var(--accent);">~45,000 lines</strong> of Rust powering HTML parsing, CSS styling, layout computation,
+                event handling, and GPU rendering. ~80% custom RustKit code, with minimal external dependencies
+                (boa_engine for JavaScript, wgpu for GPU, native-tls for HTTPS).
             </p>
         </div>
 
@@ -710,8 +710,8 @@
             <div class="credits">
                 <p><strong>Built With:</strong></p>
                 <p>
-                    Rust • RustKit Engine • WRY • wgpu • html5ever • boa_engine •
-                    <a href="https://github.com/nickel-org/rust-cssparser" target="_blank" rel="noopener">cssparser</a> •
+                    Rust • RustKit Engine (rustkit-html, rustkit-css, rustkit-layout, rustkit-http) • 
+                    wgpu • boa_engine •
                     <a href="https://github.com/brave/adblock-rust" target="_blank" rel="noopener">Brave's adblock-rust</a>
                 </p>
             </div>
@@ -775,7 +775,8 @@
             <p>
                 <a href="https://www.hiwavebrowser.com" target="_blank" rel="noopener">www.hiwavebrowser.com</a> &nbsp;•&nbsp;
                 <a href="https://github.com/hiwavebrowser/hiwave" target="_blank" rel="noopener">GitHub</a> &nbsp;•&nbsp;
-                <a href="https://twitter.com/hiwavebrowser" target="_blank" rel="noopener">Twitter</a>
+                <a href="https://twitter.com/hiwavebrowser" target="_blank" rel="noopener">Twitter</a> &nbsp;•&nbsp;
+                <a href="https://ko-fi.com/hiwavebrowser" target="_blank" rel="noopener">Ko-fi</a>
             </p>
             <p style="margin-top: 16px; font-size: 0.7rem;">
                 © 2024-2026 HiWave. Licensed under MPL-2.0.
@@ -797,27 +798,30 @@
             }
         };
 
-        // Handle link clicks - open externally via IPC if available
-        // Otherwise let the browser handle it natively
+        // Handle external link clicks - always use window.open for reliability
         document.querySelectorAll('a[target="_blank"]').forEach(link => {
             link.addEventListener('click', (e) => {
+                e.preventDefault();
                 const url = link.href;
-
-                // If IPC is available, use it to open in system browser
+                
+                // Use window.open - works reliably in all contexts
+                window.open(url, '_blank', 'noopener,noreferrer');
+                
+                // Also notify via IPC if available (for logging/analytics)
                 if (window.ipc) {
-                    e.preventDefault();
-                    window.ipc.postMessage(JSON.stringify({
-                        cmd: 'open_external',
-                        url: url
-                    }));
+                    try {
+                        window.ipc.postMessage(JSON.stringify({
+                            cmd: 'open_external',
+                            url: url
+                        }));
+                    } catch (err) {
+                        // Ignore IPC errors - link already opened via window.open
+                    }
                 }
-                // Otherwise, let the native target="_blank" behavior work
-                // The browser will open the link in a new tab/window
             });
         });
 
-        // Fallback: If links still don't work, try shell.openExternal pattern
-        // This handles the case where we're in a WebView context
+        // Ensure all http links have proper attributes
         document.querySelectorAll('a[href^="http"]').forEach(link => {
             if (!link.hasAttribute('target')) {
                 link.setAttribute('target', '_blank');

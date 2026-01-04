@@ -6,9 +6,16 @@ The CSS module provides stylesheet parsing, cascade/specificity, and computed st
 
 RustKit CSS provides:
 - **Property parsing**: Parse CSS values (colors, lengths, etc.)
-- **Stylesheet parsing**: Parse complete CSS files
+- **Stylesheet parsing**: Parse complete CSS files via `rustkit-cssparser`
 - **Cascade**: Apply rules based on specificity and origin
 - **Inheritance**: Propagate inherited properties to children
+
+### Dependencies
+
+| Crate | Purpose |
+|-------|---------|
+| `rustkit-cssparser` | CSS tokenizer and value parser (replaced external `cssparser`) |
+| `selectors` | CSS selector matching |
 
 ## Architecture
 
