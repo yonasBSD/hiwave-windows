@@ -142,7 +142,9 @@ impl NativeBrowser {
         let mut engine = self.engine.borrow_mut();
 
         // Calculate initial bounds
-        let chrome_bounds = Bounds::new(0, 0, self.window_width, self.chrome_height);
+        // Chrome view covers the sidebar area (left column, full height)
+        // The chrome.html contains the sidebar UI
+        let chrome_bounds = Bounds::new(0, 0, self.sidebar_width, self.window_height);
         let content_bounds = self.calculate_content_bounds();
         let shelf_bounds = self.calculate_shelf_bounds();
 
@@ -214,7 +216,7 @@ impl NativeBrowser {
         } else {
             0
         };
-        let y = self.chrome_height as i32;
+        let y = 0; // Content starts at top (no toolbar in native mode)
         let width = if self.sidebar_open {
             self.window_width.saturating_sub(self.sidebar_width)
         } else {
@@ -222,7 +224,6 @@ impl NativeBrowser {
         };
         let height = self
             .window_height
-            .saturating_sub(self.chrome_height)
             .saturating_sub(self.shelf_height);
 
         Bounds::new(x, y, width, height)
@@ -249,9 +250,10 @@ impl NativeBrowser {
     fn update_layout(&self) {
         let mut engine = self.engine.borrow_mut();
 
-        // Update Chrome view (full width, fixed height at top)
+        // Update Chrome view (sidebar area - left column, full height)
         if let Some(&chrome_id) = self.views.get(&ViewType::Chrome) {
-            let bounds = Bounds::new(0, 0, self.window_width, self.chrome_height);
+            let width = if self.sidebar_open { self.sidebar_width } else { 0 };
+            let bounds = Bounds::new(0, 0, width, self.window_height);
             if let Err(e) = engine.resize_view(chrome_id, bounds) {
                 warn!(error = %e, "Failed to resize Chrome view");
             }
