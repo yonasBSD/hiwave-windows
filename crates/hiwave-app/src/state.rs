@@ -2,6 +2,11 @@
 //!
 //! This module contains the central state for the HiWave application,
 //! including the browser shell, ad blocker, password vault, and configuration.
+//!
+//! Note: Many methods are currently unused in native-win32 mode but will be
+//! wired up as native mode gains feature parity with hybrid mode.
+
+#![allow(dead_code)]
 
 use crate::import::ImportResult;
 use hiwave_analytics::Analytics;

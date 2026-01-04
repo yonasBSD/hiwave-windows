@@ -39,11 +39,15 @@ deps/wincairo/*.pdb
 deps/wincairo/*
 !deps/wincairo/include
 
-# AI Orchestrator data (local-only)
-.ai/
+# AI Orchestrator artifacts (large generated files)
+.ai/artifacts/
+.ai/cache/
 
-# AI Orchestrator tool (proprietary - separate repo)
-tools/ai-orchestrator/
+# AI Orchestrator tool and roadmap are tracked
+# tools/ai-orchestrator/ - TRACKED
+# .ai/roadmap_index.json - TRACKED
+# .ai/work_orders/ - TRACKED
+# .ai/reports/ - TRACKED
 
 # Internal planning docs
 docs/plans/

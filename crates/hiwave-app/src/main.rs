@@ -34,6 +34,9 @@ use webview::{engine_name, HiWaveWebView, IWebView};
 use wry::{Rect, WebViewBuilder};
 
 // Always need logging
+#[cfg(feature = "native-win32")]
+use tracing::{error, info, Level};
+#[cfg(not(feature = "native-win32"))]
 use tracing::{error, info, warn, Level};
 use tracing_subscriber::FmtSubscriber;
 
@@ -55,7 +58,11 @@ const SIDEBAR_WIDTH: f64 = 220.0;
 mod import;
 mod state;
 
-// Hybrid mode specific modules
+// Native platform module (no wry/tao/WebView)
+#[cfg(feature = "native-win32")]
+mod native;
+
+// Hybrid mode specific modules (wry/tao)
 #[cfg(not(feature = "native-win32"))]
 mod ipc;
 #[cfg(not(feature = "native-win32"))]
@@ -66,10 +73,6 @@ mod webview_rustkit;
 
 #[cfg(all(target_os = "windows", feature = "rustkit", not(feature = "native-win32")))]
 mod shield_adapter;
-
-// Native Win32 module
-#[cfg(all(target_os = "windows", feature = "native-win32"))]
-mod main_win32;
 
 #[cfg(not(feature = "native-win32"))]
 use hiwave_shield::ResourceType;
@@ -640,15 +643,16 @@ fn main() {
 
     info!("Starting HiWave...");
 
-    // Native Win32 mode: Use RustKit for everything (no wry/tao)
-    #[cfg(all(target_os = "windows", feature = "native-win32"))]
+    // Native platform mode: Use RustKit for everything (no wry/tao)
+    #[cfg(feature = "native-win32")]
     {
-        info!("WebView engine: RustKit (native-win32)");
-        if let Err(e) = main_win32::run_native() {
-            error!("Native Win32 browser failed: {}", e);
+        info!("WebView engine: RustKit (native)");
+        if let Err(e) = native::run_native() {
+            error!("Native browser failed: {}", e);
             std::process::exit(1);
         }
-        return;
+        #[allow(clippy::needless_return)]
+        return; // Early return - hybrid mode code is below
     }
 
     // Everything below is hybrid mode (wry/tao)

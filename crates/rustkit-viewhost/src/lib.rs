@@ -1,19 +1,31 @@
 //! # RustKit ViewHost
 //!
-//! Win32 window hosting layer for the RustKit browser engine.
-//! Handles child HWND creation, resize events, DPI changes, focus, visibility,
-//! and input event translation (mouse, keyboard).
+//! Cross-platform window hosting layer for the RustKit browser engine.
+//! Provides platform-native windowing without external frameworks like tao/wry.
+//!
+//! ## Platform Support
+//!
+//! - **Windows**: Win32 API (HWND, WM_* messages)
+//! - **macOS**: Cocoa/AppKit (NSWindow, NSView)
+//! - **Linux**: X11 (initial), Wayland (planned)
 //!
 //! ## Design Goals
 //!
 //! 1. **Multi-view support**: Each view has isolated state, no global singletons
-//! 2. **Resize correctness**: WM_SIZE triggers surface resize immediately
-//! 3. **DPI awareness**: Per-monitor DPI scaling
+//! 2. **Resize correctness**: Platform resize events trigger surface resize immediately
+//! 3. **DPI awareness**: Per-monitor DPI scaling on all platforms
 //! 4. **Focus management**: Proper focus chain for keyboard events
-//! 5. **Input handling**: Win32 messages translated to platform-agnostic events
+//! 5. **Input handling**: Platform messages translated to cross-platform events
 
-// Allow Arc with non-Send/Sync types - intentional for Win32 HWND handling
+// Allow Arc with non-Send/Sync types - intentional for native handle handling
 #![allow(clippy::arc_with_non_send_sync)]
+
+// Platform-specific modules
+#[cfg(target_os = "macos")]
+pub mod macos;
+
+#[cfg(target_os = "linux")]
+pub mod linux;
 
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex, RwLock};

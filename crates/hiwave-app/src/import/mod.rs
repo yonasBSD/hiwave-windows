@@ -3,6 +3,11 @@
 //! This module provides import capabilities for Chrome and Firefox:
 //! - Bookmarks → Workspaces with tabs
 //! - Passwords → Flow Vault credentials (CSV import)
+//!
+//! Note: Import functionality is currently only exposed via hybrid mode IPC.
+//! Native mode will wire up these functions in future iterations.
+
+#![allow(dead_code)]
 
 pub mod chrome;
 pub mod converter;

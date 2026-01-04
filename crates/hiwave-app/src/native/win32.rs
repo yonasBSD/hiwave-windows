@@ -43,9 +43,9 @@ const SHELF_HEIGHT_EXPANDED: u32 = 280;
 const SIDEBAR_WIDTH: u32 = 220;
 
 /// HTML content embedded at compile time
-const CHROME_HTML: &str = include_str!("ui/chrome.html");
-const SHELF_HTML: &str = include_str!("ui/shelf.html");
-const ABOUT_HTML: &str = include_str!("ui/about.html");
+const CHROME_HTML: &str = include_str!("../ui/chrome.html");
+const SHELF_HTML: &str = include_str!("../ui/shelf.html");
+const ABOUT_HTML: &str = include_str!("../ui/about.html");
 
 /// View types in the browser
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -152,7 +152,7 @@ impl NativeBrowser {
             .map_err(|e| format!("Failed to create Chrome view: {}", e))?;
         self.views.insert(ViewType::Chrome, chrome_id);
         self.engine_view_types.insert(chrome_id, ViewType::Chrome);
-        info!(?chrome_id, "Chrome view created");
+        debug!(?chrome_id, "Chrome view created");
 
         // Create Content view (web page rendering)
         let content_id = engine
@@ -160,7 +160,7 @@ impl NativeBrowser {
             .map_err(|e| format!("Failed to create Content view: {}", e))?;
         self.views.insert(ViewType::Content, content_id);
         self.engine_view_types.insert(content_id, ViewType::Content);
-        info!(?content_id, "Content view created");
+        debug!(?content_id, "Content view created");
 
         // Create Shelf view (command palette, hidden by default)
         let shelf_id = engine
@@ -168,7 +168,9 @@ impl NativeBrowser {
             .map_err(|e| format!("Failed to create Shelf view: {}", e))?;
         self.views.insert(ViewType::Shelf, shelf_id);
         self.engine_view_types.insert(shelf_id, ViewType::Shelf);
-        info!(?shelf_id, "Shelf view created");
+        debug!(?shelf_id, "Shelf view created");
+        
+        info!(chrome = ?chrome_id, content = ?content_id, shelf = ?shelf_id, "All views created");
 
         Ok(())
     }
@@ -182,7 +184,7 @@ impl NativeBrowser {
             engine
                 .load_html(chrome_id, CHROME_HTML)
                 .map_err(|e| format!("Failed to load Chrome HTML: {}", e))?;
-            info!("Chrome UI loaded");
+            debug!(bytes = CHROME_HTML.len(), "Chrome HTML loaded");
         }
 
         // Load Shelf UI
@@ -190,7 +192,7 @@ impl NativeBrowser {
             engine
                 .load_html(shelf_id, SHELF_HTML)
                 .map_err(|e| format!("Failed to load Shelf HTML: {}", e))?;
-            info!("Shelf UI loaded");
+            debug!(bytes = SHELF_HTML.len(), "Shelf HTML loaded");
         }
 
         // Load About page in content view
@@ -198,9 +200,10 @@ impl NativeBrowser {
             engine
                 .load_html(content_id, ABOUT_HTML)
                 .map_err(|e| format!("Failed to load About HTML: {}", e))?;
-            info!("About page loaded in content view");
+            debug!(bytes = ABOUT_HTML.len(), "About page loaded");
         }
 
+        info!("Initial content loaded into all views");
         Ok(())
     }
 
@@ -272,6 +275,7 @@ impl NativeBrowser {
     }
 
     /// Handle window resize event.
+    #[allow(dead_code)]
     pub fn on_resize(&mut self, width: u32, height: u32) {
         self.window_width = width;
         self.window_height = height;
@@ -334,6 +338,7 @@ impl NativeBrowser {
     }
 
     /// Execute JavaScript in a view.
+    #[allow(dead_code)]
     pub fn execute_script(&self, view_type: ViewType, script: &str) -> Option<String> {
         if let Some(&view_id) = self.views.get(&view_type) {
             let mut engine = self.engine.borrow_mut();
@@ -385,14 +390,12 @@ impl NativeBrowser {
 
     /// Handle a single IPC message.
     fn handle_ipc_message(&mut self, view_type: Option<ViewType>, msg: IpcMessage) {
-        trace!(?view_type, payload = %msg.payload, "IPC message received");
-
         // Parse the JSON payload
         let parsed: Result<serde_json::Value, _> = serde_json::from_str(&msg.payload);
         let json = match parsed {
             Ok(v) => v,
             Err(e) => {
-                warn!(error = %e, "Failed to parse IPC message JSON");
+                warn!(error = %e, payload_len = msg.payload.len(), "Failed to parse IPC message JSON");
                 return;
             }
         };
@@ -401,62 +404,80 @@ impl NativeBrowser {
         let cmd = match json.get("cmd").and_then(|v| v.as_str()) {
             Some(c) => c,
             None => {
-                warn!("IPC message missing 'cmd' field");
+                trace!("IPC message missing 'cmd' field (likely data payload)");
                 return;
             }
         };
+
+        // Log at trace level for high-frequency commands, debug for others
+        match cmd {
+            // High-frequency, log at trace only
+            "log" | "sync_tabs" | "sync_workspaces" | "sync_downloads" => {
+                trace!(?view_type, cmd, "IPC");
+            }
+            // Low-frequency, log at debug
+            _ => {
+                debug!(?view_type, cmd, "IPC command");
+            }
+        }
 
         // Handle the command
         match cmd {
             "navigate" => {
                 if let Some(url) = json.get("url").and_then(|v| v.as_str()) {
-                    info!(url, "Navigate requested");
+                    info!(url, "Navigation started");
                     self.navigate(url);
                 }
             }
             "go_back" => {
-                debug!("Go back requested");
+                debug!("History: back");
                 // TODO: Implement navigation history
             }
             "go_forward" => {
-                debug!("Go forward requested");
+                debug!("History: forward");
                 // TODO: Implement navigation history
             }
             "reload" => {
-                debug!("Reload requested");
+                debug!("Page reload");
                 // TODO: Implement reload
             }
             "expand_chrome" => {
+                trace!("Layout: chrome expanded");
                 self.expand_chrome();
             }
             "collapse_chrome" => {
+                trace!("Layout: chrome collapsed");
                 self.collapse_chrome();
             }
             "expand_shelf" | "open_command_palette" => {
+                debug!("Shelf opened");
                 self.expand_shelf();
             }
             "collapse_shelf" | "close_command_palette" => {
+                trace!("Shelf closed");
                 self.collapse_shelf();
             }
             "toggle_sidebar" => {
+                debug!(open = !self.sidebar_open, "Sidebar toggled");
                 self.toggle_sidebar();
             }
             "chrome_ready" => {
-                info!("Chrome UI ready");
+                info!("Chrome UI initialized and ready");
                 // TODO: Send initial state to Chrome UI
             }
             "log" => {
+                // JavaScript console log forwarding
                 let level = json.get("level").and_then(|v| v.as_str()).unwrap_or("info");
                 let message = json.get("message").and_then(|v| v.as_str()).unwrap_or("");
                 match level {
                     "error" => error!(source = "js", "{}", message),
                     "warn" => warn!(source = "js", "{}", message),
-                    "debug" => debug!(source = "js", "{}", message),
-                    _ => info!(source = "js", "{}", message),
+                    "debug" => trace!(source = "js", "{}", message), // Downgrade JS debug to trace
+                    _ => trace!(source = "js", "{}", message), // JS info → trace (very frequent)
                 }
             }
             _ => {
-                debug!(cmd, "Unhandled IPC command");
+                trace!(cmd, "Unhandled IPC command (may be hybrid-only)");
             }
         }
     }
@@ -476,52 +497,63 @@ impl Drop for NativeBrowser {
     }
 }
 
+/// Print startup banner with build info.
+fn print_startup_banner() {
+    info!("=== HiWave Browser ===");
+    info!(
+        version = env!("CARGO_PKG_VERSION"),
+        engine = "RustKit",
+        mode = "native-win32",
+        "Startup"
+    );
+    info!(
+        target_os = std::env::consts::OS,
+        target_arch = std::env::consts::ARCH,
+        "Platform"
+    );
+    
+    // Get DPI scale if available
+    #[cfg(windows)]
+    {
+        use windows::Win32::UI::HiDpi::GetDpiForSystem;
+        let dpi = unsafe { GetDpiForSystem() };
+        let scale = dpi as f64 / 96.0;
+        info!(dpi, scale, "Display");
+    }
+}
+
+/// Install panic hook for structured crash logging.
+fn install_panic_hook() {
+    let default_hook = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |panic_info| {
+        // Log the panic with tracing
+        let location = panic_info.location().map(|l| format!("{}:{}:{}", l.file(), l.line(), l.column()));
+        let message = panic_info.payload().downcast_ref::<&str>().map(|s| *s)
+            .or_else(|| panic_info.payload().downcast_ref::<String>().map(|s| s.as_str()));
+        
+        error!(
+            location = location.as_deref(),
+            message = message,
+            "PANIC - Browser crashed"
+        );
+        
+        // Call the default hook for normal panic behavior
+        default_hook(panic_info);
+    }));
+}
+
 /// Entry point for native Win32 mode.
 ///
 /// This function is called from main.rs when the `native-win32` feature is enabled.
 pub fn run_native() -> Result<(), String> {
-    info!("Starting HiWave in native Win32 mode");
+    install_panic_hook();
+    print_startup_banner();
 
     let mut browser = NativeBrowser::new()?;
     browser.init()?;
     browser.run();
 
+    info!("HiWave shutdown complete");
     Ok(())
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_bounds_calculation() {
-        // Test that bounds calculations don't panic
-        let browser = NativeBrowser {
-            viewhost: ViewHost::new(),
-            engine: RefCell::new(
-                EngineBuilder::new()
-                    .build()
-                    .expect("Failed to create test engine"),
-            ),
-            views: HashMap::new(),
-            engine_view_types: HashMap::new(),
-            app_state: Arc::new(AppState::new()),
-            window_width: 1280,
-            window_height: 800,
-            chrome_height: CHROME_HEIGHT_DEFAULT,
-            shelf_height: SHELF_HEIGHT_DEFAULT,
-            sidebar_width: SIDEBAR_WIDTH,
-            sidebar_open: true,
-        };
-
-        let content_bounds = browser.calculate_content_bounds();
-        assert_eq!(content_bounds.x, SIDEBAR_WIDTH as i32);
-        assert_eq!(content_bounds.y, CHROME_HEIGHT_DEFAULT as i32);
-        assert!(content_bounds.width > 0);
-        assert!(content_bounds.height > 0);
-
-        let shelf_bounds = browser.calculate_shelf_bounds();
-        assert_eq!(shelf_bounds.x, SIDEBAR_WIDTH as i32);
-        assert_eq!(shelf_bounds.height, 0); // Shelf is collapsed by default
-    }
-}

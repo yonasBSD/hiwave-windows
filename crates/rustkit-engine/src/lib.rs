@@ -1374,8 +1374,7 @@ fn parse_color(value: &str) -> Option<rustkit_css::Color> {
     }
 
     // Hex colors
-    if value.starts_with('#') {
-        let hex = &value[1..];
+    if let Some(hex) = value.strip_prefix('#') {
         let (r, g, b) = match hex.len() {
             3 => {
                 let r = u8::from_str_radix(&hex[0..1], 16).ok()? * 17;
