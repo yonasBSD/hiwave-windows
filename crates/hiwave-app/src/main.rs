@@ -77,24 +77,52 @@ const CHART_JS: &str = include_str!("ui/chart.umd.min.js");
 fn create_window_icon() -> Option<Icon> {
     const SIZE: u32 = 32;
     let mut data = Vec::with_capacity((SIZE * SIZE * 4) as usize);
+    
     for y in 0..SIZE {
         for x in 0..SIZE {
-            let ratio = x as f32 / (SIZE as f32 - 1.0);
-            let mut r = 110.0 + 60.0 * ratio;
-            let mut g = 30.0 + 40.0 * ratio;
-            let mut b = 200.0 + 30.0 * ratio;
-            let is_z_line = y == x
-                || y == (SIZE - 1 - x)
-                || (y == SIZE / 2 && (SIZE / 4..SIZE * 3 / 4).contains(&x));
-            if is_z_line {
-                r = (r * 1.15).min(255.0);
-                g = (g * 1.15).min(255.0);
-                b = (b * 1.15).min(255.0);
+            let fx = x as f32;
+            let fy = y as f32;
+            let center_y = SIZE as f32 / 2.0;
+            
+            // Create wave pattern - two sine waves with different frequencies
+            let wave1 = (fx * 0.35).sin() * 4.0;
+            let wave2 = (fx * 0.2 + 1.5).sin() * 3.0;
+            let wave_y = center_y + wave1 + wave2;
+            
+            // Distance from wave line (for anti-aliasing and glow)
+            let dist_from_wave = (fy - wave_y).abs();
+            
+            // Ocean blue gradient background
+            let depth = fy / SIZE as f32;
+            let bg_r = 15.0 + 20.0 * (1.0 - depth);
+            let bg_g = 60.0 + 80.0 * (1.0 - depth);
+            let bg_b = 140.0 + 80.0 * (1.0 - depth);
+            
+            // Wave colors - bright cyan/blue
+            let wave_r = 80.0;
+            let wave_g = 200.0;
+            let wave_b = 255.0;
+            
+            // Blend based on distance from wave
+            let wave_width = 3.5;
+            let glow_width = 6.0;
+            
+            let (r, g, b) = if dist_from_wave < wave_width {
+                // Core wave line
+                (wave_r, wave_g, wave_b)
+            } else if dist_from_wave < glow_width {
+                // Glow around wave
+                let t = (dist_from_wave - wave_width) / (glow_width - wave_width);
+                let blend = 1.0 - t;
+                (
+                    bg_r + (wave_r - bg_r) * blend * 0.5,
+                    bg_g + (wave_g - bg_g) * blend * 0.5,
+                    bg_b + (wave_b - bg_b) * blend * 0.5,
+                )
             } else {
-                r = (r * 0.72).max(0.0);
-                g = (g * 0.72).max(0.0);
-                b = (b * 0.72).max(0.0);
-            }
+                (bg_r, bg_g, bg_b)
+            };
+            
             data.push(r as u8);
             data.push(g as u8);
             data.push(b as u8);
