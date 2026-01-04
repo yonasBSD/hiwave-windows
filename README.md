@@ -287,13 +287,22 @@ See [docs/RUSTKIT-ROADMAP.md](docs/RUSTKIT-ROADMAP.md) for the complete engine r
 
 ## License
 
-HiWave is licensed under the [Mozilla Public License 2.0](LICENSE).
+HiWave is **dual-licensed**:
 
-This means:
+| License | Best For |
+|---------|----------|
+| [MPL-2.0](LICENSE) (free) | Most users, open source projects |
+| [Commercial](COMMERCIAL-LICENSE.md) (paid) | Keeping modifications private, dedicated support |
+
+**Under MPL-2.0:**
 - ✅ Free to use, modify, and distribute
-- ✅ Source code is open
-- ✅ You can build commercial products with it
+- ✅ Build commercial products
+- ✅ Keep your own code proprietary
 - ⚠️ Changes to HiWave's files must be shared under MPL-2.0
+
+**Need more flexibility?** See [COMMERCIAL-LICENSE.md](COMMERCIAL-LICENSE.md) for commercial licensing options.
+
+**Want to contribute?** By submitting code, you agree to our [Contributor License Agreement](CLA.md).
 
 ---
 
