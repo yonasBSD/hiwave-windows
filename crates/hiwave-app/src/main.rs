@@ -1,82 +1,112 @@
 //! HiWave - Main Application Entry Point
 //!
 //! This is the primary entry point for the HiWave browser application.
-//! It uses a three-WebView architecture:
-//! - Chrome WebView: Full window (chrome UI + sidebar)
-//! - Content WebView: Right pane (excludes sidebar, below top bar)
-//! - Shelf WebView: Bottom (collapsible, aligned to content pane)
+//!
+//! Two architectures supported:
+//! 1. Hybrid mode: WebView2 for chrome UI + RustKit for content
+//! 2. Native Win32 mode: 100% RustKit for everything (--features native-win32)
 
 // Allow Arc with non-Send/Sync types - wry::WebView is single-threaded by design
 #![allow(clippy::arc_with_non_send_sync)]
 
-mod import;
+#[cfg(not(feature = "native-win32"))]
 mod platform;
 
+// Conditional imports for hybrid/WebView mode
+#[cfg(not(feature = "native-win32"))]
 use muda::Menu;
+#[cfg(not(feature = "native-win32"))]
 use platform::get_platform_manager;
-#[cfg(target_os = "macos")]
+#[cfg(all(target_os = "macos", not(feature = "native-win32")))]
 use platform::menu_ids;
+#[cfg(not(feature = "native-win32"))]
 use std::sync::{atomic::AtomicBool, Arc, Mutex};
+#[cfg(not(feature = "native-win32"))]
 use tao::{
     dpi::{LogicalPosition, LogicalSize},
     event::{Event, WindowEvent},
     event_loop::{ControlFlow, EventLoopBuilder},
     window::{Icon, WindowBuilder},
 };
-use tracing::{error, info, warn, Level};
-use tracing_subscriber::FmtSubscriber;
+#[cfg(not(feature = "native-win32"))]
 use webview::{engine_name, HiWaveWebView, IWebView};
+#[cfg(not(feature = "native-win32"))]
 use wry::{Rect, WebViewBuilder};
 
-/// Default height of the chrome top bar area (workspace + tabs + toolbar)
+// Always need logging
+use tracing::{error, info, warn, Level};
+use tracing_subscriber::FmtSubscriber;
+
+// Constants used by hybrid mode
+#[cfg(not(feature = "native-win32"))]
 const CHROME_HEIGHT_DEFAULT: u32 = 104;
-/// Small expansion for tab actions panel
+#[cfg(not(feature = "native-win32"))]
 const CHROME_HEIGHT_SMALL: u32 = 148;
-/// Expanded height for chrome UI overlays
+#[cfg(not(feature = "native-win32"))]
 const CHROME_HEIGHT_EXPANDED: u32 = 460;
-/// Default height of the shelf (hidden)
+#[cfg(not(feature = "native-win32"))]
 const SHELF_HEIGHT_DEFAULT: u32 = 0;
-/// Expanded height when command palette/shelf is open
+#[cfg(not(feature = "native-win32"))]
 const SHELF_HEIGHT_EXPANDED: u32 = 280;
+#[cfg(not(feature = "native-win32"))]
 const SIDEBAR_WIDTH: f64 = 220.0;
 
-mod ipc;
+// Core modules (needed by both modes)
+mod import;
 mod state;
+
+// Hybrid mode specific modules
+#[cfg(not(feature = "native-win32"))]
+mod ipc;
+#[cfg(not(feature = "native-win32"))]
 mod webview;
 
-#[cfg(all(target_os = "windows", feature = "rustkit"))]
+#[cfg(all(target_os = "windows", feature = "rustkit", not(feature = "native-win32")))]
 mod webview_rustkit;
 
-#[cfg(all(target_os = "windows", feature = "rustkit"))]
+#[cfg(all(target_os = "windows", feature = "rustkit", not(feature = "native-win32")))]
 mod shield_adapter;
 
+// Native Win32 module
 #[cfg(all(target_os = "windows", feature = "native-win32"))]
 mod main_win32;
 
+#[cfg(not(feature = "native-win32"))]
 use hiwave_shield::ResourceType;
+#[cfg(not(feature = "native-win32"))]
 use ipc::{IpcMessage, JS_BRIDGE};
+#[cfg(not(feature = "native-win32"))]
 use state::AppState;
 
-/// The HTML content for the browser chrome
+// HTML constants (used by hybrid mode)
+#[cfg(not(feature = "native-win32"))]
 const CHROME_HTML: &str = include_str!("ui/chrome.html");
-/// The HTML content for the bottom shelf
+#[cfg(not(feature = "native-win32"))]
 const SHELF_HTML: &str = include_str!("ui/shelf.html");
-/// The HTML content for the new tab landing page (now shows about page)
+#[cfg(not(feature = "native-win32"))]
 const NEW_TAB_URL: &str = "hiwave://newtab";
-/// The HTML content for the about page
+#[cfg(not(feature = "native-win32"))]
 const ABOUT_HTML: &str = include_str!("ui/about.html");
+#[cfg(not(feature = "native-win32"))]
 const ABOUT_URL: &str = "hiwave://about";
-/// The HTML content for the settings window
+#[cfg(not(feature = "native-win32"))]
 const SETTINGS_HTML: &str = include_str!("ui/settings.html");
-/// The HTML content for the analytics report page
+#[cfg(not(feature = "native-win32"))]
 const REPORT_HTML: &str = include_str!("ui/report.html");
+#[cfg(not(feature = "native-win32"))]
 const REPORT_URL: &str = "hiwave://report";
+#[cfg(not(feature = "native-win32"))]
 const FIND_IN_PAGE_HELPER: &str = include_str!("ui/find_in_page.js");
+#[cfg(not(feature = "native-win32"))]
 const CONTEXT_MENU_HELPER: &str = include_str!("ui/context_menu.js");
+#[cfg(not(feature = "native-win32"))]
 const AUDIO_DETECTOR: &str = include_str!("ui/audio_detector.js");
+#[cfg(not(feature = "native-win32"))]
 const AUTOFILL_HELPER: &str = include_str!("ui/autofill.js");
+#[cfg(not(feature = "native-win32"))]
 const CHART_JS: &str = include_str!("ui/chart.umd.min.js");
 
+#[cfg(not(feature = "native-win32"))]
 fn create_window_icon() -> Option<Icon> {
     const SIZE: u32 = 32;
     let mut data = Vec::with_capacity((SIZE * SIZE * 4) as usize);
@@ -135,12 +165,14 @@ fn create_window_icon() -> Option<Icon> {
     Icon::from_rgba(data, SIZE, SIZE).ok()
 }
 
+#[cfg(not(feature = "native-win32"))]
 #[derive(Debug, Clone, Copy)]
 enum ShelfScope {
     Workspace,
     All,
 }
 
+#[cfg(not(feature = "native-win32"))]
 impl ShelfScope {
     fn as_str(self) -> &'static str {
         match self {
@@ -150,6 +182,7 @@ impl ShelfScope {
     }
 }
 
+#[cfg(not(feature = "native-win32"))]
 impl ShelfScope {
     fn from_option(scope: Option<&str>) -> Self {
         match scope {
@@ -160,6 +193,7 @@ impl ShelfScope {
 }
 
 /// User events for cross-WebView communication
+#[cfg(not(feature = "native-win32"))]
 #[derive(Debug, Clone)]
 #[allow(dead_code)]
 enum UserEvent {
@@ -322,6 +356,7 @@ enum UserEvent {
     },
 }
 
+#[cfg(not(feature = "native-win32"))]
 #[allow(clippy::too_many_arguments)]
 fn apply_layout(
     window: &tao::window::Window,
@@ -369,6 +404,7 @@ fn apply_layout(
     shelf.set_bounds(shelf_rect);
 }
 
+#[cfg(not(feature = "native-win32"))]
 fn sync_tabs_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &impl IWebView) {
     if let Ok(s) = state.lock() {
         let active_tab_id = s.shell.get_active_tab().map(|t| t.id);
@@ -402,6 +438,7 @@ fn sync_tabs_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &impl IWebView) {
     }
 }
 
+#[cfg(not(feature = "native-win32"))]
 fn sync_workspaces_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &impl IWebView) {
     if let Ok(s) = state.lock() {
         let active_ws_id = s.shell.get_active_workspace().map(|w| w.id);
@@ -453,6 +490,7 @@ fn sync_workspaces_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &impl IWebVie
     }
 }
 
+#[cfg(not(feature = "native-win32"))]
 fn sync_shield_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &impl IWebView) {
     if let Ok(s) = state.lock() {
         let stats = s.shield.get_stats();
@@ -470,6 +508,7 @@ fn sync_shield_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &impl IWebView) {
     }
 }
 
+#[cfg(not(feature = "native-win32"))]
 fn sync_shelf_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &impl IWebView, scope: ShelfScope) {
     if let Ok(s) = state.lock() {
         let (items, workspace_name) = match scope {
@@ -495,6 +534,7 @@ fn sync_shelf_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &impl IWebView, sc
     }
 }
 
+#[cfg(not(feature = "native-win32"))]
 fn sync_blocklist_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &impl IWebView) {
     if let Ok(s) = state.lock() {
         let domains: Vec<&String> = s.user_blocklist.domains.iter().collect();
@@ -507,6 +547,7 @@ fn sync_blocklist_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &impl IWebView
     }
 }
 
+#[cfg(not(feature = "native-win32"))]
 fn sync_downloads_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &impl IWebView) {
     if let Ok(s) = state.lock() {
         let payload = serde_json::json!({
@@ -522,6 +563,7 @@ fn sync_downloads_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &impl IWebView
     }
 }
 
+#[cfg(not(feature = "native-win32"))]
 fn sync_history_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &impl IWebView) {
     if let Ok(s) = state.lock() {
         let history = s.visit_history_snapshot();
@@ -534,14 +576,17 @@ fn sync_history_to_chrome(state: &Arc<Mutex<AppState>>, chrome: &impl IWebView) 
     }
 }
 
+#[cfg(not(feature = "native-win32"))]
 fn load_new_tab(content: &impl IWebView) {
     content.load_html(ABOUT_HTML);
 }
 
+#[cfg(not(feature = "native-win32"))]
 fn load_about_page(content: &impl IWebView) {
     content.load_html(ABOUT_HTML);
 }
 
+#[cfg(not(feature = "native-win32"))]
 fn load_report_page(content: &impl IWebView) {
     // Embed Chart.js library inline in the report HTML
     let report_with_chartjs = REPORT_HTML.replace(
@@ -551,18 +596,22 @@ fn load_report_page(content: &impl IWebView) {
     content.load_html(&report_with_chartjs);
 }
 
+#[cfg(not(feature = "native-win32"))]
 fn is_new_tab_url(url: &str) -> bool {
     url == "about:blank" || url == NEW_TAB_URL || url.starts_with("data:text/html")
 }
 
+#[cfg(not(feature = "native-win32"))]
 fn is_about_url(url: &str) -> bool {
     url == ABOUT_URL
 }
 
+#[cfg(not(feature = "native-win32"))]
 fn is_report_url(url: &str) -> bool {
     url == REPORT_URL
 }
 
+#[cfg(not(feature = "native-win32"))]
 fn should_record_history_url(url: &str) -> bool {
     if is_new_tab_url(url) || is_about_url(url) || is_report_url(url) {
         return false;
@@ -602,6 +651,9 @@ fn main() {
         return;
     }
 
+    // Everything below is hybrid mode (wry/tao)
+    #[cfg(not(feature = "native-win32"))]
+    {
     info!("WebView engine: {}", engine_name());
 
     // Initialize application state
@@ -3665,4 +3717,5 @@ fn main() {
             }
         }
     });
+    } // end cfg(not(feature = "native-win32"))
 }

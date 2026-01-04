@@ -11,21 +11,21 @@ name = "hiwave"
 path = "src/main.rs"
 
 [features]
-# Default to RustKit on Windows (custom Rust engine)
-default = ["rustkit"]
-# RustKit: Pure Rust browser engine for content rendering
-rustkit = ["rustkit-engine", "rustkit-viewhost", "rustkit-net", "windows", "tokio"]
-# WebView fallback: Uses system WebView (WebView2/WebKit) instead of RustKit
-webview-fallback = []
+# Default to native-win32 on Windows (full RustKit, no WebView2/Tao)
+default = ["native-win32"]
+# RustKit: Pure Rust browser engine for content rendering only (hybrid mode)
+rustkit = ["rustkit-engine", "rustkit-viewhost", "rustkit-net", "wry", "tao", "muda", "windows", "tokio"]
+# WebView fallback: Uses system WebView (WebView2/WebKit) for everything
+webview-fallback = ["wry", "tao", "muda"]
 # Native Win32: Full native Windows app without wry/tao
 # This uses RustKit for ALL rendering (Chrome UI, Content, Shelf)
 native-win32 = ["rustkit-engine", "rustkit-viewhost", "rustkit-bindings", "rustkit-net", "windows", "tokio"]
 
 [dependencies]
-# WebView (for Chrome UI, Shelf, and secondary windows)
-wry = { workspace = true }
-tao = { workspace = true }
-muda = { workspace = true }
+# WebView (for Chrome UI, Shelf, and secondary windows) - OPTIONAL
+wry = { workspace = true, optional = true }
+tao = { workspace = true, optional = true }
+muda = { workspace = true, optional = true }
 
 # Serialization
 serde = { workspace = true }
