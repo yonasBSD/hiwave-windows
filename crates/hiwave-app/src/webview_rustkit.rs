@@ -19,6 +19,8 @@
 use super::webview::IWebView;
 use hiwave_core::HiWaveResult;
 use std::cell::RefCell;
+use std::sync::atomic::AtomicU64;
+use std::sync::Arc;
 use tracing::{debug, error, info, warn};
 use windows::Win32::Foundation::HWND;
 use wry::Rect;
@@ -26,6 +28,8 @@ use wry::Rect;
 // Re-export types for convenience
 pub use rustkit_engine::{Engine, EngineBuilder, EngineViewId};
 pub use rustkit_viewhost::Bounds;
+
+use super::shield_adapter::create_shield_interceptor_with_counter;
 
 // ============================================================================
 // RustKitView - Single-threaded wrapper around engine view
@@ -53,13 +57,34 @@ pub struct RustKitView {
 impl RustKitView {
     /// Create a new RustKit view.
     pub fn new(parent: HWND, bounds: Bounds) -> HiWaveResult<Self> {
+        Self::with_shield_counter(parent, bounds, None)
+    }
+
+    /// Create a new RustKit view with shield integration.
+    ///
+    /// The `blocked_counter` is an atomic counter that will be incremented
+    /// for each blocked request, allowing the main thread to track stats.
+    pub fn with_shield_counter(
+        parent: HWND,
+        bounds: Bounds,
+        blocked_counter: Option<Arc<AtomicU64>>,
+    ) -> HiWaveResult<Self> {
         info!("Creating RustKit view");
 
-        // Create engine for this view
-        let mut engine = EngineBuilder::new()
+        // Create engine builder
+        let mut builder = EngineBuilder::new()
             .user_agent("HiWave/1.0 RustKit/1.0")
             .javascript_enabled(true)
-            .cookies_enabled(true)
+            .cookies_enabled(true);
+
+        // Add shield interceptor if provided
+        if let Some(counter) = blocked_counter {
+            info!("RustKit view with shield integration");
+            let interceptor = create_shield_interceptor_with_counter(counter);
+            builder = builder.request_interceptor(interceptor);
+        }
+
+        let mut engine = builder
             .build()
             .map_err(|e| hiwave_core::HiWaveError::WebView(e.to_string()))?;
 
@@ -233,6 +258,15 @@ pub fn create_rustkit_view(
     bounds: Bounds,
 ) -> HiWaveResult<RustKitView> {
     RustKitView::new(parent, bounds)
+}
+
+/// Create a RustKit view with shield integration via a shared counter.
+pub fn create_rustkit_view_with_shield(
+    parent: windows::Win32::Foundation::HWND,
+    bounds: Bounds,
+    blocked_counter: Arc<AtomicU64>,
+) -> HiWaveResult<RustKitView> {
+    RustKitView::with_shield_counter(parent, bounds, Some(blocked_counter))
 }
 
 /// Helper to convert WRY Rect to RustKit Bounds.

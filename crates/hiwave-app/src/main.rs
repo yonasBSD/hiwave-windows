@@ -47,6 +47,9 @@ mod webview;
 #[cfg(all(target_os = "windows", feature = "rustkit"))]
 mod webview_rustkit;
 
+#[cfg(all(target_os = "windows", feature = "rustkit"))]
+mod shield_adapter;
+
 #[cfg(all(target_os = "windows", feature = "native-win32"))]
 mod main_win32;
 

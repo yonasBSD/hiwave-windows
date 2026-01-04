@@ -445,6 +445,13 @@ impl ResourceLoader {
         self.interceptor = Some(Arc::new(RwLock::new(interceptor)));
     }
 
+    /// Create a new resource loader with an interceptor.
+    pub fn with_interceptor(config: LoaderConfig, interceptor: RequestInterceptor) -> Result<Self, NetError> {
+        let mut loader = Self::new(config)?;
+        loader.set_interceptor(interceptor);
+        Ok(loader)
+    }
+
     /// Get the download manager.
     pub fn download_manager(&self) -> Arc<DownloadManager> {
         Arc::clone(&self.download_manager)

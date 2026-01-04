@@ -2325,6 +2325,7 @@ dependencies = [
  "rfd",
  "rustkit-bindings",
  "rustkit-engine",
+ "rustkit-net",
  "rustkit-viewhost",
  "serde",
  "serde_json",
