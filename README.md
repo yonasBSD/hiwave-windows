@@ -6,7 +6,7 @@
 
 <p align="center">
   <strong>Focus. Flow. Freedom.</strong><br>
-  A privacy-first browser that helps you close tabs, not open more.
+  A privacy-first browser built from scratch in Rust.
 </p>
 
 <p align="center">
@@ -18,6 +18,7 @@
 </p>
 
 <p align="center">
+  <img src="https://img.shields.io/badge/engine-RustKit_(original)-orange" alt="Engine: RustKit" />
   <img src="https://img.shields.io/badge/status-alpha-blueviolet" alt="Status: Alpha" />
   <img src="https://img.shields.io/badge/license-MPL--2.0-blue" alt="License: MPL-2.0" />
   <img src="https://img.shields.io/badge/platforms-Win%20%7C%20Mac%20%7C%20Linux-lightgrey" alt="Platforms" />
@@ -37,6 +38,16 @@ Modern browsers are designed to keep you browsing. More tabs, more tracking, mor
 - **Workspaces** — Separate contexts (work, personal, research) that don't bleed into each other
 - **Built-in Privacy** — Ad and tracker blocking with no extensions needed
 - **Three Modes** — Choose your level of automation: do it yourself, get suggestions, or let Flow handle it
+
+## The Engine
+
+Unlike browsers that wrap Chromium or WebKit, **HiWave runs on RustKit** — our own browser engine written from scratch in Rust. No Blink, no WebKit, no Gecko. Just ~50,000 lines of original Rust code handling everything from HTML parsing to GPU compositing.
+
+Why build our own engine?
+- **Full control** — We can innovate on features other browsers can't touch
+- **Memory safety** — Rust prevents entire classes of security vulnerabilities
+- **Minimal footprint** — No legacy code, no compatibility cruft
+- **True independence** — We don't inherit another engine's priorities or limitations
 
 ---
 
@@ -233,79 +244,44 @@ Your support helps cover:
 
 ## Architecture
 
-HiWave uses a **multi-WebView architecture** with RustKit, our custom Rust-native browser engine:
+HiWave is built on **RustKit**, our ground-up browser engine. This isn't a WebKit/Chromium wrapper — it's original code:
 
 ```
 ┌─────────────────────────────────────────┐
-│  Chrome WebView (Browser UI)            │
+│  Chrome Layer (Browser UI)              │
 │  Tabs • Address Bar • Sidebar           │
 ├─────────────────────────────────────────┤
 │                                         │
-│  Content WebView (RustKit Engine)       │
-│  HTML/CSS/JS Rendering                  │
+│  RustKit Engine (Original)              │
+│  HTML → DOM → CSS → Layout → Paint      │
 │                                         │
 └─────────────────────────────────────────┘
 ```
 
-Built with:
-- **Rust** — Core logic, memory safety, browser engine
-- **RustKit** — Custom browser engine (DOM, CSS, Layout, JS)
-- **WRY/Tao** — Cross-platform window management for Chrome UI
-- **DirectWrite** — Text rendering on Windows
-- **wgpu** — GPU-accelerated compositing
-- **Boa** — JavaScript engine
-- **Brave's adblock-rust** — Ad blocking engine
-- **Vanilla JS** — No framework bloat in the UI
+### What We Built (Original Rust Code)
 
-### Dependency Independence
+| Component | What It Does |
+|-----------|--------------|
+| `rustkit-html` | HTML5 tokenizer & tree builder (40+ states, 23 insertion modes) |
+| `rustkit-css` | CSS parser, cascade, selector matching |
+| `rustkit-layout` | Block, inline, flexbox, and grid layout |
+| `rustkit-dom` | DOM tree, events, manipulation |
+| `rustkit-compositor` | GPU rendering pipeline |
+| `rustkit-http` | HTTP/1.1 client with TLS |
+| `rustkit-codecs` | PNG/JPEG/GIF/WebP image decoding |
+| `rustkit-text` | Text shaping and rendering |
 
-**RustKit-owned subsystems** (replaced major external dependencies):
-| Subsystem | Replaced | Lines of Code |
-|-----------|----------|---------------|
-| `rustkit-html` | html5ever | HTML5 parser with 40+ tokenizer states, 23 tree builder modes |
-| `rustkit-http` | reqwest | HTTP/1.1 client with native-tls |
-| `rustkit-codecs` | image crate | PNG/JPEG/GIF/WebP decoders |
+### External Dependencies (Minimal)
 
-**Remaining External Dependencies:**
+We use a handful of well-maintained crates for things that don't make sense to rewrite:
+- **Boa** — JavaScript engine (excellent Rust-native implementation)
+- **wgpu** — GPU abstraction (may replace with `rustkit-gpu`)
+- **wry/tao** — Window management for browser chrome
+- **native-tls** — TLS via OS crypto libraries
+- **adblock** — Brave's filter list engine
+- **rusqlite** — SQLite for storage
 
-| Category | Dependency | Purpose | Future Plans |
-|----------|------------|---------|--------------|
-| **JavaScript** | `boa_engine` | JS execution | Keep (excellent Rust-native engine) |
-| **Graphics** | `wgpu` | GPU compositing | Bravo 5: `rustkit-gpu` |
-| **Windowing** | `wry`/`tao` | Browser chrome UI | Keep (cross-platform) |
-| **Platform** | `windows` | Win32 API bindings | Keep (required) |
-| **Text** | DirectWrite | Text shaping/rendering | Keep (OS-provided) |
-| **TLS** | `native-tls` | HTTPS encryption | Keep (uses OS crypto) |
-| **Ad Block** | `adblock` | Filter list engine | Keep (Brave's engine) |
-| **Storage** | `rusqlite` | SQLite database | Keep (standard) |
-| **Audio** | `rodio` | Media playback | Evaluate |
-| **Async** | `tokio` | Async runtime | Keep (standard) |
-
-**Utilities** (small, stable crates): `serde`, `url`, `thiserror`, `tracing`, `chrono`, `hashbrown`
-
-**Image codec backends** (used by rustkit-codecs): `png`, `jpeg-decoder`, `gif` — these provide the actual decoding algorithms
-
-### RustKit Engine
-
-RustKit is a from-scratch browser engine written in Rust:
-
-| Component | Crate | Purpose |
-|-----------|-------|---------|
-| ViewHost | `rustkit-viewhost` | Win32 window management |
-| Compositor | `rustkit-compositor` | GPU rendering |
-| Core | `rustkit-core` | Task scheduling, navigation |
-| DOM | `rustkit-dom` | DOM tree and manipulation |
-| HTML | `rustkit-html` | HTML5 tokenizer & tree builder |
-| CSS | `rustkit-css` | Style parsing and cascade |
-| Layout | `rustkit-layout` | Block/inline layout, text shaping |
-| JavaScript | `rustkit-js` | JS execution (Boa engine) |
-| Bindings | `rustkit-bindings` | JS ↔ DOM bridge |
-| HTTP | `rustkit-http` | HTTP/1.1 + TLS client |
-| Networking | `rustkit-net` | Fetch API, downloads |
-| Codecs | `rustkit-codecs` | PNG/JPEG/GIF/WebP decoding |
-| Engine | `rustkit-engine` | Multi-view orchestration |
-
-See [docs/RUSTKIT-ROADMAP.md](docs/RUSTKIT-ROADMAP.md) for the complete development roadmap.
+See [docs/RUSTKIT-ROADMAP.md](docs/RUSTKIT-ROADMAP.md) for the complete engine roadmap.
 
 ---
 
@@ -323,8 +299,11 @@ This means:
 
 ## FAQ
 
-**Q: Why not just use Firefox/Brave/Arc?**  
-A: They're great browsers! But none of them have The Shelf, tab decay, or our specific philosophy around reducing cognitive load. HiWave is for people who want a browser that actively helps them browse *less*.
+**Q: Why not just use Firefox/Brave/Arc?**
+A: They're great browsers! But they all share engines (Gecko, Blink) with decades of legacy code. HiWave's RustKit engine is written from scratch — no inherited complexity, no compatibility hacks. Plus, none of them have The Shelf, tab decay, or our philosophy around reducing cognitive load.
+
+**Q: You built your own browser engine? Really?**
+A: Yes. RustKit is ~50,000 lines of original Rust code. We wrote our own HTML parser, CSS engine, layout system, and more. It's not a WebKit fork or Chromium wrapper.
 
 **Q: Is this production-ready?**  
 A: Not yet. We're in alpha. Use it as a secondary browser while we iron out the kinks.
