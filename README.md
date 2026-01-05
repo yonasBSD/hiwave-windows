@@ -115,6 +115,58 @@ cargo run --release -p hiwave-app
 
 > **Note:** RustKit is our custom Rust-native browser engine. No external WebKit/WebView2 dependencies required.
 
+### Run Modes
+
+HiWave supports three rendering modes on Windows:
+
+| Mode | Command | Description |
+|------|---------|-------------|
+| **Native Win32** (default) | `.\scripts\run-native-win32.ps1` | 100% RustKit rendering, no WebView2 |
+| **RustKit Hybrid** | `.\scripts\run-rustkit.ps1` | RustKit for content, WebView2 for Chrome UI |
+| **WebView2 Fallback** | `.\scripts\run-webview2.ps1` | System WebView2 for all rendering |
+
+#### Native Win32 Mode (Default)
+```powershell
+# Using convenience script
+.\scripts\run-native-win32.ps1
+
+# Or directly with cargo
+cargo run -p hiwave-app --features native-win32
+cargo run -p hiwave-app --features native-win32 --release  # optimized build
+```
+
+Native Win32 uses RustKit for ALL rendering (Chrome UI, Content, Shelf):
+- 🚀 100% Rust rendering pipeline - no external WebView
+- 🛡️ Engine-level ad/tracker blocking (requests blocked at network layer)
+- 🔧 Direct Win32 window management, no Tao/WRY
+- ⚡ Fastest startup and lowest memory usage
+
+#### RustKit Hybrid Mode
+```powershell
+.\scripts\run-rustkit.ps1
+
+# Or directly with cargo
+cargo run -p hiwave-app --no-default-features --features rustkit
+```
+
+Hybrid mode uses RustKit for content, WebView2 for Chrome UI:
+- ✅ Best of both worlds - custom engine + mature UI rendering
+- 🛡️ Engine-level ad blocking for content
+- 🌐 Chrome UI benefits from WebView2's features
+
+#### WebView2 Fallback Mode
+```powershell
+.\scripts\run-webview2.ps1
+
+# Or directly with cargo
+cargo run -p hiwave-app --no-default-features --features webview-fallback
+```
+
+WebView2 fallback uses Microsoft Edge WebView2 for all rendering:
+- ✅ Maximum web compatibility
+- 🔍 Useful for debugging RustKit-specific issues
+- 🌐 Full Chromium rendering support
+
 ---
 
 ## Philosophy

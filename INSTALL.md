@@ -428,6 +428,73 @@ If the window opens, congratulations - HiWave is running!
 
 ---
 
+## Run Modes (Windows)
+
+HiWave supports multiple rendering modes on Windows. Each mode uses different combinations of our RustKit engine and system WebView2.
+
+### Native Win32 Mode (Default)
+
+100% RustKit rendering - no WebView2 required:
+
+```powershell
+# Using convenience script
+.\scripts\run-native-win32.ps1
+
+# Or with cargo (default feature)
+cargo run -p hiwave-app --features native-win32
+cargo run -p hiwave-app --features native-win32 --release  # optimized
+```
+
+**What this means:**
+- ✅ All rendering (Chrome UI, content, shelf) via RustKit
+- ✅ Engine-level ad blocking (requests blocked before leaving browser)
+- ✅ Direct Win32 window management
+- ✅ No external WebView dependencies
+- ⚠️ Some complex websites may not render perfectly yet
+
+### RustKit Hybrid Mode
+
+RustKit for content, WebView2 for Chrome UI:
+
+```powershell
+.\scripts\run-rustkit.ps1
+
+# Or with cargo
+cargo run -p hiwave-app --no-default-features --features rustkit
+```
+
+**What this means:**
+- ✅ RustKit renders web content with engine-level ad blocking
+- ✅ Chrome UI uses proven WebView2 rendering
+- ✅ Good balance of innovation and stability
+
+### WebView2 Fallback Mode
+
+System WebView2 for all rendering:
+
+```powershell
+.\scripts\run-webview2.ps1
+
+# Or with cargo
+cargo run -p hiwave-app --no-default-features --features webview-fallback
+```
+
+**What this means:**
+- ✅ Maximum web compatibility
+- ✅ Useful for debugging RustKit-specific issues
+- ⚠️ No engine-level ad blocking (uses standard WRY ad blocking)
+
+### Which Mode Should I Use?
+
+| Goal | Mode |
+|------|------|
+| Latest features, engine-level ad blocking | **Native Win32** (default) |
+| Testing RustKit content rendering | **RustKit Hybrid** |
+| Maximum web compatibility | **WebView2 Fallback** |
+| Debugging rendering issues | **WebView2 Fallback** |
+
+---
+
 ## Troubleshooting
 
 ### Common Issues
