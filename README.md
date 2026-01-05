@@ -113,46 +113,36 @@ cargo build --release -p hiwave-app
 cargo run --release -p hiwave-app
 ```
 
-> **Note:** RustKit is our custom Rust-native browser engine. No external WebKit/WebView2 dependencies required.
+> **Note:** RustKit is our custom Rust-native browser engine rendering all web content.
 
 ### Run Modes
 
-HiWave supports three rendering modes on Windows:
+HiWave supports multiple rendering modes on Windows:
 
 | Mode | Command | Description |
 |------|---------|-------------|
-| **Native Win32** (default) | `.\scripts\run-native-win32.ps1` | 100% RustKit rendering, no WebView2 |
-| **RustKit Hybrid** | `.\scripts\run-rustkit.ps1` | RustKit for content, WebView2 for Chrome UI |
+| **RustKit Hybrid** (default) | `cargo run --release` or `.\scripts\run-rustkit.ps1` | RustKit for content, WebView2 for chrome UI |
 | **WebView2 Fallback** | `.\scripts\run-webview2.ps1` | System WebView2 for all rendering |
+| **Native Win32** (experimental) | `.\scripts\run-native-win32.ps1` | 100% RustKit (work in progress) |
 
-#### Native Win32 Mode (Default)
+#### RustKit Hybrid Mode (Default) ⭐
 ```powershell
 # Using convenience script
-.\scripts\run-native-win32.ps1
-
-# Or directly with cargo
-cargo run -p hiwave-app --features native-win32
-cargo run -p hiwave-app --features native-win32 --release  # optimized build
-```
-
-Native Win32 uses RustKit for ALL rendering (Chrome UI, Content, Shelf):
-- 🚀 100% Rust rendering pipeline - no external WebView
-- 🛡️ Engine-level ad/tracker blocking (requests blocked at network layer)
-- 🔧 Direct Win32 window management, no Tao/WRY
-- ⚡ Fastest startup and lowest memory usage
-
-#### RustKit Hybrid Mode
-```powershell
 .\scripts\run-rustkit.ps1
 
 # Or directly with cargo
+cargo run --release -p hiwave-app
 cargo run -p hiwave-app --no-default-features --features rustkit
 ```
 
-Hybrid mode uses RustKit for content, WebView2 for Chrome UI:
-- ✅ Best of both worlds - custom engine + mature UI rendering
-- 🛡️ Engine-level ad blocking for content
-- 🌐 Chrome UI benefits from WebView2's features
+Hybrid mode uses **RustKit for all web content**, WebView2 only for browser chrome:
+- ✅ **All websites rendered by RustKit** - Wikipedia, Twitter, YouTube, etc.
+- ✅ Engine-level ad/tracker blocking via Brave's adblock-rust
+- ✅ Memory-safe Rust rendering pipeline
+- 🎨 Browser chrome (tabs, address bar) uses WebView2 for stability
+- ⚡ Best balance of performance and compatibility
+
+**This is what the demo video shows!**
 
 #### WebView2 Fallback Mode
 ```powershell
@@ -166,6 +156,22 @@ WebView2 fallback uses Microsoft Edge WebView2 for all rendering:
 - ✅ Maximum web compatibility
 - 🔍 Useful for debugging RustKit-specific issues
 - 🌐 Full Chromium rendering support
+
+#### Native Win32 Mode (Experimental)
+```powershell
+.\scripts\run-native-win32.ps1
+
+# Or directly with cargo
+cargo run -p hiwave-app --no-default-features --features native-win32
+```
+
+**Status:** Work in progress. This mode aims to use RustKit for everything (chrome UI + content):
+- 🚧 Currently being developed
+- 🚀 Will use 100% Rust rendering when complete
+- 🔧 No wry/tao/WebView2 dependencies
+- ⚡ Fastest startup and lowest memory when done
+
+**Want to help?** See [NATIVE-WIN32-IMPLEMENTATION.md](NATIVE-WIN32-IMPLEMENTATION.md) for details.
 
 ---
 
