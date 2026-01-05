@@ -134,14 +134,18 @@ impl TextBackend for LinuxTextBackend {
             });
         }
 
-        let face = self.get_face(descriptor)?;
         let metrics = self.get_metrics(descriptor)?;
+        let face = self.get_face(descriptor)?;
 
         let mut glyphs = Vec::new();
         let mut x_offset = 0.0f32;
 
         for (cluster, c) in text.chars().enumerate() {
-            let glyph_index = face.get_char_index(c as usize);
+            // get_char_index now returns Result<NonZeroU32, freetype::Error>
+            let glyph_index = face
+                .get_char_index(c as usize)
+                .map(|nz| nz.get())
+                .map_err(|e| TextError::ShapingFailed(format!("Failed to get glyph index: {:?}", e)))?;
 
             face.load_glyph(glyph_index, freetype::face::LoadFlag::DEFAULT)
                 .map_err(|e| TextError::ShapingFailed(format!("Failed to load glyph: {:?}", e)))?;

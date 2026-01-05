@@ -33,6 +33,7 @@ use thiserror::Error;
 use tokio::sync::mpsc;
 use tracing::{debug, info, trace, warn};
 use url::Url;
+#[cfg(windows)]
 use windows::Win32::Foundation::HWND;
 
 /// Errors that can occur in the engine.
@@ -264,6 +265,7 @@ impl Engine {
     }
 
     /// Create a new view.
+    #[cfg(windows)]
     pub fn create_view(
         &mut self,
         parent: HWND,
@@ -320,6 +322,15 @@ impl Engine {
 
         info!(?id, "View created");
         Ok(id)
+    }
+
+    #[cfg(not(windows))]
+    pub fn create_view(
+        &mut self,
+        _parent: usize,
+        _bounds: Bounds,
+    ) -> Result<EngineViewId, EngineError> {
+        Err(EngineError::RenderError("create_view is only supported on Windows".to_string()))
     }
 
     /// Destroy a view.
