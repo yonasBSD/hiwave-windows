@@ -79,12 +79,81 @@ pub struct GlyphMetrics {
     pub advance_width: i32,
 }
 
+// Shared types and trait for platform backends
+
+#[derive(Debug, Clone)]
+pub struct FontDescriptor {
+    pub family: String,
+    pub weight: FontWeight,
+    pub style: FontStyle,
+    pub size: f32,
+}
+
+#[derive(Debug, Clone)]
+pub struct FontFamily {
+    pub name: String,
+    pub styles: Vec<FontStyle>,
+}
+
+#[derive(Debug, Clone)]
+pub struct GlyphInfo {
+    pub glyph_id: u32,
+    pub advance: f32,
+    pub x_offset: f32,
+    pub y_offset: f32,
+}
+
+#[derive(Debug, Clone)]
+pub struct ShapedGlyph {
+    pub glyph_id: u32,
+    pub x_offset: f32,
+    pub y_offset: f32,
+    pub advance: f32,
+    pub cluster: u32,
+}
+
+#[derive(Debug, Clone)]
+pub struct ShapedText {
+    pub glyphs: Vec<ShapedGlyph>,
+    pub width: f32,
+    pub metrics: TextMetrics,
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+pub struct TextMetrics {
+    pub ascent: f32,
+    pub descent: f32,
+    pub line_height: f32,
+    pub em_size: f32,
+    pub x_height: f32,
+    pub cap_height: f32,
+}
+
+#[derive(thiserror::Error, Debug, Clone)]
+pub enum TextError {
+    #[error("Not implemented on this platform")]
+    NotImplemented,
+    #[error("Initialization failed: {0}")]
+    InitializationFailed(String),
+    #[error("Font not found: {0}")]
+    FontNotFound(String),
+    #[error("Shaping failed: {0}")]
+    ShapingFailed(String),
+}
+
+pub trait TextBackend {
+    fn shape_text(&mut self, text: &str, descriptor: &FontDescriptor) -> Result<ShapedText, TextError>;
+    fn get_font_families(&self) -> Result<Vec<FontFamily>, TextError>;
+    fn get_metrics(&mut self, descriptor: &FontDescriptor) -> Result<TextMetrics, TextError>;
+    fn get_fallback_fonts(&self, text: &str) -> Vec<String>;
+}
+
 // Platform-specific implementations
 #[cfg(windows)]
 mod win;
 
 #[cfg(windows)]
-pub use win::{FontCollection, FontFace, FontFamily, Font};
+pub use win::{FontCollection, FontFace, FontFamily as WinFontFamily, Font as WinFont};
 
 #[cfg(target_os = "macos")]
 pub mod macos;
@@ -92,65 +161,49 @@ pub mod macos;
 #[cfg(target_os = "linux")]
 pub mod linux;
 
-// Fallback for unsupported platforms
+// Fallback for unsupported platforms (no-op stubs using shared types)
 #[cfg(not(any(windows, target_os = "macos", target_os = "linux")))]
 mod nowin {
     use super::*;
 
     #[derive(Clone)]
     pub struct FontCollection;
-    pub struct FontFamily;
     pub struct Font;
     #[derive(Clone)]
     pub struct FontFace;
 
     impl FontCollection {
-        pub fn system() -> Result<Self, TextBackendError> {
-            Err(TextBackendError::NotImplemented)
+        pub fn system() -> Result<Self, TextError> {
+            Err(TextError::NotImplemented)
         }
 
-        pub fn font_family_by_name(&self, _name: &str) -> Result<Option<FontFamily>, TextBackendError> {
-            Err(TextBackendError::NotImplemented)
-        }
-    }
-
-    impl FontFamily {
-        pub fn first_matching_font(
-            &self,
-            _weight: FontWeight,
-            _stretch: FontStretch,
-            _style: FontStyle,
-        ) -> Result<Font, TextBackendError> {
-            Err(TextBackendError::NotImplemented)
+        pub fn font_family_by_name(&self, _name: &str) -> Result<Option<FontFamily>, TextError> {
+            Err(TextError::NotImplemented)
         }
     }
 
     impl Font {
-        pub fn create_font_face(&self) -> Result<FontFace, TextBackendError> {
-            Err(TextBackendError::NotImplemented)
+        pub fn create_font_face(&self) -> Result<FontFace, TextError> {
+            Err(TextError::NotImplemented)
         }
     }
 
     impl FontFace {
-        pub fn metrics(&self) -> Result<FontMetrics, TextBackendError> {
-            Err(TextBackendError::NotImplemented)
+        pub fn metrics(&self) -> Result<TextMetrics, TextError> {
+            Err(TextError::NotImplemented)
         }
 
-        pub fn glyph_indices(&self, _codepoints: &[u32]) -> Result<Vec<u16>, TextBackendError> {
-            Err(TextBackendError::NotImplemented)
+        pub fn glyph_indices(&self, _codepoints: &[u32]) -> Result<Vec<u16>, TextError> {
+            Err(TextError::NotImplemented)
         }
 
         pub fn design_glyph_metrics(
             &self,
             _glyph_indices: &[u16],
             _is_sideways: bool,
-        ) -> Result<Vec<GlyphMetrics>, TextBackendError> {
-            Err(TextBackendError::NotImplemented)
+        ) -> Result<Vec<GlyphInfo>, TextError> {
+            Err(TextError::NotImplemented)
         }
     }
 }
-
-#[cfg(not(windows))]
-pub use nowin::{FontCollection, FontFace, FontFamily, Font};
-
 

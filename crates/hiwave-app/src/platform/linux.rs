@@ -101,23 +101,12 @@ impl PlatformManager for LinuxPlatform {
 
             // GTK window and display may not be available in headless environments
             match (window.gtk_window(), window.default_vbox()) {
-                (Some(gtk_window), Some(_vbox)) => {
-                    // Get the GDK display for the window
-                    if let Some(display) = window.gtk_window().and_then(|w| {
-                        use gtk::prelude::WidgetExt;
-                        w.display()
-                    }) {
-                        menu.init_for_gtk_window(&gtk_window, Some(&display))
-                            .map_err(|e| {
-                                PlatformError::MenuInitFailed(format!("GTK init failed: {}", e))
-                            })?;
-                    } else {
-                        // Fallback: init without display
-                        menu.init_for_gtk_window(&gtk_window, None::<&gtk::gdk::Display>)
-                            .map_err(|e| {
-                                PlatformError::MenuInitFailed(format!("GTK init failed: {}", e))
-                            })?;
-                    }
+                (gtk_window, Some(vbox)) => {
+                    // Initialize menu for GTK window using the vbox container when available
+                    menu.init_for_gtk_window(gtk_window, Some(vbox))
+                        .map_err(|e| {
+                            PlatformError::MenuInitFailed(format!("GTK init failed: {}", e))
+                        })?;
                 }
                 _ => {
                     warn!("GTK window not available for menu initialization");
