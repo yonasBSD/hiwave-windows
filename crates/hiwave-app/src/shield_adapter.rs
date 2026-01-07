@@ -268,7 +268,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use http::Method;
+    use wry::http::Method;
     use rustkit_net::RequestId;
     use url::Url;
 

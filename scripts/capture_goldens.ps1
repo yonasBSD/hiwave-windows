@@ -131,3 +131,4 @@ Write-Host "Summary: $captured captured, $failed failed"
 Write-Host ""
 Write-Host "Golden images stored in: $GoldensDir"
 
+
