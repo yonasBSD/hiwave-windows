@@ -53,7 +53,6 @@ hiwave-shell = { workspace = true }
 hiwave-shield = { workspace = true }
 hiwave-vault = { workspace = true }
 hiwave-analytics = { workspace = true }
-gtk = "0.18.2"
 
 # RustKit engine (optional, Windows only)
 [target.'cfg(target_os = "windows")'.dependencies]

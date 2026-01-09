@@ -167,6 +167,8 @@ pub struct EngineConfig {
     pub cookies_enabled: bool,
     /// Default background color.
     pub background_color: [f64; 4],
+    /// Disable animations and transitions for deterministic parity captures.
+    pub disable_animations: bool,
 }
 
 impl Default for EngineConfig {
@@ -176,6 +178,17 @@ impl Default for EngineConfig {
             javascript_enabled: true,
             cookies_enabled: true,
             background_color: [1.0, 1.0, 1.0, 1.0], // White
+            disable_animations: false,
+        }
+    }
+}
+
+impl EngineConfig {
+    /// Create a configuration for parity testing (animations disabled).
+    pub fn for_parity_testing() -> Self {
+        Self {
+            disable_animations: true,
+            ..Default::default()
         }
     }
 }
@@ -1519,6 +1532,18 @@ impl EngineBuilder {
     /// Set the default background color.
     pub fn background_color(mut self, color: [f64; 4]) -> Self {
         self.config.background_color = color;
+        self
+    }
+
+    /// Set the entire configuration at once.
+    pub fn with_config(mut self, config: EngineConfig) -> Self {
+        self.config = config;
+        self
+    }
+
+    /// Disable animations for deterministic parity testing.
+    pub fn disable_animations(mut self, disable: bool) -> Self {
+        self.config.disable_animations = disable;
         self
     }
 
