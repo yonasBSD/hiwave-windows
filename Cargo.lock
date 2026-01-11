@@ -4093,6 +4093,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "parity-capture"
+version = "0.1.0"
+dependencies = [
+ "clap",
+ "rustkit-engine",
+ "rustkit-layout",
+ "rustkit-viewhost",
+ "serde",
+ "serde_json",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "parking"
 version = "2.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5071,6 +5085,8 @@ version = "0.1.0"
 dependencies = [
  "pollster",
  "raw-window-handle",
+ "rustkit-layout",
+ "rustkit-renderer",
  "rustkit-viewhost",
  "thiserror 1.0.69",
  "tracing",

@@ -39,7 +39,7 @@ BUILTINS = [
     ("new_tab", "crates/hiwave-app/src/ui/new_tab.html", 1280, 800),
     ("about", "crates/hiwave-app/src/ui/about.html", 800, 600),
     ("settings", "crates/hiwave-app/src/ui/settings.html", 1024, 768),
-    ("chrome_rustkit", "crates/hiwave-app/src/ui/chrome_rustkit.html", 1280, 100),
+    ("chrome_rustkit", "crates/hiwave-app/src/ui/chrome.html", 1280, 100),  # Windows uses chrome.html
     ("shelf", "crates/hiwave-app/src/ui/shelf.html", 1280, 120),
 ]
 

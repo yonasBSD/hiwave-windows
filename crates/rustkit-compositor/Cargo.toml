@@ -24,6 +24,10 @@ windows = { version = "0.58", features = [
 # ViewHost integration
 rustkit-viewhost = { path = "../rustkit-viewhost" }
 
+# Renderer and layout for capture_frame_with_renderer
+rustkit-renderer = { path = "../rustkit-renderer" }
+rustkit-layout = { path = "../rustkit-layout" }
+
 # Error handling
 thiserror = "1.0"
 

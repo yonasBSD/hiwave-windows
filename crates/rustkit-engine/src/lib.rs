@@ -154,6 +154,8 @@ struct ViewState {
     focused_node: Option<rustkit_dom::NodeId>,
     /// Whether the view itself has focus.
     view_focused: bool,
+    /// Headless bounds (only set for headless views, None for window-based views).
+    headless_bounds: Option<Bounds>,
 }
 
 /// Engine configuration.
@@ -324,6 +326,7 @@ impl Engine {
             nav_event_rx: nav_rx,
             focused_node: None,
             view_focused: false,
+            headless_bounds: None,
         };
 
         self.views.insert(id, view_state);
@@ -344,6 +347,55 @@ impl Engine {
         _bounds: Bounds,
     ) -> Result<EngineViewId, EngineError> {
         Err(EngineError::RenderError("create_view is only supported on Windows".to_string()))
+    }
+
+    /// Create a headless view for offscreen rendering (testing/CI mode).
+    ///
+    /// This creates a view without requiring a window, perfect for unit tests
+    /// and CI environments.
+    pub fn create_headless_view(
+        &mut self,
+        bounds: Bounds,
+    ) -> Result<EngineViewId, EngineError> {
+        let id = EngineViewId::new();
+        let viewhost_id = ViewId::new();
+
+        debug!(?id, ?bounds, "Creating headless view");
+
+        // Create headless texture instead of surface
+        self.compositor
+            .create_headless_texture(viewhost_id, bounds.width, bounds.height)
+            .map_err(|e| EngineError::RenderError(e.to_string()))?;
+
+        // Create navigation state machine
+        let (nav_tx, nav_rx) = mpsc::unbounded_channel();
+        let navigation = NavigationStateMachine::new(nav_tx);
+
+        let view_state = ViewState {
+            id,
+            viewhost_id,
+            url: None,
+            title: None,
+            document: None,
+            layout: None,
+            display_list: None,
+            bindings: None,
+            navigation,
+            nav_event_rx: nav_rx,
+            focused_node: None,
+            view_focused: false,
+            headless_bounds: Some(bounds),
+        };
+
+        self.views.insert(id, view_state);
+
+        // Render initial background to headless texture
+        self.compositor
+            .render_solid_color(viewhost_id, self.config.background_color)
+            .map_err(|e| EngineError::RenderError(e.to_string()))?;
+
+        info!(?id, "Headless view created");
+        Ok(id)
     }
 
     /// Destroy a view.
@@ -642,11 +694,15 @@ impl Engine {
             .ok_or(EngineError::RenderError("No document".into()))?
             .clone();
 
-        // Get view bounds
-        let bounds = self
-            .viewhost
-            .get_bounds(view.viewhost_id)
-            .map_err(|e| EngineError::ViewError(e.to_string()))?;
+        // Get view bounds - use headless_bounds if set (for offscreen rendering),
+        // otherwise query the viewhost
+        let bounds = if let Some(headless_bounds) = view.headless_bounds {
+            headless_bounds
+        } else {
+            self.viewhost
+                .get_bounds(view.viewhost_id)
+                .map_err(|e| EngineError::ViewError(e.to_string()))?
+        };
 
         info!(
             ?id,
@@ -1040,11 +1096,14 @@ impl Engine {
         let display_list = view.display_list.as_ref();
         let viewhost_id = view.viewhost_id;
 
-        // Get view bounds for viewport
-        let bounds = self
-            .viewhost
-            .get_bounds(viewhost_id)
-            .map_err(|e| EngineError::ViewError(e.to_string()))?;
+        // Get view bounds for viewport - use headless_bounds if set
+        let bounds = if let Some(headless_bounds) = view.headless_bounds {
+            headless_bounds
+        } else {
+            self.viewhost
+                .get_bounds(viewhost_id)
+                .map_err(|e| EngineError::ViewError(e.to_string()))?
+        };
 
         if bounds.width == 0 || bounds.height == 0 {
             return Err(EngineError::RenderError(format!(
@@ -1056,12 +1115,12 @@ impl Engine {
         if let Some(renderer) = &mut self.renderer {
             // Update viewport size
             renderer.set_viewport_size(bounds.width, bounds.height);
-            
+
             // Get commands from display list or use empty
             let commands = display_list
                 .map(|dl| dl.commands.as_slice())
                 .unwrap_or(&[]);
-            
+
             // Capture to file
             renderer
                 .execute_and_capture(commands, output_path)
@@ -1085,42 +1144,67 @@ impl Engine {
         let view = self.views.get(&id).ok_or(EngineError::ViewNotFound(id))?;
         let viewhost_id = view.viewhost_id;
         let display_list = view.display_list.as_ref();
+        let is_headless = view.headless_bounds.is_some();
 
-        trace!(?id, "Rendering view");
+        trace!(?id, is_headless, "Rendering view");
 
-        // Get view bounds for viewport
-        let bounds = self
-            .viewhost
-            .get_bounds(viewhost_id)
-            .map_err(|e| EngineError::ViewError(e.to_string()))?;
-
-        // Get surface texture
-        let (output, texture_view) = self.compositor
-            .get_surface_texture(viewhost_id)
-            .map_err(|e| EngineError::RenderError(e.to_string()))?;
-
-        // Render using display list if available, otherwise just clear to background
-        if let (Some(renderer), Some(display_list)) = (&mut self.renderer, display_list) {
-            // Update viewport size before rendering
-            renderer.set_viewport_size(bounds.width, bounds.height);
-            renderer.execute(&display_list.commands, &texture_view)
-                .map_err(|e| EngineError::RenderError(e.to_string()))?;
-        } else if let Some(renderer) = &mut self.renderer {
-            // No display list, render empty (will clear to white)
-            renderer.set_viewport_size(bounds.width, bounds.height);
-            renderer.execute(&[], &texture_view)
-                .map_err(|e| EngineError::RenderError(e.to_string()))?;
+        // Get view bounds for viewport - use headless_bounds if set
+        let bounds = if let Some(headless_bounds) = view.headless_bounds {
+            headless_bounds
         } else {
-            // Fallback to compositor solid color (shouldn't normally happen)
-            drop(output); // Release the texture
-            self.compositor
-                .render_solid_color(viewhost_id, self.config.background_color)
-                .map_err(|e| EngineError::RenderError(e.to_string()))?;
-            return Ok(());
-        }
+            self.viewhost
+                .get_bounds(viewhost_id)
+                .map_err(|e| EngineError::ViewError(e.to_string()))?
+        };
 
-        // Present
-        self.compositor.present(output);
+        // For headless views, use headless texture; for windowed views, use surface texture
+        if is_headless {
+            // Headless rendering path
+            let texture_view = self.compositor
+                .get_headless_texture_view(viewhost_id)
+                .map_err(|e| EngineError::RenderError(e.to_string()))?;
+
+            // Render using display list if available
+            if let (Some(renderer), Some(display_list)) = (&mut self.renderer, display_list) {
+                renderer.set_viewport_size(bounds.width, bounds.height);
+                renderer.execute(&display_list.commands, &texture_view)
+                    .map_err(|e| EngineError::RenderError(e.to_string()))?;
+            } else if let Some(renderer) = &mut self.renderer {
+                renderer.set_viewport_size(bounds.width, bounds.height);
+                renderer.execute(&[], &texture_view)
+                    .map_err(|e| EngineError::RenderError(e.to_string()))?;
+            } else {
+                self.compositor
+                    .render_solid_color(viewhost_id, self.config.background_color)
+                    .map_err(|e| EngineError::RenderError(e.to_string()))?;
+            }
+            // No present needed for headless textures
+        } else {
+            // Windowed rendering path
+            let (output, texture_view) = self.compositor
+                .get_surface_texture(viewhost_id)
+                .map_err(|e| EngineError::RenderError(e.to_string()))?;
+
+            // Render using display list if available, otherwise just clear to background
+            if let (Some(renderer), Some(display_list)) = (&mut self.renderer, display_list) {
+                renderer.set_viewport_size(bounds.width, bounds.height);
+                renderer.execute(&display_list.commands, &texture_view)
+                    .map_err(|e| EngineError::RenderError(e.to_string()))?;
+            } else if let Some(renderer) = &mut self.renderer {
+                renderer.set_viewport_size(bounds.width, bounds.height);
+                renderer.execute(&[], &texture_view)
+                    .map_err(|e| EngineError::RenderError(e.to_string()))?;
+            } else {
+                drop(output);
+                self.compositor
+                    .render_solid_color(viewhost_id, self.config.background_color)
+                    .map_err(|e| EngineError::RenderError(e.to_string()))?;
+                return Ok(());
+            }
+
+            // Present
+            self.compositor.present(output);
+        }
 
         Ok(())
     }
@@ -1487,6 +1571,130 @@ impl Engine {
                 .map(|b| b.has_pending_ipc())
                 .unwrap_or(false)
         })
+    }
+
+    /// Capture a frame from a view to a PPM file.
+    ///
+    /// This renders the current display list to an offscreen texture and saves it.
+    /// This is useful for deterministic testing and visual debugging.
+    pub fn capture_frame(&mut self, id: EngineViewId, path: &str) -> Result<(), EngineError> {
+        let view = self.views.get(&id).ok_or(EngineError::ViewNotFound(id))?;
+        let viewhost_id = view.viewhost_id;
+        let has_display_list = view.display_list.is_some();
+
+        info!(?id, path, "Capturing frame");
+
+        // Get surface size
+        let (width, height) = self.compositor
+            .get_surface_size(viewhost_id)
+            .map_err(|e| EngineError::RenderError(e.to_string()))?;
+
+        if width == 0 || height == 0 {
+            return Err(EngineError::RenderError("Cannot capture zero-size frame".into()));
+        }
+
+        // If we have a display list and renderer, render to offscreen texture
+        if has_display_list && self.renderer.is_some() {
+            let view = self.views.get(&id).unwrap();
+            let display_list = view.display_list.as_ref().unwrap();
+            let renderer = self.renderer.as_mut().unwrap();
+
+            // Update viewport size for correct coordinate transforms
+            renderer.set_viewport_size(width, height);
+
+            // Capture with actual display list rendering
+            self.compositor
+                .capture_frame_with_renderer(viewhost_id, path, renderer, &display_list.commands)
+                .map_err(|e| EngineError::RenderError(e.to_string()))
+        } else {
+            // Fallback to magenta test pattern if no display list
+            self.compositor
+                .capture_frame_to_file(viewhost_id, path)
+                .map_err(|e| EngineError::RenderError(e.to_string()))
+        }
+    }
+
+    /// Export the layout tree for a view as JSON.
+    ///
+    /// This exports the current layout tree with dimensions for each box,
+    /// which can be compared against Chromium's DOMRect data for layout parity testing.
+    pub fn export_layout_json(&self, id: EngineViewId, path: &str) -> Result<(), EngineError> {
+        let view = self.views.get(&id).ok_or(EngineError::ViewNotFound(id))?;
+
+        let layout = view.layout.as_ref().ok_or_else(|| {
+            EngineError::RenderError("No layout tree available".into())
+        })?;
+
+        // Convert layout tree to JSON-serializable structure
+        fn layout_box_to_json(layout_box: &LayoutBox) -> serde_json::Value {
+            let dims = &layout_box.dimensions;
+            let content = &dims.content;
+            let margin_box = dims.margin_box();
+            let padding_box = dims.padding_box();
+            let border_box = dims.border_box();
+
+            let box_type = match &layout_box.box_type {
+                BoxType::Block => "block",
+                BoxType::Inline => "inline",
+                BoxType::AnonymousBlock => "anonymous_block",
+                BoxType::Text(t) => return serde_json::json!({
+                    "type": "text",
+                    "text": t.chars().take(50).collect::<String>(),
+                    "rect": {
+                        "x": content.x,
+                        "y": content.y,
+                        "width": content.width,
+                        "height": content.height
+                    }
+                }),
+            };
+
+            let children: Vec<serde_json::Value> = layout_box.children
+                .iter()
+                .map(layout_box_to_json)
+                .collect();
+
+            serde_json::json!({
+                "type": box_type,
+                "content_rect": {
+                    "x": content.x,
+                    "y": content.y,
+                    "width": content.width,
+                    "height": content.height
+                },
+                "padding_rect": {
+                    "x": padding_box.x,
+                    "y": padding_box.y,
+                    "width": padding_box.width,
+                    "height": padding_box.height
+                },
+                "border_rect": {
+                    "x": border_box.x,
+                    "y": border_box.y,
+                    "width": border_box.width,
+                    "height": border_box.height
+                },
+                "margin_rect": {
+                    "x": margin_box.x,
+                    "y": margin_box.y,
+                    "width": margin_box.width,
+                    "height": margin_box.height
+                },
+                "children": children
+            })
+        }
+
+        let json = layout_box_to_json(layout);
+
+        // Write to file
+        let file = std::fs::File::create(path)
+            .map_err(|e| EngineError::RenderError(format!("Failed to create file: {}", e)))?;
+
+        serde_json::to_writer_pretty(file, &json)
+            .map_err(|e| EngineError::RenderError(format!("Failed to write JSON: {}", e)))?;
+
+        info!(?id, path, "Layout JSON exported");
+        Ok(())
     }
 }
 

@@ -7,8 +7,7 @@ members = [
     "crates/hiwave-shell",
     "crates/hiwave-analytics",
     "crates/hiwave-app",
-    # TODO: Port parity-capture to Windows (needs headless view support)
-    # "crates/parity-capture",
+    "crates/parity-capture",
     "crates/rustkit-common",
     "crates/rustkit-core",
     "crates/rustkit-viewhost",
