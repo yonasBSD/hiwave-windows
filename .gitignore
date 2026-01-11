@@ -53,3 +53,18 @@ deps/wincairo/*
 docs/plans/
 
 docs/unshared/*
+
+# Parity testing artifacts (generated)
+parity-results/
+parity-baseline/
+parity-history/
+baselines/builtins/
+baselines/micro/
+baselines/websuite/
+
+# Node modules (installed by npm install)
+node_modules/
+
+# Python cache
+__pycache__/
+*.pyc
